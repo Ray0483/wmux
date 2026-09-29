@@ -66,6 +66,22 @@ jobs:
       - name: Build renderer
         run: npx vite build
 
+      # The Remote Console fails SILENTLY when its build output is missing: the
+      # facade logs `remote-console-missing`, the server answers 503
+      # `ui-not-built`, nothing crashes. And the only test that looks at the
+      # built phone page skips when dist/renderer does not exist — which is
+      # always the case at the `npm test` gate above. So check it here, where
+      # it exists, with the skip turned into a failure (#254).
+      - name: Verify Remote Console build output
+        shell: bash
+        env:
+          WMUX_REQUIRE_BUILD: '1'
+        run: |
+          test -f dist/renderer/remote-manifest.json
+          test -f dist/renderer/remote/index.html
+          test -f dist/main/remote-console/runtime.js
+          npx vitest run tests/unit/remote-ui-build.test.ts
+
       # ── Package (NSIS installer) ───────────────────────────
       # Build the NSIS installer so electron-updater can actually install the
       # update on Windows. The previous `--dir` build shipped a zip, which
@@ -75,6 +91,19 @@ jobs:
       # generated AFTER signing (see the note on that step).
       - name: Package with electron-builder
         run: npx electron-builder --win --publish never
+
+      # The same three files, in the artifact that ships: a `files` rule that
+      # dropped .json/.html from the asar would pass every check above.
+      - name: Verify Remote Console files in the packaged asar
+        shell: bash
+        run: |
+          # asar lists Windows separators with a leading one (\dist\main\...).
+          # A here-string, not `echo | grep -q`: under pipefail an early grep
+          # exit SIGPIPEs the echo and fails a step that found the file.
+          LIST=$(npx asar list release/win-unpacked/resources/app.asar | tr '\\' '/')
+          for f in dist/renderer/remote-manifest.json dist/renderer/remote/index.html dist/main/remote-console/runtime.js; do
+            grep -qxF -e "/$f" -e "$f" <<< "$LIST" || { echo "missing from app.asar: $f"; exit 1; }
+          done
 
       - name: Extract version
         id: version
