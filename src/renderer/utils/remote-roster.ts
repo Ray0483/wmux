@@ -1,0 +1,40 @@
+/**
+ * The roster the remote console is allowed to see (#254).
+ *
+ * `window.__wmux_remoteRoster()` hands main the sidebar's own agent rollup, so
+ * the phone inherits every rule already settled there (#235, #253) instead of
+ * re-deriving agent state a second way. But the roster entry carries more than
+ * a phone should: `metadata` (model, token counts), `detectedState`, `paneId`,
+ * `identitySource`, and each declared choice's `key`/`text` — the exact bytes
+ * `answer_agent` would type into the PTY. Those payloads stay in main
+ * (`deliverAnswer` looks them up by id); the wire only ever needs an id to send
+ * back and a label to show.
+ *
+ * So this is an explicit field-by-field COPY, never a spread or a delete: a
+ * field added to AgentRosterEntry later does not reach the network until
+ * someone adds it here on purpose. Main validates the result again anyway —
+ * it arrives through `executeJavaScript` and is trusted no further than that.
+ */
+import type { RemoteRosterSource } from '../../shared/remote-console-config';
+import type { AgentRosterEntry } from '../store/agent-rollup';
+
+/** A declared choice may carry `isDefault`; AgentChoiceView does not type it. */
+type ChoiceLike = { id: string; label: string; isDefault?: unknown };
+
+export function toRemoteRosterSource(entry: AgentRosterEntry): RemoteRosterSource {
+  return {
+    surfaceId: entry.surfaceId,
+    workspaceId: entry.workspaceId,
+    workspaceTitle: entry.workspaceTitle,
+    label: entry.label,
+    kind: entry.kind,
+    state: entry.state,
+    stateSource: entry.stateSource,
+    blockedReason: entry.blockedReason,
+    choices: (entry.choices as ChoiceLike[]).map((c) =>
+      c.isDefault === true ? { id: c.id, label: c.label, isDefault: true } : { id: c.id, label: c.label },
+    ),
+    answerPending: entry.answerPending,
+    dwellMs: entry.dwellMs,
+  };
+}

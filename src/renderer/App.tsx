@@ -51,6 +51,7 @@ import { buildSurfaceDragPreview } from './components/SplitPane/surface-drag-pre
 import { forgetSurfaceTitle, surfaceTerminalRegistry } from './hooks/useTerminal';
 import { forgetSurface as forgetPromptLog, recordAgentPrompt } from './utils/prompt-log';
 import { SURFACE_CLOSED_EVENT } from './store/pty-teardown';
+import { installRemoteRendererHandler } from './utils/remote-snapshot';
 import { followOutputFor, togglePinnedPromptFor, togglePromptOutlineFor } from './store/prompt-actions';
 import { useT } from './i18n';
 import type { TranslationKey } from './i18n';
@@ -641,6 +642,11 @@ export default function App() {
   // Track when each workspace entered "running" state (for notification threshold)
   const runningStartTimes = useRef<Record<string, number>>({});
   // Browser URL tracking is now per-workspace via WorkspaceInfo.browserUrl
+
+  // Remote console (#254): answer main's terminal snapshot / modes requests for
+  // the surfaces this window hosts. One IPC listener, no store subscription —
+  // it does nothing until a phone attaches.
+  useEffect(() => installRemoteRendererHandler(), []);
 
   // Global keyboard listener for command palette toggle (Ctrl+Shift+P)
   useEffect(() => {

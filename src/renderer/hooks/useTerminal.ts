@@ -332,6 +332,16 @@ const MAX_BUFFER_CACHE = 32;
 export const surfaceTerminalRegistry = new Map<string, Terminal>();
 
 /**
+ * surfaceId → the SerializeAddon already loaded into that surface's terminal
+ * (#254). The remote console's snapshot handler (utils/remote-snapshot.ts)
+ * serializes the live buffer when a phone attaches, and reuses this addon
+ * rather than loading a second one per terminal, so an idle console costs
+ * nothing. Kept in lockstep with surfaceTerminalRegistry: set beside it,
+ * deleted under the same identity check.
+ */
+export const surfaceSerializerRegistry = new Map<string, SerializeAddon>();
+
+/**
  * surfaceId → count of PTY chunks written into that terminal.
  *
  * A change counter, not a byte count: screen detection only needs to know
@@ -920,7 +930,10 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
     const replayHold = new ReplayHold();
     replayHoldRef.current = replayHold;
 
-    if (surfaceId) surfaceTerminalRegistry.set(surfaceId, terminal);
+    if (surfaceId) {
+      surfaceTerminalRegistry.set(surfaceId, terminal);
+      surfaceSerializerRegistry.set(surfaceId, serializeAddon);
+    }
 
     const titleDisposable = recordTitleChanges(terminal, surfaceId);
 
@@ -1661,6 +1674,7 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
       // replacement instance under the same surfaceId).
       if (surfaceId && surfaceTerminalRegistry.get(surfaceId) === terminal) {
         surfaceTerminalRegistry.delete(surfaceId);
+        surfaceSerializerRegistry.delete(surfaceId);
       }
 
       // Drop any progress indicator. A remount loses the addon's parser state

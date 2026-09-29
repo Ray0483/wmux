@@ -1,0 +1,146 @@
+<!doctype html>
+<!--
+  Remote console snapshot fence harness (#254).
+
+  The question: when main sends REMOTE_RENDERER_REQUEST{kind:'snapshot'} right
+  behind a run of PTY_DATA, does `terminal.write(FENCE, cb)` fire `cb` only
+  after every previously queued write has been PARSED — so a serialize() inside
+  `cb` holds exactly the pre-request bytes and none of the later ones? That is
+  the whole ordering argument of src/renderer/utils/remote-snapshot.ts, and a
+  fake terminal in a unit test can only restate it; this runs the real
+  @xterm/xterm 6.0.0 + @xterm/addon-serialize 0.14.0 in real Chromium.
+
+  Run it in the wmux browser panel (never a second Electron — it collides with
+  the live instance's pipe and CDP port):
+
+    wmux browser open "file:///<repo>/tests/harness/remote-fence.html"
+    wmux browser eval "JSON.stringify(window.__fenceResult)"
+
+  Each case writes chunk A (large, so xterm's WriteBuffer spreads it over
+  several setTimeout passes and the fence genuinely has to wait), then
+  write(FENCE, cb), then chunk B, and asserts inside cb that the serialized
+  buffer contains A's end marker and not B's marker. Cases cover both fence
+  candidates, a fence with nothing queued ahead of it, and a fence behind
+  several small writes.
+
+  Result, 2026-09-29, wmux 2.14.0 browser panel (Chromium), read back through
+  `wmux browser get-text`: 8/8 PASS — byFence {"empty":true,"osc6973":true}.
+  Every case held A (a 20 000-line chunk serialized to 76 657 chars at
+  scrollback 1000; 50 small writes all present) and none of B, and the OSC
+  fence never leaked into the output. xterm's WriteBuffer queues an empty write
+  and its callback like any other chunk, so SNAPSHOT_FENCE is ''.
+-->
+<title>remote-fence harness</title>
+<link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css" />
+<style>
+  body { font: 13px system-ui, sans-serif; margin: 16px; background: #fff; color: #111; }
+  #out { white-space: pre-wrap; font-family: ui-monospace, monospace; }
+  .pass { color: #0a7a2a; } .fail { color: #b00020; }
+</style>
+<div id="term" style="width: 800px; height: 200px"></div>
+<div id="out">running…</div>
+<script src="../../node_modules/@xterm/xterm/lib/xterm.js"></script>
+<script src="../../node_modules/@xterm/addon-serialize/lib/addon-serialize.js"></script>
+<script>
+(function () {
+  'use strict';
+  // UMD globals: xterm exposes `Terminal` (a namespace holding the class in
+  // v5+), the addon `SerializeAddon` likewise.
+  var TerminalCtor = (window.Terminal && window.Terminal.Terminal) || window.Terminal;
+  var SerializeCtor = (window.SerializeAddon && window.SerializeAddon.SerializeAddon) || window.SerializeAddon;
+
+  function makeTerminal(host) {
+    var t = new TerminalCtor({ cols: 80, rows: 24, scrollback: 1000, allowProposedApi: true });
+    var s = new SerializeCtor();
+    t.loadAddon(s);
+    if (host) t.open(host);
+    return { t: t, s: s };
+  }
+
+  function bigChunk(tag, lines) {
+    var parts = [];
+    for (var i = 0; i < lines; i++) parts.push(tag + '-line-' + i + ' ' + 'x'.repeat(60) + '\r\n');
+    parts.push(tag + '-END\r\n');
+    return parts.join('');
+  }
+
+  function runCase(name, fence, opts) {
+    return new Promise(function (resolve) {
+      var pair = makeTerminal(opts.open ? document.getElementById('term') : null);
+      var t = pair.t, s = pair.s;
+      var chunksBefore = opts.before;
+      chunksBefore.forEach(function (c) { t.write(c); });
+      var timer = setTimeout(function () {
+        resolve({ name: name, pass: false, reason: 'callback never fired' });
+      }, 10000);
+      t.write(fence, function () {
+        clearTimeout(timer);
+        // Synchronous inside the callback — exactly what the handler does.
+        var text = s.serialize({ scrollback: 1000 });
+        var hasA = opts.expectInSnapshot.every(function (m) { return text.indexOf(m) !== -1; });
+        var hasB = text.indexOf('B-MARK') !== -1;
+        var leaked = text.indexOf('6973') !== -1;
+        t.dispose();
+        resolve({
+          name: name,
+          pass: hasA && !hasB && !leaked,
+          hasA: hasA, hasB: hasB, fenceLeaked: leaked, length: text.length,
+        });
+      });
+      t.write('B-MARK after the fence\r\n');
+    });
+  }
+
+  var FENCES = [['empty', ''], ['osc6973', '\x1b]6973;\x07']];
+  var cases = [];
+  FENCES.forEach(function (f) {
+    cases.push(function () {
+      return runCase(f[0] + ': behind a large chunk (opened)', f[1],
+        { open: true, before: [bigChunk('A', 20000)], expectInSnapshot: ['A-END'] });
+    });
+    cases.push(function () {
+      return runCase(f[0] + ': behind a large chunk (headless)', f[1],
+        { open: false, before: [bigChunk('A', 20000)], expectInSnapshot: ['A-END'] });
+    });
+    cases.push(function () {
+      return runCase(f[0] + ': nothing queued ahead', f[1],
+        { open: false, before: [], expectInSnapshot: [] });
+    });
+    cases.push(function () {
+      var small = [];
+      for (var i = 0; i < 50; i++) small.push('A-small-' + i + '\r\n');
+      return runCase(f[0] + ': behind 50 small writes', f[1],
+        { open: false, before: small, expectInSnapshot: ['A-small-0', 'A-small-49'] });
+    });
+  });
+
+  var results = [];
+  cases.reduce(function (p, c) {
+    return p.then(function () { return c().then(function (r) { results.push(r); }); });
+  }, Promise.resolve()).then(function () {
+    var byFence = {};
+    FENCES.forEach(function (f) {
+      byFence[f[0]] = results.filter(function (r) { return r.name.indexOf(f[0] + ':') === 0; })
+        .every(function (r) { return r.pass; });
+    });
+    window.__fenceResult = {
+      xterm: '6.0.0', serialize: '0.14.0', userAgent: navigator.userAgent,
+      byFence: byFence, cases: results,
+    };
+    var out = document.getElementById('out');
+    out.textContent = '';
+    results.forEach(function (r) {
+      var line = document.createElement('div');
+      line.className = r.pass ? 'pass' : 'fail';
+      line.textContent = (r.pass ? 'PASS ' : 'FAIL ') + r.name + '  ' + JSON.stringify(r);
+      out.appendChild(line);
+    });
+    var sum = document.createElement('div');
+    sum.textContent = 'byFence: ' + JSON.stringify(byFence);
+    out.appendChild(sum);
+  }, function (err) {
+    window.__fenceResult = { error: String(err && err.stack || err) };
+    document.getElementById('out').textContent = 'harness error: ' + window.__fenceResult.error;
+  });
+})();
+</script>

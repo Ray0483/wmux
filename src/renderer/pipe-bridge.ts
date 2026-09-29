@@ -5,6 +5,8 @@
 import { useStore } from './store';
 import { splitNode, getAllPaneIds, findLeaf, buildGridLayout, buildWorkspaceTree } from './store/split-utils';
 import { surfaceTerminalRegistry } from './hooks/useTerminal';
+import { rollupAgents } from './store/agent-rollup';
+import { toRemoteRosterSource } from './utils/remote-roster';
 import { PaneId, SurfaceId, WorkspaceId, SurfaceType, engineOf, type BrowserEngine, type WorkspaceLayout } from '../shared/types';
 import { promptSummary, type PromptEntry, type PromptSource } from './store/prompt-slice';
 import { v4 as uuid } from 'uuid';
@@ -620,5 +622,18 @@ export function initPipeBridge(): void {
     if (!wsId) return null;
     const ws = store.workspaces.find(w => w.id === wsId);
     return ws?.splitTree || null;
+  };
+
+  // ─── Remote console (#254) ──────────────────────────────────────────────────
+
+  // The agent roster for the phone: the SAME rollup the sidebar renders (so
+  // #235/#253 hold there too), mapped field by field to RemoteRosterSource so
+  // metadata, detectedState, paneId and every choice's key/text stay here.
+  // Pulled by main on its own cadence while a phone is connected; nothing
+  // subscribes to the store for it.
+  w.__wmux_remoteRoster = () => {
+    const s = useStore.getState();
+    return rollupAgents(s.workspaces, s.agentStates, Date.now(), s.agentIdentities, s.agentDetections)
+      .roster.map(toRemoteRosterSource);
   };
 }
