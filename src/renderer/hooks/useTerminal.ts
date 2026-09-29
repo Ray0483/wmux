@@ -29,6 +29,7 @@ import { windowsPtyCompat } from '../utils/windows-pty';
 import { ReplayHold } from '../utils/replay-hold';
 import { anchorViewportLikeConpty, captureViewportTop } from '../utils/conpty-anchor';
 import { createTouchPanTracker } from '../utils/touch-pan';
+import { createFlingVelocityTracker, startFling, stepFling, type Fling } from '../utils/touch-fling';
 import { wheelForward, type WheelSource } from '../utils/wheel-forward';
 import { trimTrailingWhitespace } from '../utils/copy-text';
 import { handleShiftEnter, isLetterKey, isShiftEnter } from './terminal-keys';
@@ -727,6 +728,12 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const ptyIdRef = useRef<string | null>(null);
   const cleanupFnsRef = useRef<Array<() => void>>([]);
+  /**
+   * Stops a touch fling in flight (#248). A ref because three places outside
+   * the touch handlers must be able to end one: a real wheel, the pane being
+   * hidden (the `visible` effect), and unmount. Null when no terminal is mounted.
+   */
+  const cancelFlingRef = useRef<(() => void) | null>(null);
   const rendererRef = useRef<RendererHandle | null>(null);
   // Terminal setup is intentionally mount-once, but translations can change
   // while an upload is in flight. Completion always reads the current value.
@@ -991,8 +998,15 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
     // xterm's buffer.active.type stays 'normal' even though tmux is drawn there.
     // surfaceMouseModes (module-level, survives remounts) is the reliable signal.
     const wheelHost = terminalRef.current;
-    const onWheelCapture = (ev: WheelEvent) =>
+    const onWheelCapture = (ev: WheelEvent) => {
+      // A REAL wheel (or touchpad) takes the pane over from a touch fling
+      // (#248) — two sources scrolling at once is a fight, and the hand on the
+      // device is the one that means it. The fling's own synthetic events come
+      // through here too, so the source check is what keeps a fling from
+      // cancelling itself on its first frame.
+      if (wheelSource(ev) === 'wheel') cancelFlingRef.current?.();
       handleTerminalWheel(ev, terminal, terminalRef.current, ptyIdRef.current, surfaceId);
+    };
     wheelHost.addEventListener('wheel', onWheelCapture, { capture: true, passive: false });
     cleanupFnsRef.current.push(() => {
       wheelHost.removeEventListener('wheel', onWheelCapture, { capture: true } as any);
@@ -1028,8 +1042,65 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
     // not taken away by this.
     const touchHost = terminalRef.current;
     const panTracker = createTouchPanTracker();
+    // markTouchWheel: a finger and a detent disagree about how many app-level
+    // reports one line is worth, and only the dispatcher knows which this is
+    // (#245). Everything else about the event is deliberately identical. The
+    // fling below goes through this SAME function, so momentum is a pan that
+    // continues rather than a second scrolling mechanism.
+    const dispatchTouchWheel = (deltaY: number, clientX: number, clientY: number) => {
+      touchHost.dispatchEvent(markTouchWheel(new WheelEvent('wheel', {
+        deltaY,
+        deltaMode: 0, // DOM_DELTA_PIXEL — wheelDeltaToLines owns the cell maths
+        clientX,
+        clientY,
+        bubbles: true,
+        cancelable: true,
+      })));
+    };
+
+    // Momentum after a flick (issue #248). The physics — release velocity,
+    // thresholds, cap, decay — is pure in `touch-fling.ts`; this is only the
+    // rAF loop that feeds it frame times and dispatches what it returns.
+    //
+    // The loop must never outlive its reason to run: it is cancelled by a new
+    // pointerdown of ANY type (a mouse click or a pen means "stop" as surely as
+    // a finger does — and a second finger landing is how a rejected gesture
+    // begins), by a real wheel event (see onWheelCapture), by the pane being
+    // hidden (the `visible` effect), and by unmount. `flingRaf` is the single
+    // handle, so cancelling is always one `cancelAnimationFrame`.
+    const flingVelocity = createFlingVelocityTracker();
+    let fling: Fling | null = null;
+    let flingRaf = 0;
+    let flingLastT = 0;
+    let flingX = 0;
+    let flingY = 0;
+    const cancelFling = () => {
+      if (flingRaf) cancelAnimationFrame(flingRaf);
+      flingRaf = 0;
+      fling = null;
+    };
+    const flingFrame = (now: number) => {
+      flingRaf = 0;
+      if (!fling) return;
+      // `now` (rAF) and the pointerup's `timeStamp` share Chromium's
+      // performance.now() timeline, so the first frame integrates the real
+      // time since the lift rather than skipping or double-counting it.
+      const step = stepFling(fling, Math.max(0, now - flingLastT));
+      flingLastT = now;
+      fling = step.next;
+      // Fractional pixels are fine: wheelDeltaToLines accumulates them per
+      // surface, exactly as it does for a slow pan.
+      if (step.deltaY !== 0) dispatchTouchWheel(step.deltaY, flingX, flingY);
+      if (fling) flingRaf = requestAnimationFrame(flingFrame);
+    };
+    cancelFlingRef.current = cancelFling;
+
     const onTouchPanDown = (ev: PointerEvent) => {
+      cancelFling();
       if (ev.pointerType !== 'touch') return;
+      // Only a FIRST finger starts a new velocity history; a second one is a
+      // pinch and the tracker is about to reject it anyway.
+      if (panTracker.phase === 'idle') flingVelocity.reset();
       panTracker.down(ev.pointerId, ev.clientX, ev.clientY);
     };
     const onTouchPanMove = (ev: PointerEvent) => {
@@ -1037,22 +1108,29 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
       const deltaY = panTracker.move(ev.pointerId, ev.clientX, ev.clientY);
       if (!panTracker.panning) return;
       ev.preventDefault();
+      // Sampled only once the pan is COMMITTED (past the slop, vertical), so a
+      // tap or a sideways drag never has a velocity to fling with.
+      flingVelocity.add(ev.timeStamp, ev.clientY);
       if (deltaY === 0) return;
-      // markTouchWheel: a finger and a detent disagree about how many app-level
-      // reports one line is worth, and only the dispatcher knows which this is
-      // (#245). Everything else about the event is deliberately identical.
-      touchHost.dispatchEvent(markTouchWheel(new WheelEvent('wheel', {
-        deltaY,
-        deltaMode: 0, // DOM_DELTA_PIXEL — wheelDeltaToLines owns the cell maths
-        clientX: ev.clientX,
-        clientY: ev.clientY,
-        bubbles: true,
-        cancelable: true,
-      })));
+      dispatchTouchWheel(deltaY, ev.clientX, ev.clientY);
     };
     const onTouchPanEnd = (ev: PointerEvent) => {
       if (ev.pointerType !== 'touch') return;
+      const wasPanning = panTracker.panning;
       panTracker.up(ev.pointerId);
+      // A fling only follows the panning finger lifting off an otherwise empty
+      // screen: the tracker goes panning → idle for exactly that. Any other
+      // path — a second finger (rejected), the pan finger lifting mid-pinch
+      // (rejected), a pointercancel (the platform took the gesture) — ends
+      // without momentum.
+      if (ev.type !== 'pointerup' || !wasPanning || panTracker.phase !== 'idle') return;
+      fling = startFling(flingVelocity.releaseVelocity(ev.timeStamp));
+      flingVelocity.reset();
+      if (!fling) return;
+      flingLastT = ev.timeStamp;
+      flingX = ev.clientX;
+      flingY = ev.clientY;
+      flingRaf = requestAnimationFrame(flingFrame);
     };
     touchHost.addEventListener('pointerdown', onTouchPanDown, { passive: true });
     touchHost.addEventListener('pointermove', onTouchPanMove, { passive: false });
@@ -1068,6 +1146,8 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
       touchHost.removeEventListener('pointerup', onTouchPanEnd);
       touchHost.removeEventListener('pointercancel', onTouchPanEnd);
       panTracker.reset();
+      cancelFling();
+      if (cancelFlingRef.current === cancelFling) cancelFlingRef.current = null;
     });
 
 
@@ -1770,6 +1850,10 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
   // sessions keystrokes still target the previously-focused (now hidden)
   // terminal and the new session looks frozen.
   useEffect(() => {
+    // A hidden pane must not keep scrolling (#248): rAF would stall anyway, but
+    // it would resume the fling on the way back into view — a pane that moves
+    // by itself when the user returns to it.
+    if (!visible) cancelFlingRef.current?.();
     // Track the nested rAFs so they can be cancelled if the terminal is hidden
     // or unmounted before they fire. Otherwise (notably under StrictMode's
     // double-mount) they run fit()/resize/refresh on a disposed terminal and
