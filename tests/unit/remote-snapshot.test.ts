@@ -86,6 +86,30 @@ describe('handleRemoteRequest — snapshot', () => {
     expect(SNAPSHOT_FENCE).toBe('');
   });
 
+  it('never throws out of the fence callback into xterm (a throw there freezes the desktop pane)', () => {
+    const { term, lookups, reply } = setup();
+    const throwing: RemoteRendererLookups = {
+      ...lookups,
+      serializer: () => ({
+        serialize: () => {
+          throw new Error('addon disposed');
+        },
+      }),
+    };
+    handleRemoteRequest(snap(), throwing, reply);
+    term.write('after');
+    expect(() => term.drain()).not.toThrow();
+    expect(term.parsed).toBe(SNAPSHOT_FENCE + 'after');
+  });
+
+  it('never throws out of the fence callback when the reply itself throws', () => {
+    const { term, lookups } = setup();
+    handleRemoteRequest(snap(), lookups, () => {
+      throw new Error('ipc gone');
+    });
+    expect(() => term.drain()).not.toThrow();
+  });
+
   it('answers no-terminal when the terminal is missing', () => {
     const { lookups, replies, reply } = setup({ terminal: false });
     handleRemoteRequest(snap(), lookups, reply);

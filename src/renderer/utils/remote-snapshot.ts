@@ -104,11 +104,23 @@ export function handleRemoteRequest(
   }
   terminal.write(SNAPSHOT_FENCE, () => {
     // Synchronous, on purpose — see the module header.
-    reply({
-      data: capTop(serializer.serialize({ scrollback: 1000 }), SNAPSHOT_MAX_CHARS),
-      cols: terminal.cols,
-      rows: terminal.rows,
-    });
+    //
+    // And guarded, because this runs INSIDE xterm's WriteBuffer loop, not
+    // under the listener's try/catch (that frame returned long ago). A throw
+    // here escapes `_innerWrite` before it advances `_bufferOffset` or
+    // schedules the next pass, and since the queue is then non-empty, no later
+    // `write()` schedules one either: the DESKTOP pane stops rendering for
+    // good. A phone's snapshot failing must never cost the user their
+    // terminal; main's 10 s timeout turns the silence into term.error.
+    try {
+      reply({
+        data: capTop(serializer.serialize({ scrollback: 1000 }), SNAPSHOT_MAX_CHARS),
+        cols: terminal.cols,
+        rows: terminal.rows,
+      });
+    } catch {
+      // Swallowed — see above.
+    }
   });
 }
 
