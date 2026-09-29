@@ -69,6 +69,7 @@ import { loadSettings } from './settings-store';
 import { translateKeyName } from './pty-keys';
 import { initRemoteConsole, getRemoteConsole, handleRemoteConsoleV2 } from './remote-console';
 import type { ConsoleOps } from './remote-console/contract';
+import { pickNoticeTarget } from './remote-console/notice-target';
 import type { RemoteConsoleStatus } from '../shared/remote-console-config';
 import type { V1Command } from './pipe-server';
 import fs from 'fs';
@@ -839,12 +840,17 @@ const remoteConsoleOps: ConsoleOps = {
   noteHumanInput: (id, bytes) => { noteHumanInput(id as SurfaceId, bytes); },
   write: (id, bytes) => ptyManager.write(id as SurfaceId, bytes),
   deliverAnswer,
-  // The same path `wmux notify` takes (a V1 `notify` with no surface), which is
-  // the one bell notification that already works without a pane to point at.
-  // NOTIFICATION_FIRE is not usable here: it needs a real surfaceId.
-  // Facts, not a sentence: the renderer words it in the UI language (#254).
+  // The same METADATA_UPDATE path `wmux notify` takes (a V1 `notify` with no
+  // surface), which is the one bell notification that already works without a
+  // pane to point at. NOTIFICATION_FIRE is not usable here: it needs a real
+  // surfaceId. Facts, not a sentence: the renderer words it in the UI language.
+  // ONE window, not a broadcast: each window that receives it raises its own
+  // toast, flash and sound, so N windows meant N toasts for one pairing.
   notifyDesktop: (notice) => {
-    broadcastMetadataUpdate({ command: 'remote_notice', surfaceId: '', args: [notice.kind, notice.name, notice.scope] });
+    const win = pickNoticeTarget(BrowserWindow.getAllWindows(), BrowserWindow.getFocusedWindow());
+    win?.webContents.send(IPC_CHANNELS.METADATA_UPDATE, {
+      command: 'remote_notice', surfaceId: '', args: [notice.kind, notice.name, notice.scope],
+    } satisfies V1Command);
   },
   lanAddresses: lanIpv4Addresses,
   hostname: () => os.hostname(),
