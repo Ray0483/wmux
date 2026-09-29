@@ -138,8 +138,12 @@ export default function RemoteConsoleSettings() {
       <div className="settings-divider" />
       <Reachability t={t} status={status} busy={busy} apply={apply} />
       <PortRow t={t} port={config.port} busy={busy} apply={apply} />
-      <PublicUrlRow t={t} publicUrl={config.publicUrl} busy={busy} apply={apply} />
-      <RemoteRecipes port={config.port} />
+      {showsProxySetup(config.bind) && (
+        <>
+          <PublicUrlRow t={t} publicUrl={config.publicUrl} busy={busy} apply={apply} />
+          <RemoteRecipes port={config.port} />
+        </>
+      )}
 
       <div className="settings-divider" />
       <div className="remote-settings__actions">
@@ -223,6 +227,16 @@ export function suggestedPublicUrl(status: Pick<RemoteConsoleStatus, 'lastReject
   const origin = normalizePublicUrl(raw);
   if (!origin || origin !== raw) return null;
   return origin === status.config.publicUrl ? null : origin;
+}
+
+/**
+ * The Public URL row and the Tailscale / SSH recipes are about a proxy in
+ * front of the LOOPBACK listener: every recipe targets 127.0.0.1, and main
+ * ignores the Public URL for pairing on a LAN bind, where nothing listens
+ * there. Showing them under LAN invited a setup that cannot reach wmux.
+ */
+export function showsProxySetup(bind: RemoteConsoleStatus['config']['bind']): boolean {
+  return bind === 'loopback';
 }
 
 function StatusLine({ t, status, busy, apply }: RowProps) {

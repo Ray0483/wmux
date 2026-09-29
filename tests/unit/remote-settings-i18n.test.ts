@@ -6,7 +6,7 @@ import { en } from '../../src/renderer/i18n/locales/en';
 import { DEFAULT_REMOTE_CONFIG } from '../../src/shared/remote-console-config';
 import { fillTemplate, offerOutcome, remoteErrorText, requestOffer } from '../../src/renderer/components/Settings/PairDeviceDialog';
 import { formatRemoteNotice } from '../../src/renderer/utils/remote-notice';
-import { suggestedPublicUrl } from '../../src/renderer/components/Settings/RemoteConsoleSettings';
+import { showsProxySetup, suggestedPublicUrl } from '../../src/renderer/components/Settings/RemoteConsoleSettings';
 
 // Settings → Remote (#254). This tab is where a user decides whether wmux is
 // reachable from another device and hands out credentials for it; an English
@@ -146,6 +146,13 @@ describe('requestOffer', () => {
     const r = await requestOffer({ pairStart: async () => ({ error: 'x' }), pairCancel }, { name: 'P', scope: 'viewer' }, () => true);
     expect(r).toBeNull();
     expect(pairCancel).not.toHaveBeenCalled();
+  });
+});
+
+describe('showsProxySetup (#254)', () => {
+  it('the Public URL row and the Tailscale / SSH recipes are loopback-only', () => {
+    expect(showsProxySetup('loopback')).toBe(true);
+    expect(showsProxySetup('lan')).toBe(false);
   });
 });
 

@@ -10,7 +10,7 @@ import net from 'net';
 import os from 'os';
 import path from 'path';
 import WebSocket from 'ws';
-import { ConsoleRuntime, CONFIG_FILE, createRemoteConsoleRuntime, DEVICES_FILE, REJECTED_ORIGIN_TTL_MS } from '../../src/main/remote-console/runtime';
+import { ConsoleRuntime, CONFIG_FILE, createRemoteConsoleRuntime, DEVICES_FILE, pairingBase, REJECTED_ORIGIN_TTL_MS } from '../../src/main/remote-console/runtime';
 import type { ConsoleOps } from '../../src/main/remote-console/contract';
 import type { ConsoleServer } from '../../src/main/remote-console/server';
 import { remoteTaps, resetRemoteTaps } from '../../src/main/remote-console/taps';
@@ -293,6 +293,24 @@ describe('ConsoleRuntime pairing and devices', () => {
     expect(disk).not.toContain(token);
     expect(disk).not.toContain(secret);
     expect(rt.getStatus().devices.map((d) => d.name)).toEqual(['Pixel']);
+  });
+
+  it('a LAN bind pairs to the LAN address, never a Public URL that proxies to 127.0.0.1 (#254)', async () => {
+    const port = await freePort();
+    writeConfig({ enabled: true, port, bind: 'lan', lanHost: '127.0.0.1', publicUrl: 'https://box.tail1234.ts.net' });
+    const rt = make(fakeOps({ lanAddresses: () => ['127.0.0.1'] }));
+    await rt.start();
+    const offer = rt.pairStart({ name: 'Phone', scope: 'viewer' });
+    if ('error' in offer) throw new Error(offer.error);
+    expect(offer.url.startsWith(`http://127.0.0.1:${port}/#pair=`)).toBe(true);
+  });
+
+  it('pairingBase: the Public URL only on loopback', () => {
+    const at = { host: '127.0.0.1', port: 9788 };
+    const listener = (base: string) => new URL(base).host;
+    expect(pairingBase({ bind: 'loopback', publicUrl: 'https://pc.ts.net' }, at)).toBe('https://pc.ts.net');
+    expect(listener(pairingBase({ bind: 'loopback', publicUrl: '' }, at))).toBe('127.0.0.1:9788');
+    expect(listener(pairingBase({ bind: 'lan', publicUrl: 'https://pc.ts.net' }, at))).toBe('127.0.0.1:9788');
   });
 
   it('the refused-origin suggestion can be dismissed, clears on reconfigure, and ages out', async () => {

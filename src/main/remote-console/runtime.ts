@@ -441,7 +441,7 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     if (scope !== 'viewer' && scope !== 'operator') return { error: 'bad-scope' };
     const minted = this.devices.mintPairing({ scope, name: o.name });
     if ('error' in minted) return minted;
-    const base = this.config.publicUrl || `http://${this.listening.host}:${this.listening.port}`;
+    const base = pairingBase(this.config, this.listening);
     if (this.pairTimer) clearTimeout(this.pairTimer);
     // Settings shows its own countdown; this only makes the status agree once it runs out.
     this.pairTimer = unrefTimeout(() => {
@@ -778,6 +778,17 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     }
     this.tap.handleReply(reqId, result);
   }
+}
+
+/**
+ * Where a pairing link points. The Public URL is a proxy in front of the
+ * LOOPBACK listener (tailscale serve, ssh -L, all aimed at 127.0.0.1), so it
+ * only means something on a loopback bind: on a LAN bind nothing listens on
+ * 127.0.0.1 and a QR code built from it opens a proxy error on the phone.
+ */
+export function pairingBase(config: Pick<RemoteConsoleConfig, 'bind' | 'publicUrl'>, listening: { host: string; port: number }): string {
+  if (config.bind === 'loopback' && config.publicUrl) return config.publicUrl;
+  return `http://${listening.host}:${listening.port}`;
 }
 
 export const createRemoteConsoleRuntime: CreateRemoteConsoleRuntime = (ops) => new ConsoleRuntime(ops);
