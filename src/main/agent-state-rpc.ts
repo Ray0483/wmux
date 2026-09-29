@@ -75,8 +75,8 @@ type AnswerOutcome =
  * name is the obvious case — would otherwise escape past the catch and take
  * down the caller instead of coming back as a failure.
  */
-async function runAnswer(surfaceId: SurfaceId, choiceId: string | null, promptId?: number): Promise<AnswerOutcome> {
-  const result = answerAgent(surfaceId, promptId === undefined ? { choiceId } : { choiceId, promptId });
+async function runAnswer(surfaceId: SurfaceId, params: Parameters<typeof answerAgent>[1]): Promise<AnswerOutcome> {
+  const result = answerAgent(surfaceId, params);
   if (!result.ok) return { ok: false, reason: result.reason, message: ANSWER_ERRORS[result.reason] };
   const writer = writeAnswer;
   if (!writer) return { ok: false, reason: 'write-failed', message: 'no answer writer wired' };
@@ -105,13 +105,19 @@ export async function deliverAnswer(
   // for a remote tap: an empty id reaching here is a bug upstream, and it must
   // not turn into "press the default" on somebody's permission prompt (I4).
   // Same shape the wire validator enforces, so nothing legitimate is refused.
+  // `choiceId` is a WIRE id (`wireChoiceIds`): the declared id when it fits the
+  // wire, an opaque index otherwise. `answerAgent` maps it back to the declared
+  // id against the current prompt, after its stale check.
   if (typeof choiceId !== 'string' || !CHOICE_ID_RE.test(choiceId)) {
     return { ok: false, reason: 'unknown-choice' };
   }
   // The prompt the phone saw. Anything but a positive integer cannot name a
   // live prompt, so it is stale rather than an answer that skips the check.
   if (promptId !== undefined && !(Number.isSafeInteger(promptId) && promptId > 0)) return { ok: false, reason: 'stale' };
-  const outcome = await runAnswer(surfaceId as SurfaceId, choiceId, promptId);
+  const outcome = await runAnswer(
+    surfaceId as SurfaceId,
+    promptId === undefined ? { wireChoiceId: choiceId } : { wireChoiceId: choiceId, promptId },
+  );
   return outcome.ok ? { ok: true } : { ok: false, reason: outcome.reason };
 }
 
@@ -181,7 +187,7 @@ export function handleAgentStateV2(
   // needs spelled out.
   if (isAnswer) {
     void (async () => {
-      const outcome = await runAnswer(surfaceId, params?.choiceId ?? params?.choice ?? null);
+      const outcome = await runAnswer(surfaceId, { choiceId: params?.choiceId ?? params?.choice ?? null });
       if (outcome.ok) respond({ ok: true, choice: outcome.choice });
       else respondError(-32000, outcome.message);
     })();

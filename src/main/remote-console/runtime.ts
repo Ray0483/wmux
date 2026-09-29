@@ -717,7 +717,8 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
   private sendRosterTo(clientId: string, now: number): void {
     const live = this.sessions.get(clientId);
     if (!live?.session.isHelloed) return;
-    const list = buildWireRoster(this.roster, this.tracker(live.client.device.id), (s) => this.ops.promptId(s));
+    const choiceIds = this.ops.choiceIds?.bind(this.ops);
+    const list = buildWireRoster(this.roster, this.tracker(live.client.device.id), (s) => this.ops.promptId(s), choiceIds);
     const key = rosterChangeKey(list);
     if (this.lastSentKey.get(clientId) === key) return;
     this.lastSentKey.set(clientId, key);

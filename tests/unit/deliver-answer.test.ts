@@ -8,6 +8,7 @@ vi.mock('electron', () => ({
 
 import { deliverAnswer, setAnswerWriter } from '../../src/main/agent-state-rpc';
 import { reportAgent, resetAgentState, getAgentState, currentPromptId } from '../../src/main/agent-state';
+import { wireChoiceIds } from '../../src/shared/remote-console-protocol';
 import type { SurfaceId } from '../../src/shared/types';
 
 const SID = 'surf-1' as SurfaceId;
@@ -93,6 +94,35 @@ describe('deliverAnswer (#254)', () => {
       expect(await deliverAnswer(SID, 'allow')).toEqual({ ok: true });
     },
   );
+
+  it('an id the wire cannot carry is answered by its opaque wire id and delivers the declared choice', async () => {
+    block([{ id: 'deny', label: 'Deny', key: 'esc' }, { id: 'allow once', label: 'Allow once', text: 'yes-once' }]);
+    const ids = getAgentState(SID)!.choices.map((c) => c.id);
+    expect(wireChoiceIds(ids)).toEqual(['deny', 'c1']);
+    expect(await deliverAnswer(SID, 'allow once', currentPromptId(SID)!)).toEqual({ ok: false, reason: 'unknown-choice' });
+    expect(await deliverAnswer(SID, 'c1', currentPromptId(SID)!)).toEqual({ ok: true });
+    expect(written).toEqual([{ surfaceId: SID, payload: { key: undefined, text: 'yes-once' } }]);
+  });
+
+  it('a real id spelled like an opaque one answers itself, and the opaque one moves aside', async () => {
+    block([{ id: 'c1', label: 'Real c1', key: '1' }, { id: 'allow once', label: 'Allow once', key: '2' }]);
+    const p = currentPromptId(SID)!;
+    expect(wireChoiceIds(['c1', 'allow once'])).toEqual(['c1', '_c1']);
+    expect(await deliverAnswer(SID, 'c1', p)).toEqual({ ok: true });
+    expect(written[0].payload.key).toBe('1');
+    block([{ id: 'c1', label: 'Real c1', key: '1' }, { id: 'allow once', label: 'Allow once', key: '2' }]);
+    expect(await deliverAnswer(SID, '_c1', currentPromptId(SID)!)).toEqual({ ok: true });
+    expect(written[1].payload.key).toBe('2');
+  });
+
+  it('an opaque answer for a prompt the pane moved on from is stale, resolved against nothing', async () => {
+    block([{ id: 'allow once', label: 'Allow once', key: '1' }]);
+    const old = currentPromptId(SID)!;
+    reportAgent(SID, { reason: 'Drop the prod table?', choices: [{ id: 'drop it', label: 'Drop', key: 'y' }] as any });
+    expect(await deliverAnswer(SID, 'c0', old)).toEqual({ ok: false, reason: 'stale' });
+    expect(written).toEqual([]);
+    expect(getAgentState(SID)!.choices.map((c) => c.id)).toEqual(['drop it']);
+  });
 
   it('consumes the choices in the SAME tick as the call, before any await', () => {
     block();

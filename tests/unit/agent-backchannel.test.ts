@@ -53,15 +53,19 @@ describe('sanitizeChoices', () => {
     expect(sanitizeChoices([{ id: 'x', label: 'Allow' }])).toEqual([]);
   });
 
-  it('drops a choice whose id the remote console could not carry (one id contract everywhere)', () => {
+  it('keeps any non-blank choice id, as report-agent always has (public API, #254)', () => {
     const out = sanitizeChoices([
       { id: 'allow once', label: 'Allow once', key: '1' },
       { id: '1.', label: 'One', key: '1' },
       { id: 'a'.repeat(33), label: 'Long', key: '1' },
       { id: 'deny', label: 'Deny', key: '2' },
-      { id: 'always_allow-2', label: 'Always', key: '3' },
     ]);
-    expect(out.map((c) => c.id)).toEqual(['deny', 'always_allow-2']);
+    expect(out.map((c) => c.id)).toEqual(['allow once', '1.', 'a'.repeat(33), 'deny']);
+  });
+
+  it('a desktop answer by an id the wire cannot carry still lands (#254)', () => {
+    reportAgent(SID, { awaitingHuman: true, choices: [{ id: 'allow once', label: 'Allow once', key: '1' }] as never });
+    expect(answerAgent(SID, { choiceId: 'allow once' })).toMatchObject({ ok: true, key: '1' });
   });
 
   it('drops choices missing an id or a label', () => {

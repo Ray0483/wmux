@@ -95,14 +95,30 @@ describe('toWire', () => {
     expect(toWire(src(3), false).promptId).toBeNull();
   });
 
-  it('strips bidi, caps at 200, drops choice ids the protocol would refuse', () => {
+  it('strips bidi, caps at 200, and carries ids the wire cannot as opaque index ids', () => {
     const wire = toWire(src(1, {
       label: 'a\u202Eb' + 'x'.repeat(300),
-      choices: [{ id: 'ok_1', label: 'fine' }, { id: 'bad id', label: 'no' }, { id: 'x'.repeat(33), label: 'long' }],
+      choices: [{ id: 'ok_1', label: 'fine' }, { id: 'bad id', label: 'no\u202E' }, { id: 'x'.repeat(33), label: 'long' }],
     }), false);
     expect(wire.label.startsWith('ab')).toBe(true);
     expect(wire.label.length).toBe(200);
-    expect(wire.choices.map((c) => c.id)).toEqual(['ok_1']);
+    expect(wire.choices).toEqual([{ id: 'ok_1', label: 'fine' }, { id: 'c1', label: 'no' }, { id: 'c2', label: 'long' }]);
+  });
+
+  it('an opaque id never collides with a real id spelled like one', () => {
+    const wire = toWire(src(1, {
+      choices: [{ id: 'c1', label: 'real c1' }, { id: 'allow once', label: 'Allow once' }, { id: '_c1', label: 'real _c1' }],
+    }), false);
+    const ids = wire.choices.map((c) => c.id);
+    expect(ids).toEqual(['c1', '__c1', '_c1']);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('withholds opaque ids while the renderer list lags main\'s, keeps self-naming ones', () => {
+    const choices = [{ id: 'allow once', label: 'Allow once' }, { id: 'deny', label: 'Deny' }];
+    expect(toWire(src(1, { choices }), false, 7, ['allow once', 'deny']).choices.map((c) => c.id)).toEqual(['c0', 'deny']);
+    expect(toWire(src(1, { choices }), false, 7, ['deny', 'allow once']).choices.map((c) => c.id)).toEqual(['deny']);
+    expect(toWire(src(1, { choices }), false, null, null).choices.map((c) => c.id)).toEqual(['deny']);
   });
 
   it('unknown parity: a silent agent is state unknown, never done, and sorts last (#235)', () => {

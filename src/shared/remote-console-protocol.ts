@@ -18,8 +18,39 @@ export const PROTOCOL_VERSION = 1;
 /** Same shape `crypto.randomUUID()` mints for surface ids. Lower-case only. */
 export const SURFACE_ID_RE = /^surf-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export const NONCE_RE = /^[A-Za-z0-9-]{8,64}$/;
-/** A declared choice id that may travel to the phone and back. */
+/** The shape of a choice id on the WIRE (not of a declared one — see `wireChoiceIds`). */
 export const CHOICE_ID_RE = /^[A-Za-z0-9_-]{1,32}$/;
+
+/**
+ * The id each declared choice travels under, index for index (#254).
+ *
+ * `wmux report-agent --choices` accepts any non-blank id ("allow once", "1.",
+ * a 40-character one) and always has; the desktop answers by that id. The wire
+ * carries only CHOICE_ID_RE, so a declared id of that shape goes as-is and any
+ * other goes as an OPAQUE id: `c<index>` into the declared array, prefixed
+ * with `_` until it equals no id on the wire for that prompt — a real id
+ * spelled `c1` keeps `c1`, and the unsafe choice at index 1 becomes `_c1`.
+ * Deterministic over the array, so the session resolves an answer by running
+ * the same function over the CURRENT prompt's choices (`resolveWireChoiceId`),
+ * after the prompt id has been checked; nothing is remembered between the two.
+ * At most 12 choices, so the longest opaque id stays far under 32 characters.
+ */
+export function wireChoiceIds(ids: readonly string[]): string[] {
+  const used = new Set(ids.filter((id) => CHOICE_ID_RE.test(id)));
+  return ids.map((id, i) => {
+    if (CHOICE_ID_RE.test(id)) return id;
+    let wire = `c${i}`;
+    while (used.has(wire)) wire = `_${wire}`;
+    used.add(wire);
+    return wire;
+  });
+}
+
+/** The declared id a wire id names among `ids`, or null when it names none. */
+export function resolveWireChoiceId(ids: readonly string[], wireId: string): string | null {
+  const i = wireChoiceIds(ids).indexOf(wireId);
+  return i < 0 ? null : ids[i];
+}
 /** A device name's cap, applied by the server (devices.ts) and mirrored by the phone's pair field. */
 export const DEVICE_NAME_MAX = 64;
 /** Composer text cap. Enforced by the session as an ack (`too-long`), NOT by the validator. */

@@ -41,6 +41,13 @@ export interface ConsoleOps {
    * is refused rather than landing on a different question.
    */
   promptId(id: string): number | null;
+  /**
+   * The current prompt's declared choice ids in declared order, or null when
+   * not blocked. An opaque wire choice id is an index into THIS list, so the
+   * roster withholds opaque ids while the renderer's copy disagrees with it.
+   * Optional: without it every choice is offered as the renderer declared it.
+   */
+  choiceIds?(id: string): readonly string[] | null;
   /** The `pane.answer_agent` path: blocked-only, declared payload only, never clears blocked; `stale` when `promptId` is not the live prompt. */
   deliverAnswer(id: string, choiceId: string, promptId: number): Promise<{ ok: true } | { ok: false; reason: DeliverAnswerReason }>;
   notifyDesktop(notice: RemoteDesktopNotice): void;

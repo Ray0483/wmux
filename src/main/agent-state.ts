@@ -30,7 +30,7 @@
 import { BrowserWindow } from 'electron';
 import { IPC_CHANNELS, SurfaceId } from '../shared/types';
 import { isValidClaudeSessionId } from './claude-resume';
-import { CHOICE_ID_RE } from '../shared/remote-console-protocol';
+import { resolveWireChoiceId } from '../shared/remote-console-protocol';
 
 export type AgentRunState = 'blocked' | 'working' | 'idle' | 'unknown';
 
@@ -318,11 +318,6 @@ function toChoice(item: unknown): AgentChoice | null {
   const id = str(c.id)?.trim();
   const label = str(c.label)?.trim();
   if (!id || !label) return null;
-  // One id contract for every surface that answers: the Remote Console's wire
-  // only carries ids of this shape (#254), and an id accepted here but dropped
-  // there showed the sidebar two buttons and the phone one — or none. Refused
-  // at report time instead, so the RPC's kept-count tells the reporter.
-  if (!CHOICE_ID_RE.test(id)) return null;
 
   const key = str(c.key);
   const text = str(c.text);
@@ -478,6 +473,18 @@ function pickChoice(choices: AgentChoice[], wanted: string | undefined): AgentCh
   return choices.length === 1 ? choices[0] : undefined;
 }
 
+/**
+ * The Remote Console's answer (#254): a WIRE id, which is the declared id when
+ * that fits the wire and an opaque `c<index>` when it does not
+ * (`wireChoiceIds`). Resolved against the current prompt's choices only — the
+ * caller has already been refused as `stale` if the prompt moved on — and it
+ * never falls back to the default the way an unnamed pipe answer does.
+ */
+function pickWireChoice(choices: AgentChoice[], wireId: string): AgentChoice | undefined {
+  const real = resolveWireChoiceId(choices.map(c => c.id), wireId);
+  return real === null ? undefined : choices.find(c => c.id === real);
+}
+
 export type AnswerFailure =
   | 'unknown-surface'   // nothing has ever reported for this pane
   | 'not-blocked'       // the pane is not asking anything right now
@@ -526,7 +533,7 @@ export type AnswerResult =
  */
 export function answerAgent(
   surfaceId: SurfaceId,
-  params: { choiceId?: string | null; promptId?: number },
+  params: { choiceId?: string | null; promptId?: number; wireChoiceId?: string },
 ): AnswerResult {
   const record = records.get(surfaceId);
   if (!record) return { ok: false, reason: 'unknown-surface' };
@@ -536,7 +543,9 @@ export function answerAgent(
   if (params.promptId !== undefined && params.promptId !== record.promptId) return { ok: false, reason: 'stale' };
   if (record.choices.length === 0) return { ok: false, reason: 'no-choices' };
 
-  const choice = pickChoice(record.choices, params.choiceId?.trim());
+  const choice = params.wireChoiceId === undefined
+    ? pickChoice(record.choices, params.choiceId?.trim())
+    : pickWireChoice(record.choices, params.wireChoiceId);
   // An unnamed answer against a multi-way prompt with no declared default is
   // ambiguous, and picking one for the user would be worse than refusing.
   if (!choice) return { ok: false, reason: 'unknown-choice' };
@@ -779,6 +788,18 @@ export function currentPromptId(surfaceId: SurfaceId): number | null {
   const record = records.get(surfaceId);
   if (!record || resolveState(record, Date.now()) !== 'blocked') return null;
   return record.promptId;
+}
+
+/**
+ * The declared ids of the question a pane is asking right now, in declared
+ * order, or null when it is not blocked (#254). The roster's choices come from
+ * the renderer, a hop behind this record; an opaque wire id is an INDEX, so the
+ * roster only mints one while the renderer's list still matches this one.
+ */
+export function currentChoiceIds(surfaceId: SurfaceId): string[] | null {
+  const record = records.get(surfaceId);
+  if (!record || resolveState(record, Date.now()) !== 'blocked') return null;
+  return record.choices.map(c => c.id);
 }
 
 export function getAgentState(surfaceId: SurfaceId): AgentStateSnapshot | undefined {

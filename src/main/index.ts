@@ -43,7 +43,7 @@ import {
 } from './session-persistence';
 import { noteIconRevision } from './icon-cache';
 import { installGpuWatchdog } from './gpu-watchdog';
-import { getAgentState, currentPromptId, reportAgentSession, isAnsweringInput, noteHumanInput, onAgentStateBroadcast } from './agent-state';
+import { getAgentState, currentPromptId, currentChoiceIds, reportAgentSession, isAnsweringInput, noteHumanInput, onAgentStateBroadcast } from './agent-state';
 import {
   stampClaudeSessionIds,
   pruneDeadClaudeSessions,
@@ -836,6 +836,7 @@ const remoteConsoleOps: ConsoleOps = {
   isBlocked: id => getAgentState(id as SurfaceId)?.state === 'blocked',
   runDepth: id => getAgentState(id as SurfaceId)?.runDepth ?? 0,
   promptId: id => currentPromptId(id as SurfaceId),
+  choiceIds: id => currentChoiceIds(id as SurfaceId),
   isAnsweringInput,
   noteHumanInput: (id, bytes) => { noteHumanInput(id as SurfaceId, bytes); },
   write: (id, bytes) => ptyManager.write(id as SurfaceId, bytes),
