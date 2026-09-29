@@ -33,10 +33,24 @@ export function isExternalWebUrl(url: string): boolean {
  * else is remote content the app window must never become.
  */
 export function isInternalAppUrl(url: string): boolean {
+  // Parsed, never prefix-matched: `http://localhost:5199@evil.com/` starts with
+  // `http://localhost:` and is a request to evil.com with a userinfo of
+  // `localhost:5199`. The main window has the preload and renders network
+  // content (release notes, #211), so that prefix match was a way to make the
+  // app window BECOME a remote page.
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (u.protocol === 'file:') return true;
   return (
-    url.startsWith('http://localhost:') ||
-    url.startsWith('http://127.0.0.1:') ||
-    url.startsWith('file://')
+    u.protocol === 'http:' &&
+    (u.hostname === 'localhost' || u.hostname === '127.0.0.1') &&
+    u.port !== '' &&
+    !u.username &&
+    !u.password
   );
 }
 

@@ -790,8 +790,14 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
         const term = xtermRef.current;
         const next = fitAddonRef.current.proposeDimensions();
         const top = term && next && next.cols !== term.cols ? captureViewportTop(term) : undefined;
-        fitAddonRef.current.fit();
-        if (term) anchorViewportLikeConpty(term, top);
+        try {
+          fitAddonRef.current.fit();
+        } finally {
+          // Even when fit() throws: the anchor is what disposes the marker
+          // captureViewportTop registered, and a leaked marker rides every
+          // later reflow for the life of the terminal.
+          if (term) anchorViewportLikeConpty(term, top);
+        }
       } catch {
         // ignore fit errors (e.g. terminal not yet visible)
       }

@@ -23,7 +23,7 @@ const NON_HTTP = [
   'mailto:a@b.com',
   'chrome://settings',
   'about:blank',
-  'ftp://host/x',
+  'sftp://host/x',
 ];
 const INTERNAL = ['http://localhost:5199/', 'http://127.0.0.1:5199/x', 'file:///app/index.html'];
 
@@ -40,6 +40,15 @@ describe('internal app url classification', () => {
     expect(isInternalAppUrl('http://example.com')).toBe(false);
     expect(isInternalAppUrl('http://localhost.evil.com/')).toBe(false); // no port sep → not us
     expect(isInternalAppUrl('https://localhost:5199/')).toBe(false); // dev server is http
+    // userinfo spoof: an internal url with a host smuggled in after it, e.g.
+    // `…//localhost:5199@evil.com/` — it keeps the internal PREFIX, but the host
+    // is evil.com and `localhost:5199` is only a username:password.
+    for (const u of INTERNAL.filter(x => !x.startsWith('file:'))) {
+      const spoof = u.replace(/(:\d+)\//, '$1@evil.com/');
+      expect(spoof).toContain('@evil.com/');
+      expect(isInternalAppUrl(spoof)).toBe(false);
+    }
+    expect(isInternalAppUrl('not a url')).toBe(false);
   });
 });
 
