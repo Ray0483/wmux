@@ -776,6 +776,21 @@ export const IPC_CHANNELS = {
   UPDATE_INSTALL: 'update:install',
   UPDATE_GET_STATE: 'update:get-state',
   UPDATE_STATE: 'update:state',
+  // Remote Console (#254). Settings-only: there is deliberately no pipe method
+  // for any of the mutating ones — a credential is minted only by a human click
+  // (I2). REMOTE_CONSOLE_STATE is a main → renderer push.
+  REMOTE_CONSOLE_GET_STATE: 'remote-console:get-state',
+  REMOTE_CONSOLE_SET_CONFIG: 'remote-console:set-config',
+  REMOTE_CONSOLE_PAIR_START: 'remote-console:pair-start',
+  REMOTE_CONSOLE_PAIR_CANCEL: 'remote-console:pair-cancel',
+  REMOTE_CONSOLE_REVOKE: 'remote-console:revoke',
+  REMOTE_CONSOLE_REVOKE_ALL: 'remote-console:revoke-all',
+  REMOTE_CONSOLE_RENAME: 'remote-console:rename-device',
+  REMOTE_CONSOLE_STATE: 'remote-console:state',
+  // Terminal snapshot / modes queries, sent on the SAME webContents that
+  // receives the surface's PTY_DATA so the snapshot is ordered against it.
+  REMOTE_RENDERER_REQUEST: 'remote-console:renderer-request',
+  REMOTE_RENDERER_REPLY: 'remote-console:renderer-reply',
 } as const;
 
 /**

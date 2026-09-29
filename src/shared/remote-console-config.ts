@@ -1,0 +1,219 @@
+/**
+ * Remote Console configuration, status and bridge types (#254).
+ *
+ * Shared by main (runtime, IPC), the preload bridge and Settings, and compiled
+ * by BOTH tsconfigs — so no node imports and nothing from instance.ts. URL
+ * checks use the global `URL`, which both the DOM lib and @types/node declare.
+ *
+ * Nothing in this file ever carries a device token, a token hash or a pairing
+ * secret. Status types are what Settings and the pipe see; the only credential
+ * that leaves main is the pairing URL in `PairOffer`, shown to the human who
+ * clicked "Pair a device" (I2).
+ */
+import type { RemoteScope } from './remote-console-protocol';
+
+/** Clear of the bridge (9787), CDP (9222-9230), agent-browser (9300+) and the dashboard (4848). */
+export const REMOTE_DEFAULT_PORT = 9790;
+/**
+ * Vite's manifest, emitted at `dist/renderer/remote-manifest.json` rather than
+ * the default `.vite/manifest.json`: neither electron-builder's `dist/**` glob
+ * nor the manual `asar pack` is guaranteed to keep a dot directory.
+ */
+export const REMOTE_MANIFEST_FILE = 'remote-manifest.json';
+/** The phone page's key in that manifest; the static server walks its closure only. */
+export const REMOTE_ENTRY_KEY = 'remote/index.html';
+
+// ── Config ───────────────────────────────────────────────────────────────
+
+export interface RemoteConsoleConfig {
+  enabled: boolean;
+  bind: 'loopback' | 'lan';
+  /** The one LAN IPv4 to listen on. Never 0.0.0.0 (I3). `null` unless `bind === 'lan'`. */
+  lanHost: string | null;
+  port: number;
+  /** '' or a bare http(s) origin, e.g. a `tailscale serve` URL. */
+  publicUrl: string;
+  /** Operator scope on a plain-HTTP LAN bind. Forced false on loopback. */
+  allowInsecureControl: boolean;
+}
+
+export const DEFAULT_REMOTE_CONFIG: Readonly<RemoteConsoleConfig> = Object.freeze({
+  enabled: false,
+  bind: 'loopback',
+  lanHost: null,
+  port: REMOTE_DEFAULT_PORT,
+  publicUrl: '',
+  allowInsecureControl: false,
+});
+
+export type RemoteConfigError =
+  | 'bad-shape' | 'bad-enabled' | 'bad-bind' | 'bad-lan-host'
+  | 'bad-port' | 'bad-public-url' | 'bad-allow-insecure';
+
+export type RemoteConfigResult =
+  | { ok: true; config: RemoteConsoleConfig }
+  | { ok: false; error: RemoteConfigError };
+
+/**
+ * Normalise a public URL to its origin, or `null` when it is not a bare
+ * http(s) origin. Path, query, hash and userinfo are refused rather than
+ * dropped: the value becomes an Origin allowlist entry and the base of the
+ * pairing URL, and silently keeping half of what the user typed would make
+ * both quietly differ from what they think they configured.
+ */
+export function normalizePublicUrl(raw: string): string | null {
+  const text = raw.trim();
+  if (text === '') return '';
+  if (text.includes('?') || text.includes('#')) return null;
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  if (url.username !== '' || url.password !== '') return null;
+  if (url.pathname !== '/' || url.search !== '' || url.hash !== '') return null;
+  return url.origin;
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Validate a config from disk or from Settings. Absent fields take their
+ * default (a file written by an older build stays loadable); present fields
+ * must be the right type. `lanAddresses` is the set of IPv4s the machine has
+ * NOW — a caller loading a saved LAN config whose interface has gone should
+ * surface `lan-address-gone` at start rather than rewrite the user's choice.
+ */
+export function validateRemoteConfig(raw: unknown, lanAddresses: readonly string[]): RemoteConfigResult {
+  if (!isRecord(raw)) return { ok: false, error: 'bad-shape' };
+  const merged: Record<string, unknown> = { ...DEFAULT_REMOTE_CONFIG, ...raw };
+
+  if (typeof merged.enabled !== 'boolean') return { ok: false, error: 'bad-enabled' };
+  if (merged.bind !== 'loopback' && merged.bind !== 'lan') return { ok: false, error: 'bad-bind' };
+  const port = merged.port;
+  if (typeof port !== 'number' || !Number.isInteger(port) || port < 1024 || port > 65535) {
+    return { ok: false, error: 'bad-port' };
+  }
+  if (typeof merged.allowInsecureControl !== 'boolean') return { ok: false, error: 'bad-allow-insecure' };
+  if (typeof merged.publicUrl !== 'string') return { ok: false, error: 'bad-public-url' };
+  const publicUrl = normalizePublicUrl(merged.publicUrl);
+  if (publicUrl === null) return { ok: false, error: 'bad-public-url' };
+
+  let lanHost: string | null = null;
+  if (merged.bind === 'lan') {
+    if (typeof merged.lanHost !== 'string' || !lanAddresses.includes(merged.lanHost)) {
+      return { ok: false, error: 'bad-lan-host' };
+    }
+    lanHost = merged.lanHost;
+  }
+
+  return {
+    ok: true,
+    config: {
+      enabled: merged.enabled,
+      bind: merged.bind,
+      lanHost,
+      port,
+      publicUrl,
+      allowInsecureControl: merged.bind === 'lan' && merged.allowInsecureControl,
+    },
+  };
+}
+
+// ── Status ───────────────────────────────────────────────────────────────
+
+export type RemoteLastError = 'port-busy' | 'bind-failed' | 'ui-not-built' | 'lan-address-gone';
+
+export interface RemoteDeviceView {
+  id: string;
+  name: string;
+  scope: RemoteScope;
+  createdAt: number;
+  lastSeenAt: number;
+}
+
+/** What Settings renders. Never a token, a hash or a secret. */
+export interface RemoteConsoleStatus {
+  config: RemoteConsoleConfig;
+  running: boolean;
+  listening: { host: string; port: number } | null;
+  lastError: RemoteLastError | null;
+  lastRejectedOrigin: string | null;
+  lanAddresses: string[];
+  devices: RemoteDeviceView[];
+  connected: { deviceId: string; count: number }[];
+  pairing: { expiresAt: number; scope: RemoteScope } | null;
+}
+
+/** `remote.status` over the pipe: counts only, no device names (I2). */
+export interface RemoteV2Status {
+  enabled: boolean;
+  running: boolean;
+  bind: 'loopback' | 'lan';
+  port: number;
+  publicUrl: string;
+  deviceCount: number;
+  connectedCount: number;
+  lastError: RemoteLastError | null;
+}
+
+/** The pairing secret rides in the URL FRAGMENT (`/#pair=…`), never path or query (I5). */
+export interface PairOffer {
+  url: string;
+  expiresAt: number;
+  scope: RemoteScope;
+}
+
+// ── Main ↔ desktop renderer (terminal snapshots, modes) ─────────────────
+
+export interface RemoteRendererRequest {
+  kind: 'snapshot' | 'modes';
+  surfaceId: string;
+  reqId: string;
+}
+
+export type RemoteSnapshotResult = { data: string; cols: number; rows: number } | { error: 'no-terminal' };
+export type RemoteModesResult = { bracketedPaste: boolean } | { error: 'no-terminal' };
+
+/**
+ * One entry of `window.__wmux_remoteRoster()`. An explicit mapping of the
+ * renderer's roster, NOT the roster itself: no metadata, no detectedState, no
+ * paneId, and choices reduced to `{id,label,isDefault}` so a declared choice's
+ * `key`/`text` never leaves the renderer for the wire. Main still validates it
+ * field by field — it arrives from `executeJavaScript` and is trusted no further
+ * than that.
+ */
+export interface RemoteRosterSource {
+  surfaceId: string;
+  workspaceId: string;
+  workspaceTitle: string;
+  label: string;
+  kind: string | null;
+  state: 'blocked' | 'working' | 'idle' | 'unknown';
+  stateSource: 'declared' | 'detected' | null;
+  blockedReason: string | null;
+  choices: { id: string; label: string; isDefault?: boolean }[];
+  answerPending: boolean;
+  dwellMs: number;
+}
+
+// ── Preload bridge (`window.wmux.remoteConsole`) ────────────────────────
+
+export type RemoteBridgeError = { error: string };
+
+export interface RemoteConsoleBridge {
+  getState(): Promise<RemoteConsoleStatus | RemoteBridgeError>;
+  setConfig(raw: unknown): Promise<{ ok: true } | { ok: false; error: string } | RemoteBridgeError>;
+  pairStart(o: { name: string; scope: RemoteScope }): Promise<PairOffer | RemoteBridgeError>;
+  pairCancel(): Promise<void | RemoteBridgeError>;
+  revoke(id: string): Promise<void | RemoteBridgeError>;
+  revokeAll(): Promise<void | RemoteBridgeError>;
+  rename(id: string, name: string): Promise<void | RemoteBridgeError>;
+  onState(cb: (status: RemoteConsoleStatus) => void): () => void;
+  onRendererRequest(cb: (req: RemoteRendererRequest) => void): () => void;
+  replyRenderer(reqId: string, result: RemoteSnapshotResult | RemoteModesResult): void;
+}
