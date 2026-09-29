@@ -24,9 +24,11 @@ import {
   getAgentState,
   listAgentStates,
   listBlocked,
+  type AgentChoice,
   type AnswerFailure,
 } from './agent-state';
 import { agentIdentity } from './agent-identity';
+import type { DeliverAnswerReason } from './remote-console/contract';
 
 type Respond = (result: any) => void;
 type RespondError = (code: number, message: string) => void;
@@ -52,6 +54,51 @@ const ANSWER_ERRORS: Record<AnswerFailure, string> = {
   'no-choices': 'the agent is blocked but declared no answers — switch to the pane',
   'unknown-choice': 'no such choice (call pane.agent_state to list them)',
 };
+
+type AnswerOutcome =
+  | { ok: true; choice: AgentChoice | null }
+  | { ok: false; reason: DeliverAnswerReason; message: string };
+
+/**
+ * Resolve a declared choice and write it into the pane — the one answer path,
+ * shared by `pane.answer_agent` and the Remote Console (#254, invariant I4).
+ *
+ * `answerAgent` runs BEFORE the first `await`, so its guard (blocked-only,
+ * declared payload only) and the consumption of the choices happen in the same
+ * tick as the caller's request; a second answer racing in behind finds them
+ * gone. It never clears blocked — the agent confirms that, as always (#128).
+ *
+ * The writer is invoked INSIDE the async function, not handed to
+ * Promise.resolve(): a writer that throws synchronously — an untranslatable key
+ * name is the obvious case — would otherwise escape past the catch and take
+ * down the caller instead of coming back as a failure.
+ */
+async function runAnswer(surfaceId: SurfaceId, choiceId: string | null): Promise<AnswerOutcome> {
+  const result = answerAgent(surfaceId, { choiceId });
+  if (!result.ok) return { ok: false, reason: result.reason, message: ANSWER_ERRORS[result.reason] };
+  const writer = writeAnswer;
+  if (!writer) return { ok: false, reason: 'write-failed', message: 'no answer writer wired' };
+  try {
+    await writer(surfaceId, { key: result.key, text: result.text });
+    return { ok: true, choice: result.choice };
+  } catch (err: any) {
+    return { ok: false, reason: 'write-failed', message: err?.message || 'failed to deliver the answer' };
+  }
+}
+
+/**
+ * `ConsoleOps.deliverAnswer` (#254). Deliberately NARROWER than what the pipe
+ * gets back: no resolved choice, no writer message. The choice's `key`/`text`
+ * is exactly what I7 keeps off the wire, so the runtime is never handed it and
+ * cannot leak it by accident.
+ */
+export async function deliverAnswer(
+  surfaceId: string,
+  choiceId: string,
+): Promise<{ ok: true } | { ok: false; reason: DeliverAnswerReason }> {
+  const outcome = await runAnswer(surfaceId as SurfaceId, choiceId);
+  return outcome.ok ? { ok: true } : { ok: false, reason: outcome.reason };
+}
 
 /** `surfaceId`, or the `paneId` alias from the issue's original method names. */
 function targetSurface(params: any): SurfaceId | undefined {
@@ -118,26 +165,10 @@ export function handleAgentStateV2(
   // to reach the PTY — and the only one that can fail for reasons the caller
   // needs spelled out.
   if (isAnswer) {
-    const result = answerAgent(surfaceId, { choiceId: params?.choiceId ?? params?.choice ?? null });
-    if (!result.ok) {
-      respondError(-32000, ANSWER_ERRORS[result.reason]);
-      return true;
-    }
-    if (!writeAnswer) {
-      respondError(-32000, 'no answer writer wired');
-      return true;
-    }
-    // The writer is invoked INSIDE the async function, not handed to
-    // Promise.resolve(): a writer that throws synchronously — an untranslatable
-    // key name is the obvious case — would otherwise escape past `.catch()` and
-    // take down the pipe request handler instead of returning an RPC error.
     void (async () => {
-      try {
-        await writeAnswer!(surfaceId, { key: result.key, text: result.text });
-        respond({ ok: true, choice: result.choice });
-      } catch (err: any) {
-        respondError(-32000, err?.message || 'failed to deliver the answer');
-      }
+      const outcome = await runAnswer(surfaceId, params?.choiceId ?? params?.choice ?? null);
+      if (outcome.ok) respond({ ok: true, choice: outcome.choice });
+      else respondError(-32000, outcome.message);
     })();
     return true;
   }

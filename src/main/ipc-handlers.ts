@@ -40,6 +40,10 @@ import { sessionWindows, toRestorePayload, restoreAnswerFor } from './session-wi
 import { loadSettings, saveSetting } from './settings-store';
 import { readConsent, updateConsent } from './agent-integration';
 import { handleAgentStateV2 } from './agent-state-rpc';
+import { remoteTaps } from './remote-console/taps';
+import { getRemoteConsole } from './remote-console';
+import type { RemoteConsoleRuntime } from './remote-console/contract';
+import type { RemoteModesResult, RemoteSnapshotResult } from '../shared/remote-console-config';
 import { getChangedFiles, getFileDiff, getChangedFilesWithBaseline } from './diff-provider';
 import {
   readMarkdownFile,
@@ -555,15 +559,27 @@ export function registerIpcHandlers(windowManager: WindowManager, cdpProxyInstan
         if (window && !window.isDestroyed()) {
           window.webContents.send(IPC_CHANNELS.PTY_DATA, id, data);
         }
+        // Remote Console (#254): the same batch, right behind the renderer's
+        // copy, so a phone mirror sees exactly the bytes the pane does and in
+        // the same order. A no-op call while the console is off.
+        remoteTaps.deliver(id, data);
         // Feed Claude Code observer for sidebar activity display
         try { observePtyData(id, data); } catch {}
       });
+      // The webContents this surface's PTY_DATA goes to — where the console
+      // must ask for a snapshot, or the snapshot and the stream disagree about
+      // which bytes came first (#254). Last-wins across forwarders.
+      if (window) remoteTaps.bindSurface(id, window.webContents);
       const unsubData = ptyManager.onData(id, (data) => batcher.push(data));
       const unsubExit = ptyManager.onExit(id, (code) => {
         // Trailing output must land before the exit notification, or the
         // renderer paints the exit over bytes still sitting in the window.
         batcher.flush();
         batcher.dispose();
+        // After the flush, for the same reason: a phone must see the last
+        // bytes before it sees the exit.
+        remoteTaps.exit(id, code);
+        remoteTaps.unbindSurface(id);
         if (window && !window.isDestroyed()) {
           window.webContents.send(IPC_CHANNELS.PTY_EXIT, id, code);
         }
@@ -597,11 +613,16 @@ export function registerIpcHandlers(windowManager: WindowManager, cdpProxyInstan
     // while still letting a human who typed the answer themselves clear it
     // (issue #151).
     noteHumanInput(id, data);
+    // Typing at the desktop is "seen" for the Remote Console's Done marker (#254).
+    remoteTaps.noteDesktopInput(id);
     ptyManager.write(id, data);
   });
 
   ipcMain.on(IPC_CHANNELS.PTY_RESIZE, (_event, id: SurfaceId, cols: number, rows: number) => {
     ptyManager.resize(id, cols, rows);
+    // A reflowed desktop terminal invalidates a phone's snapshot (#254); the
+    // console debounces and resnapshots. The phone itself never resizes a PTY.
+    remoteTaps.noteResize(id);
   });
 
   ipcMain.on(IPC_CHANNELS.PTY_KILL, (_event, id: SurfaceId) => {
@@ -612,6 +633,8 @@ export function registerIpcHandlers(windowManager: WindowManager, cdpProxyInstan
   ipcMain.handle(IPC_CHANNELS.PTY_HAS, (_event, id: SurfaceId) => {
     return ptyManager.has(id);
   });
+
+  registerRemoteConsoleHandlers();
 
   ipcMain.handle(IPC_CHANNELS.SYSTEM_GET_SHELLS, async () => {
     return detectShells();
@@ -1465,6 +1488,44 @@ export function registerIpcHandlers(windowManager: WindowManager, cdpProxyInstan
   });
 }
 
+/**
+ * Settings → Remote (#254). Every channel here is a HUMAN in the desktop UI —
+ * the only place a credential may be minted (I2) — so each one first requires
+ * the sender to be one of wmux's own windows (a webview guest is not), and
+ * answers `{error:'unavailable'}` when the runtime did not load rather than
+ * throwing into the renderer.
+ */
+function registerRemoteConsoleHandlers(): void {
+  type Handler = (rt: RemoteConsoleRuntime, ...args: unknown[]) => unknown;
+  const handle = (channel: string, fn: Handler): void => {
+    ipcMain.handle(channel, (event, ...args: unknown[]) => {
+      if (!BrowserWindow.fromWebContents(event.sender)) return { error: 'forbidden' };
+      const rt = getRemoteConsole();
+      if (!rt) return { error: 'unavailable' };
+      return fn(rt, ...args);
+    });
+  };
+  const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+
+  handle(IPC_CHANNELS.REMOTE_CONSOLE_GET_STATE, rt => rt.getStatus());
+  handle(IPC_CHANNELS.REMOTE_CONSOLE_SET_CONFIG, (rt, raw) => rt.setConfig(raw));
+  handle(IPC_CHANNELS.REMOTE_CONSOLE_PAIR_START, (rt, o) => {
+    const opts = (o ?? {}) as { name?: unknown; scope?: unknown };
+    if (opts.scope !== 'viewer' && opts.scope !== 'operator') return { error: 'bad-scope' };
+    return rt.pairStart({ name: str(opts.name), scope: opts.scope });
+  });
+  handle(IPC_CHANNELS.REMOTE_CONSOLE_PAIR_CANCEL, rt => rt.pairCancel());
+  handle(IPC_CHANNELS.REMOTE_CONSOLE_REVOKE, (rt, id) => rt.revoke(str(id)));
+  handle(IPC_CHANNELS.REMOTE_CONSOLE_REVOKE_ALL, rt => rt.revokeAll());
+  handle(IPC_CHANNELS.REMOTE_CONSOLE_RENAME, (rt, id, name) => rt.rename(str(id), str(name)));
+
+  // The renderer's answer to a snapshot/modes request. The runtime matches it
+  // on `reqId` and ignores anything stale or unknown, so this only relays.
+  ipcMain.on(IPC_CHANNELS.REMOTE_RENDERER_REPLY, (_event, reqId: string, result: RemoteSnapshotResult | RemoteModesResult) => {
+    getRemoteConsole()?.handleRendererReply(reqId, result);
+  });
+}
+
 export function setupAgentPtyForwarding(surfaceId: string, window: BrowserWindow): void {
   ownSurface(surfaceId as SurfaceId, window.webContents);
   // Same batching as the PTY_CREATE forwarder — agent panes are the panes most
@@ -1473,11 +1534,17 @@ export function setupAgentPtyForwarding(surfaceId: string, window: BrowserWindow
     if (window && !window.isDestroyed()) {
       window.webContents.send(IPC_CHANNELS.PTY_DATA, surfaceId, data);
     }
+    // Remote Console (#254) — MANDATORY here too: agent panes are the ones a
+    // phone most wants to watch, and they never pass through PTY_CREATE.
+    remoteTaps.deliver(surfaceId, data);
   });
+  remoteTaps.bindSurface(surfaceId, window.webContents);
   const unsubData = ptyManager.onData(surfaceId as SurfaceId, (data) => batcher.push(data));
   const unsubExit = ptyManager.onExit(surfaceId as SurfaceId, (code) => {
     batcher.flush();
     batcher.dispose();
+    remoteTaps.exit(surfaceId, code);
+    remoteTaps.unbindSurface(surfaceId);
     if (window && !window.isDestroyed()) {
       window.webContents.send(IPC_CHANNELS.PTY_EXIT, surfaceId, code);
     }

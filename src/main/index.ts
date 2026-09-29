@@ -42,7 +42,7 @@ import {
 } from './session-persistence';
 import { noteIconRevision } from './icon-cache';
 import { installGpuWatchdog } from './gpu-watchdog';
-import { getAgentState, reportAgentSession } from './agent-state';
+import { getAgentState, reportAgentSession, isAnsweringInput, noteHumanInput, onAgentStateBroadcast } from './agent-state';
 import {
   stampClaudeSessionIds,
   pruneDeadClaudeSessions,
@@ -56,7 +56,7 @@ import { initUpdateChecker, getLatestUpdate } from './update-checker';
 import { getChangelog } from './changelog';
 import { initAgentIntegration } from './agent-integration';
 import { applyExternalActivity, markSubagentStop, markAllAgentsDone } from './claude-observer';
-import { handleAgentStateV2, setAnswerWriter } from './agent-state-rpc';
+import { handleAgentStateV2, setAnswerWriter, deliverAnswer } from './agent-state-rpc';
 import { applyHookToAgentState, hookEventName } from './agent-hook-bridge';
 import { startOrchestrationWatcher } from './orchestration-watcher';
 import { readMarkdownFile } from './markdown-file';
@@ -65,6 +65,11 @@ import { directoryFromArgv } from './shell-context-menu';
 import { reportExplorerCwd } from './explorer-roots';
 import { ensurePowerShellShim } from './powershell-shim';
 import { loadSettings } from './settings-store';
+import { translateKeyName } from './pty-keys';
+import { initRemoteConsole, getRemoteConsole, handleRemoteConsoleV2 } from './remote-console';
+import type { ConsoleOps } from './remote-console/contract';
+import type { RemoteConsoleStatus } from '../shared/remote-console-config';
+import type { V1Command } from './pipe-server';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -277,6 +282,10 @@ function routeSpecialV2(
   respond: (result: any) => void,
   respondError: (code: number, message: string) => void,
 ): boolean {
+  // The Remote Console's ONLY pipe method, read-only (#254, I2). An exact
+  // match rather than a prefix: pairing, enabling and revoking deliberately
+  // have no pipe method, so no other name may ever route there.
+  if (request.method === 'remote.status') { handleRemoteConsoleV2(request.method, request.params, respond, respondError); return true; }
   // get_engine/set_engine must be caught BEFORE the generic browser.*
   // delegation just below, or they fall into handleBrowserV2's verb switch
   // and are rejected as `Unknown: browser.get_engine` (-32601).
@@ -728,47 +737,8 @@ async function promptsForAllSurfaces(limit: number): Promise<{ surfaces: Record<
   return { surfaces, truncated };
 }
 
-// Named-key → raw PTY input translation. Fallback rules:
-//   - length === 1            → literal character (covers Ctrl+letter flow).
-//   - known multi-char name   → translated to real control/escape bytes.
-//   - unknown multi-char name → null (caller returns -32602 invalid params).
-const PTY_KEY_MAP: Record<string, string> = {
-  enter: '\r',
-  return: '\r',
-  tab: '\t',
-  esc: '\x1b',
-  escape: '\x1b',
-  backspace: '\x7f',
-  delete: '\x1b[3~',
-  space: ' ',
-  'ctrl-c': '\x03',
-  'ctrl-d': '\x04',
-  'ctrl-u': '\x15',
-  'ctrl-l': '\x0c',
-  'ctrl-a': '\x01',
-  'ctrl-e': '\x05',
-  'ctrl-k': '\x0b',
-  'ctrl-w': '\x17',
-  'ctrl-r': '\x12',
-  'ctrl-z': '\x1a',
-  up: '\x1b[A',
-  down: '\x1b[B',
-  right: '\x1b[C',
-  left: '\x1b[D',
-  home: '\x1b[H',
-  end: '\x1b[F',
-  pageup: '\x1b[5~',
-  pagedown: '\x1b[6~',
-  f1: '\x1bOP', f2: '\x1bOQ', f3: '\x1bOR', f4: '\x1bOS',
-  f5: '\x1b[15~', f6: '\x1b[17~', f7: '\x1b[18~', f8: '\x1b[19~',
-  f9: '\x1b[20~', f10: '\x1b[21~', f11: '\x1b[23~', f12: '\x1b[24~',
-};
-function translateKeyName(key: string, shift: boolean): string | null {
-  if (key.length === 1) return shift ? key.toUpperCase() : key;
-  const normalized = key.toLowerCase();
-  if (normalized in PTY_KEY_MAP) return PTY_KEY_MAP[normalized];
-  return null;
-}
+// Named-key → raw PTY bytes live in pty-keys.ts (#254): the Remote Console's
+// key bar types from the same table, and two copies would drift.
 
 /**
  * Deliver an answer from `pane.answer_agent` into the pane (issue #128).
@@ -795,6 +765,118 @@ setAnswerWriter(async (surfaceId, payload) => {
   }
   ptyManager.write(resolved.id, payload.text ?? '');
 });
+
+/**
+ * A shell-integration V1 report (or one of main's own, shaped the same way),
+ * forwarded verbatim to every window's metadata listener.
+ */
+function broadcastMetadataUpdate(cmd: V1Command): void {
+  BrowserWindow.getAllWindows().forEach(win => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_CHANNELS.METADATA_UPDATE, cmd);
+    }
+  });
+}
+
+// ─── Remote Console (#254) ──────────────────────────────────────────────────
+//
+// Everything the console may do to the app is the ConsoleOps object built here
+// (I1): the runtime never imports ptyManager, agent-state or the pipe server.
+// With the console off none of this listens on anything — `start()` is a no-op
+// when disabled, and the taps in ipc-handlers.ts stay the no-op defaults.
+
+/** Non-internal IPv4 addresses — the only thing a LAN bind may name (never 0.0.0.0, never IPv6). */
+function lanIpv4Addresses(): string[] {
+  const out: string[] = [];
+  for (const entries of Object.values(os.networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      // `family` is the number 4 on Node 18.0–18.3 and the string elsewhere.
+      const isV4 = entry.family === 'IPv4' || (entry.family as unknown) === 4;
+      if (isV4 && !entry.internal) out.push(entry.address);
+    }
+  }
+  return out;
+}
+
+/**
+ * `__wmux_remoteRoster()` in EVERY window, one array per window (#143: window ≠
+ * workspace — an agent in window 2 is no less an agent). A window that rejects,
+ * or predates the global, contributes an empty list rather than failing the
+ * whole roster; the runtime merges and dedupes.
+ */
+function listRemoteRosters(): Promise<unknown[][]> {
+  const windows = BrowserWindow.getAllWindows().filter(w => !w.isDestroyed());
+  return Promise.all(windows.map(win =>
+    win.webContents
+      .executeJavaScript('window.__wmux_remoteRoster ? window.__wmux_remoteRoster() : []')
+      .then((list: unknown) => (Array.isArray(list) ? list : []))
+      .catch(() => [] as unknown[]),
+  ));
+}
+
+const remoteConsoleOps: ConsoleOps = {
+  listRoster: listRemoteRosters,
+  isLivePty: id => ptyManager.has(id as SurfaceId),
+  // Declared blocked only — the snapshot carries `state`, not the private
+  // `awaitingHuman` field. Detected-blocked is guarded client-side only.
+  isBlocked: id => getAgentState(id as SurfaceId)?.state === 'blocked',
+  runDepth: id => getAgentState(id as SurfaceId)?.runDepth ?? 0,
+  isAnsweringInput,
+  noteHumanInput: (id, bytes) => { noteHumanInput(id as SurfaceId, bytes); },
+  write: (id, bytes) => ptyManager.write(id as SurfaceId, bytes),
+  deliverAnswer,
+  // The same path `wmux notify` takes (a V1 `notify` with no surface), which is
+  // the one bell notification that already works without a pane to point at.
+  // NOTIFICATION_FIRE is not usable here: it needs a real surfaceId.
+  notifyDesktop: (title, body) => {
+    broadcastMetadataUpdate({ command: 'notify', surfaceId: '', args: [body ? `${title}: ${body}` : title] });
+  },
+  lanAddresses: lanIpv4Addresses,
+  hostname: () => os.hostname(),
+  log: logDiagnostic,
+  appDataDir: getAppDataDir,
+  // This file compiles to dist/main/index.js, so this is dist/renderer — fixed
+  // here, never derived from anything a request carries.
+  staticRoot: () => path.resolve(__dirname, '..', 'renderer'),
+};
+
+/** 250 ms trailing: a status burst (a reconfigure closes N sockets) is one push, not N. */
+const REMOTE_STATE_PUSH_MS = 250;
+
+function startRemoteConsole(): void {
+  const runtime = initRemoteConsole(remoteConsoleOps);
+  if (!runtime) return;
+
+  runtime.setRendererSender((wc, req) => {
+    if (wc.isDestroyed()) return false;
+    wc.send(IPC_CHANNELS.REMOTE_RENDERER_REQUEST, req);
+    return true;
+  });
+
+  let pending: RemoteConsoleStatus | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  runtime.onStatus((status) => {
+    pending = status;
+    if (timer) return;
+    timer = setTimeout(() => {
+      timer = null;
+      const latest = pending;
+      pending = null;
+      if (!latest) return;
+      BrowserWindow.getAllWindows().forEach(win => {
+        if (!win.isDestroyed()) win.webContents.send(IPC_CHANNELS.REMOTE_CONSOLE_STATE, latest);
+      });
+    }, REMOTE_STATE_PUSH_MS);
+  });
+
+  onAgentStateBroadcast(() => getRemoteConsole()?.notifyAgentStateChanged());
+
+  // Fire and forget: a console that cannot bind reports it in its status
+  // (`port-busy`, `bind-failed`, …); it must never hold up or break startup.
+  runtime.start().catch((err: unknown) => {
+    logDiagnostic('remote-console-start-failed', { message: err instanceof Error ? err.message : String(err) });
+  });
+}
 
 // Set Windows AppUserModelId so taskbar pinning uses the correct icon & identity.
 // Suffixed per instance: a WMUX_INSTANCE build must not seize the installed
@@ -1275,6 +1357,11 @@ app.whenReady().then(() => {
   pipeServer.start();
   cdpProxy.start().catch(() => {}); // CDP proxy is optional — don't crash if ports are busy
 
+  // Remote Console (#254). After the pipe, so `remote.status` never answers for
+  // a runtime that has not been created; off by default, in which case start()
+  // loads the config and listens on nothing.
+  startRemoteConsole();
+
   // Watch TMPDIR for wmux-orchestrator runs and push state to the sidebar.
   startOrchestrationWatcher();
 
@@ -1382,11 +1469,7 @@ app.whenReady().then(() => {
     // credentials into a web context for nothing. The agent LABEL derived from
     // it does cross, on its own channel; the command line never does.
     if (cmd.command === 'report_command') return;
-    BrowserWindow.getAllWindows().forEach(win => {
-      if (!win.isDestroyed()) {
-        win.webContents.send(IPC_CHANNELS.METADATA_UPDATE, cmd);
-      }
-    });
+    broadcastMetadataUpdate(cmd);
   });
 
   pipeServer.on('v2', (request, respond, respondError) => {
@@ -2004,6 +2087,11 @@ let quitDeferred = false;
 app.on('will-quit', (event) => {
   const ptysAtQuit = ptyManager.count();
   logDiagnostic('will-quit', { ptys: ptysAtQuit, guard: isPtyCrashGuardInstalled() });
+  // Remote Console (#254): synchronous teardown — this handler cannot wait on
+  // anything. Before the PTY drain, so no phone is still being fed (and no tap
+  // still bound) while node-pty's exit callbacks land. Never allowed to throw
+  // past this line: nothing below may be skipped because a socket misbehaved.
+  try { getRemoteConsole()?.stopNow(); } catch { /* quit must go on */ }
   // Kill all PTYs before anything else tears down. Without this, node-pty's
   // libuv async handles (batons) are still pending when the process exits,
   // triggering the "Assertion failed: remove_pty_baton" MSVC runtime error.

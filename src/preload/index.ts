@@ -1,6 +1,32 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import * as os from 'os';
 import { IPC_CHANNELS, type InsertionResult, type UpdateTriggerResult } from '../shared/types';
+import type {
+  RemoteConsoleBridge,
+  RemoteConsoleStatus,
+  RemoteRendererRequest,
+} from '../shared/remote-console-config';
+
+const remoteConsole: RemoteConsoleBridge = {
+  getState: () => ipcRenderer.invoke(IPC_CHANNELS.REMOTE_CONSOLE_GET_STATE),
+  setConfig: (raw) => ipcRenderer.invoke(IPC_CHANNELS.REMOTE_CONSOLE_SET_CONFIG, raw),
+  pairStart: (o) => ipcRenderer.invoke(IPC_CHANNELS.REMOTE_CONSOLE_PAIR_START, o),
+  pairCancel: () => ipcRenderer.invoke(IPC_CHANNELS.REMOTE_CONSOLE_PAIR_CANCEL),
+  revoke: (id) => ipcRenderer.invoke(IPC_CHANNELS.REMOTE_CONSOLE_REVOKE, id),
+  revokeAll: () => ipcRenderer.invoke(IPC_CHANNELS.REMOTE_CONSOLE_REVOKE_ALL),
+  rename: (id, name) => ipcRenderer.invoke(IPC_CHANNELS.REMOTE_CONSOLE_RENAME, id, name),
+  onState: (cb) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: RemoteConsoleStatus) => cb(status);
+    ipcRenderer.on(IPC_CHANNELS.REMOTE_CONSOLE_STATE, handler);
+    return () => { ipcRenderer.removeListener(IPC_CHANNELS.REMOTE_CONSOLE_STATE, handler); };
+  },
+  onRendererRequest: (cb) => {
+    const handler = (_event: Electron.IpcRendererEvent, req: RemoteRendererRequest) => cb(req);
+    ipcRenderer.on(IPC_CHANNELS.REMOTE_RENDERER_REQUEST, handler);
+    return () => { ipcRenderer.removeListener(IPC_CHANNELS.REMOTE_RENDERER_REQUEST, handler); };
+  },
+  replyRenderer: (reqId, result) => ipcRenderer.send(IPC_CHANNELS.REMOTE_RENDERER_REPLY, reqId, result),
+};
 
 contextBridge.exposeInMainWorld('wmux', {
   pty: {
@@ -249,6 +275,10 @@ contextBridge.exposeInMainWorld('wmux', {
       return () => ipcRenderer.removeListener(IPC_CHANNELS.GPU_RESTARTED, handler);
     },
   },
+  // Remote Console (#254): Settings → Remote, plus the renderer half of the
+  // phone mirror (snapshot/modes requests main sends to the window that hosts
+  // a surface's xterm). Every mint of a credential starts here, from a click.
+  remoteConsole,
   hook: {
     onEvent: (callback: (event: any) => void) => {
       const handler = (_event: any, data: any) => callback(data);

@@ -480,6 +480,48 @@ function failSubcommand(command: CommandName, sub: string | undefined): never {
   return fail(command, COMMAND_SPECS[command] as CommandSpec, subcommandError(command, sub));
 }
 
+/** Words for `lastError`, matching what Settings → Remote says for each code. */
+const REMOTE_ERROR_WORDS: Record<string, string> = {
+  'port-busy': 'the port is already in use',
+  'bind-failed': 'could not listen on the configured address',
+  'ui-not-built': 'the phone UI is not built (run `npx vite build`)',
+  'lan-address-gone': 'the configured network address is no longer on this machine',
+};
+
+/**
+ * `remote.status` as a few human lines (#254). Pure and exported for the tests.
+ * Reports only what the read-only method returns — counts and addresses, never
+ * a device name, token or pairing URL, since there is no pipe method that could
+ * hand one out (I2).
+ */
+export function formatRemoteStatus(status: any): string {
+  const s = status ?? {};
+  const where = `${s.bind === 'lan' ? 'local network' : 'this computer only'}, port ${s.port}`;
+  let state: string;
+  if (!s.enabled) state = 'off';
+  else if (s.running) state = `listening (${where})`;
+  else state = `enabled, not listening (${where})`;
+  const lines = [`Remote Console: ${state}`];
+  if (s.lastError) lines.push(`Problem:        ${REMOTE_ERROR_WORDS[s.lastError] ?? s.lastError}`);
+  if (s.publicUrl) lines.push(`Public URL:     ${s.publicUrl}`);
+  lines.push(`Devices:        ${s.deviceCount ?? 0} paired, ${s.connectedCount ?? 0} connected`);
+  if (!s.enabled) lines.push('Turn it on in Settings → Remote. There is deliberately no command for that.');
+  return lines.join('\n');
+}
+
+/**
+ * `wmux remote status [--json]` — the Remote Console's only CLI verb, over its
+ * only pipe method (#254). Read-only by design: enabling, pairing and revoking
+ * are Settings clicks, because anything a pipe command can do, a prompt-injected
+ * agent holding the pipe token can do too (A3).
+ */
+async function cmdRemote(args: string[]): Promise<void> {
+  if (args[1] !== 'status') failSubcommand('remote', args[1]);
+  const result = await sendV2('remote.status');
+  if (args.includes('--json')) { print(result); return; }
+  console.log(formatRemoteStatus(result));
+}
+
 async function cmdBrowser(args: string[]): Promise<void> {
   // --surface says which pane's browser to drive, mirroring send / read-screen /
   // agent-activity. Strip it before the verb reads its positional args, or
@@ -1764,6 +1806,12 @@ const COMMAND_SPECS = {
   },
   token: { usage: 'wmux token   (print this instance\'s pipe auth token)' },
 
+  // Remote Console (#254) — read-only; everything else is a Settings click
+  remote: {
+    usage: 'wmux remote status [--json]   (is the phone Remote Console on, where, and how many devices)',
+    bool: ['--json'],
+  },
+
   // Workspace
   'new-workspace': {
     usage: 'wmux new-workspace [--title T] [--shell S] [--cwd D] [--panes N] [--layout L]\n'
@@ -2039,6 +2087,7 @@ const COMMANDS: Record<CommandName, (args: string[]) => Promise<void> | void> = 
   // Remote management (issue #78)
   bridge: cmdBridge,
   token: cmdToken,
+  remote: cmdRemote,
 
   // Workspace
   'new-workspace': cmdNewWorkspace,
@@ -2233,6 +2282,7 @@ Workspace:  new-workspace, close-workspace, select-workspace, rename-workspace, 
 Remote:     ssh [ssh options] <user@host> [--title T]   (remote terminal in a new workspace)
             bridge [--port P] [--host H] [--wsl]   (expose this wmux's pipe over TCP, default 127.0.0.1:9787)
             token                          (print this instance's auth token, for --token)
+            remote status [--json]         (the phone Remote Console: on/off, where, devices)
 Global:     --remote host[:port] --token <T>   (drive a REMOTE wmux through an SSH tunnel;
             env equivalents: WMUX_REMOTE, WMUX_REMOTE_TOKEN)
 Surface:    new-surface [--type T] [--color-scheme NAME], close-surface, focus-surface, list-surfaces

@@ -755,6 +755,36 @@ function send(payload: AgentStateSnapshot): void {
   BrowserWindow.getAllWindows().forEach(win => {
     if (!win.isDestroyed()) win.webContents.send(IPC_CHANNELS.AGENT_STATE, payload);
   });
+  notifyBroadcastListeners();
+}
+
+/**
+ * Main-side listeners told "a declared state changed" (#254).
+ *
+ * The Remote Console's roster pump is the consumer: it re-reads the roster from
+ * the renderer when this fires rather than polling at a rate that would have to
+ * be fast enough to feel live. The listener gets NO payload on purpose — the
+ * roster is the renderer's merged view (#235, #253), not this record, and a
+ * payload here would invite a second, disagreeing roster built in main.
+ *
+ * Every call is isolated: this runs inside every report_* on the pipe path, and
+ * a listener that throws must never turn an agent's report into an RPC error.
+ */
+const broadcastListeners = new Set<() => void>();
+
+export function onAgentStateBroadcast(listener: () => void): () => void {
+  broadcastListeners.add(listener);
+  return () => { broadcastListeners.delete(listener); };
+}
+
+function notifyBroadcastListeners(): void {
+  for (const listener of broadcastListeners) {
+    try {
+      listener();
+    } catch {
+      // A console bug is not the reporting agent's problem.
+    }
+  }
 }
 
 /** Test seam — drops all tracked state. */
