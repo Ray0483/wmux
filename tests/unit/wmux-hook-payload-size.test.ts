@@ -188,12 +188,15 @@ describe('wmux-hook.js Notification kind (issue #253)', () => {
 
     // Grok runs the ~/.claude/settings.json hooks through its Claude
     // compatibility and fires idle_prompt at every turn end. Without the type
-    // the pane reads "Needs you"; with Grok's sessionId, restore would run
-    // `claude --resume` on an id Claude has never seen.
-    await runHook(['--event', 'Notification'], envFor(server.port), JSON.stringify({
+    // the pane reads "Needs you"; with Grok's session id, restore would run
+    // `claude --resume` on an id Claude has never seen. Shape and env as
+    // captured from grok 1.0.44: both id spellings, GROK_HOOK_EVENT set.
+    const env = { ...envFor(server.port), GROK_HOOK_EVENT: 'notification' };
+    await runHook(['--event', 'Notification'], env, JSON.stringify({
       hookEventName: 'notification',
       hook_event_name: 'Notification',
       sessionId: 'grok-session-0001',
+      session_id: 'grok-session-0001',
       toolName: 'run_terminal_command',
       message: 'Grok is waiting for your input',
       notificationType: 'idle_prompt',

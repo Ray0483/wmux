@@ -205,8 +205,8 @@ function parsePayload(raw) {
     // `toolName`, `notificationType`. Read both spellings, or every Grok
     // `idle_prompt` — which it fires at the end of EVERY turn — loses its type
     // and is classified on message text alone (the #253 "Needs you" bug again).
-    // `sessionId` is deliberately NOT read: it names a Grok session, and a value
-    // recorded here ends up on a `claude --resume` command line at restore.
+    // Grok's session id is never forwarded — see the GROK_HOOK_EVENT guard in
+    // sendHook, which is needed because Grok sends a snake_case `session_id` too.
     const toolInput = data.tool_input ?? data.toolInput;
     // Claude Code provides tool_input with file_path for Edit/Write.
     out.file = toolInput?.file_path || toolInput?.path || data.input?.file_path || '';
@@ -281,7 +281,11 @@ function sendHook() {
         params.message = message;
     if (notificationType)
         params.notificationType = notificationType;
-    if (sessionId)
+    // Not under Grok (it sets GROK_HOOK_EVENT on every hook process). Grok 1.0.44
+    // sends `session_id` alongside `sessionId`, and an id recorded here ends up on
+    // a `claude --resume` command line at restore — naming a session Claude has
+    // never seen.
+    if (sessionId && !process.env.GROK_HOOK_EVENT)
         params.sessionId = sessionId;
     if (prompt)
         params.prompt = prompt;
