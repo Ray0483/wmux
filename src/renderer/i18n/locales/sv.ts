@@ -597,6 +597,7 @@ export const sv: Translation = {
   'settings.remote.error.uiNotBuilt': 'Telefonsidan saknas i den här versionen av wmux.',
   'settings.remote.error.lanAddressGone': 'Nätverksadressen {host} finns inte längre på den här datorn. Välj ett annat gränssnitt eller byt till ”Endast den här datorn”.',
   'settings.remote.rejectedOrigin': 'En webbläsare på {origin} nekades eftersom wmux inte känner till den adressen.',
+  'settings.remote.rejectedOriginCaution': 'Vilken webbsida som helst som är öppen på den här datorn kan orsaka meddelandet. Använd det bara om du känner igen adressen som din egen, till exempel din Tailscale-URL.',
   'settings.remote.useAsPublicUrl': 'Använd som offentlig URL',
   'settings.remote.reachability': 'Nåbar från',
   'settings.remote.bindLoopback': 'Endast den här datorn',

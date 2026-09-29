@@ -608,6 +608,7 @@ export const ja: Translation = {
   'settings.remote.error.uiNotBuilt': 'この wmux ビルドにはスマートフォン用ページが含まれていません。',
   'settings.remote.error.lanAddressGone': 'ネットワークアドレス {host} はこのコンピューターにもうありません。別のインターフェースを選ぶか、「このコンピューターのみ」に切り替えてください。',
   'settings.remote.rejectedOrigin': '{origin} のブラウザーは、wmux がそのアドレスを知らないため拒否されました。',
+  'settings.remote.rejectedOriginCaution': 'このコンピューターで開いている任意の Web ページがこのメッセージを発生させることがあります。Tailscale の URL など、自分のアドレスだと確認できる場合にのみ使用してください。',
   'settings.remote.useAsPublicUrl': '公開 URL として使う',
   'settings.remote.reachability': '接続できる範囲',
   'settings.remote.bindLoopback': 'このコンピューターのみ',

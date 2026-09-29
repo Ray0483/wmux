@@ -744,6 +744,7 @@ export const fr: Translation = {
   'settings.remote.error.uiNotBuilt': 'La page pour téléphone est absente de cette version de wmux.',
   'settings.remote.error.lanAddressGone': 'L’adresse réseau {host} n’existe plus sur cet ordinateur. Choisissez une autre interface ou passez à « Cet ordinateur uniquement ».',
   'settings.remote.rejectedOrigin': 'Un navigateur à l’adresse {origin} a été refusé, car wmux ne connaît pas cette adresse.',
+  'settings.remote.rejectedOriginCaution': 'N’importe quelle page web ouverte sur cet ordinateur peut provoquer ce message. Ne l’utilisez que si vous reconnaissez l’adresse comme la vôtre, par exemple votre URL Tailscale.',
   'settings.remote.useAsPublicUrl': 'Utiliser comme URL publique',
   'settings.remote.reachability': 'Accessible depuis',
   'settings.remote.bindLoopback': 'Cet ordinateur uniquement',

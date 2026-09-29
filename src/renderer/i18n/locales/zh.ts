@@ -591,6 +591,7 @@ export const zh: Translation = {
   'settings.remote.error.uiNotBuilt': '此 wmux 版本缺少手机页面。',
   'settings.remote.error.lanAddressGone': '网络地址 {host} 已不在这台电脑上。请选择其他网卡，或切换到“仅此电脑”。',
   'settings.remote.rejectedOrigin': '来自 {origin} 的浏览器已被拒绝，因为 wmux 不认识该地址。',
+  'settings.remote.rejectedOriginCaution': '此计算机上打开的任何网页都可能引发此消息。只有在你认出该地址是你自己的（例如你的 Tailscale URL）时才使用它。',
   'settings.remote.useAsPublicUrl': '用作公开 URL',
   'settings.remote.reachability': '可访问范围',
   'settings.remote.bindLoopback': '仅此电脑',

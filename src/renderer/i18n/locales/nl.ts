@@ -597,6 +597,7 @@ export const nl: Translation = {
   'settings.remote.error.uiNotBuilt': 'De telefoonpagina ontbreekt in deze build van wmux.',
   'settings.remote.error.lanAddressGone': 'Het netwerkadres {host} bestaat niet meer op deze computer. Kies een andere interface of schakel over naar ‘Alleen deze computer’.',
   'settings.remote.rejectedOrigin': 'Een browser op {origin} is geweigerd omdat wmux dat adres niet kent.',
+  'settings.remote.rejectedOriginCaution': 'Elke webpagina die op deze computer openstaat, kan deze melding veroorzaken. Gebruik het alleen als je het adres herkent als je eigen adres, bijvoorbeeld je Tailscale-URL.',
   'settings.remote.useAsPublicUrl': 'Gebruiken als openbare URL',
   'settings.remote.reachability': 'Bereikbaar vanaf',
   'settings.remote.bindLoopback': 'Alleen deze computer',

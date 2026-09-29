@@ -608,6 +608,7 @@ export const zhTW: Translation = {
   'settings.remote.error.uiNotBuilt': '此 wmux 版本缺少手機頁面。',
   'settings.remote.error.lanAddressGone': '網路位址 {host} 已不在這台電腦上。請選擇其他介面，或切換到「僅此電腦」。',
   'settings.remote.rejectedOrigin': '來自 {origin} 的瀏覽器已被拒絕，因為 wmux 不認得該位址。',
+  'settings.remote.rejectedOriginCaution': '這台電腦上開啟的任何網頁都可能引發此訊息。只有在你認得該位址是你自己的（例如你的 Tailscale URL）時才使用它。',
   'settings.remote.useAsPublicUrl': '用作公開 URL',
   'settings.remote.reachability': '可存取範圍',
   'settings.remote.bindLoopback': '僅此電腦',

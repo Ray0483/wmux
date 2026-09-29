@@ -608,6 +608,7 @@ export const cs: Translation = {
   'settings.remote.error.uiNotBuilt': 'V tomto sestavení wmux chybí stránka pro telefon.',
   'settings.remote.error.lanAddressGone': 'Síťová adresa {host} už na tomto počítači není. Vyberte jiné rozhraní nebo přepněte na „Pouze tento počítač“.',
   'settings.remote.rejectedOrigin': 'Prohlížeč na adrese {origin} byl odmítnut, protože wmux tuto adresu nezná.',
+  'settings.remote.rejectedOriginCaution': 'Tuto zprávu může vyvolat jakákoli webová stránka otevřená na tomto počítači. Použijte ji jen tehdy, pokud adresu poznáváte jako svou, například svou adresu Tailscale.',
   'settings.remote.useAsPublicUrl': 'Použít jako veřejnou URL',
   'settings.remote.reachability': 'Dostupné z',
   'settings.remote.bindLoopback': 'Pouze tento počítač',

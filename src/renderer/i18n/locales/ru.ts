@@ -608,6 +608,7 @@ export const ru: Translation = {
   'settings.remote.error.uiNotBuilt': 'В этой сборке wmux нет страницы для телефона.',
   'settings.remote.error.lanAddressGone': 'Сетевого адреса {host} больше нет на этом компьютере. Выберите другой интерфейс или переключитесь на «Только этот компьютер».',
   'settings.remote.rejectedOrigin': 'Браузер с адреса {origin} отклонён: wmux не знает этот адрес.',
+  'settings.remote.rejectedOriginCaution': 'Это сообщение может вызвать любая веб-страница, открытая на этом компьютере. Используйте его, только если узнаёте этот адрес как свой, например ваш URL Tailscale.',
   'settings.remote.useAsPublicUrl': 'Использовать как публичный URL',
   'settings.remote.reachability': 'Доступно с',
   'settings.remote.bindLoopback': 'Только этот компьютер',

@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { RemoteBridgeError, RemoteConsoleBridge, RemoteConsoleStatus } from '../../../shared/remote-console-config';
+import type { PairOffer, RemoteBridgeError, RemoteConsoleBridge, RemoteConsoleStatus } from '../../../shared/remote-console-config';
 import type { RemoteScope } from '../../../shared/remote-console-protocol';
 import { useT, type TranslationKey, type Translator } from '../../i18n';
 import { qrDataUri } from './remote-qr';
@@ -47,10 +47,79 @@ const CONFIG_ERROR_KEYS: Record<string, TranslationKey> = {
   unavailable: 'settings.remote.unavailable',
 };
 
+/**
+ * Substitutes `{name}` placeholders with a FUNCTION replacer. A string replacer
+ * is not literal: `String.prototype.replace` expands `$&`, `$'` and `` $` `` in
+ * it, and several values put through here are chosen by someone else — a
+ * device name is whatever the phone POSTed with the pairing secret, and a
+ * refused origin is whatever Origin header a web page sent. React still
+ * escapes the result, so this is not markup injection, but "Paired: $'" must
+ * say that and not splice the template's tail back into itself.
+ */
+export function fillTemplate(template: string, vars: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (whole, name: string) =>
+    Object.hasOwn(vars, name) ? String(vars[name]) : whole);
+}
+
 /** A `setConfig` or device-action error as a sentence; unknown codes still say which. */
 export function remoteErrorText(t: Translator, code: string): string {
   const key = CONFIG_ERROR_KEYS[code];
-  return key ? t(key) : t('settings.remote.actionFailed').replace('{error}', code);
+  return key ? t(key) : fillTemplate(t('settings.remote.actionFailed'), { error: code });
+}
+
+/** What the dialog should make of a status push while its offer is on screen. */
+export type OfferOutcome =
+  | { kind: 'paired'; name: string }
+  | { kind: 'voided' }
+  | { kind: 'live'; sawLive: boolean };
+
+/**
+ * Decides, from one status push, whether the offer on screen was consumed,
+ * voided, or is still live. Pure so the rules are pinned by tests rather than
+ * by an effect nobody can mount under vitest.
+ *
+ * - Paired: a device outside the ids known at offer time, created at or after
+ *   the offer (main stamps `createdAt` with `Date.now()`, the same clock).
+ * - Voided: main's `pairing` stopped being THIS offer after the dialog had seen
+ *   it. Main keeps one live offer, so a newer one minted from another window
+ *   shows up as a non-null `pairing` with a different `expiresAt` — the old QR
+ *   is dead although `pairing` never went null. Keying on null alone left a
+ *   dead code on screen for the rest of its countdown, and let the OTHER
+ *   window's pairing be announced here as this dialog's success.
+ * - Until this offer has been seen once, nothing counts as voided: the push
+ *   announcing it is throttled and can land after `pairStart` resolves, and a
+ *   stale push can still carry the PREVIOUS offer.
+ */
+export function offerOutcome(
+  status: Pick<RemoteConsoleStatus, 'devices' | 'pairing'>,
+  offer: { expiresAt: number; offeredAt: number; knownIds: ReadonlySet<string> },
+  sawLive: boolean,
+): OfferOutcome {
+  const fresh = status.devices.find((d) => !offer.knownIds.has(d.id) && d.createdAt >= offer.offeredAt);
+  if (fresh) return { kind: 'paired', name: fresh.name };
+  const ours = status.pairing !== null && status.pairing.expiresAt === offer.expiresAt;
+  if (ours) return { kind: 'live', sawLive: true };
+  if (sawLive) return { kind: 'voided' };
+  return { kind: 'live', sawLive: false };
+}
+
+/**
+ * `pairStart`, abandoned cleanly if the dialog went away while it was in
+ * flight. Cancel, Escape and unmount only cancel an offer the dialog already
+ * HOLDS; one still on its way back from main would otherwise be minted after
+ * nobody is left to show or cancel it — a working credential for 120 s with no
+ * QR on screen and no Cancel button. So the answer is checked against
+ * `isClosed()` on arrival and cancelled in main when nobody wants it.
+ */
+export async function requestOffer(
+  bridge: Pick<RemoteConsoleBridge, 'pairStart' | 'pairCancel'>,
+  request: { name: string; scope: RemoteScope },
+  isClosed: () => boolean,
+): Promise<PairOffer | RemoteBridgeError | null> {
+  const r = await bridge.pairStart(request);
+  if (!isClosed()) return r;
+  if (!isBridgeError(r)) await bridge.pairCancel().catch(() => undefined);
+  return null;
 }
 
 // ── Dialog ──────────────────────────────────────────────────────────────
@@ -90,6 +159,12 @@ export default function PairDeviceDialog({ status, onClose }: PairDeviceDialogPr
   const sawLive = useRef(false);
   const offerRef = useRef<LiveOffer | null>(null);
   offerRef.current = offer;
+  const closedRef = useRef(false);
+  // The parent passes an inline arrow, so `onClose` changes identity on every
+  // status push (up to 4/s). Depending on it restarted the close timer on each
+  // push, and "Paired" could stay up for as long as pushes kept coming.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   // Countdown. A 1 s tick is all a seconds display needs.
   useEffect(() => {
@@ -108,28 +183,29 @@ export default function PairDeviceDialog({ status, onClose }: PairDeviceDialogPr
   // Watch the pushed status for the device this offer produced.
   useEffect(() => {
     if (!offer) return;
-    const fresh = status.devices.find((d) => !offer.knownIds.has(d.id) && d.createdAt >= offer.offeredAt);
-    if (fresh) {
+    const outcome = offerOutcome(status, offer, sawLive.current);
+    if (outcome.kind === 'paired') {
       setOffer(null);
-      setPairedName(fresh.name);
-      return;
-    }
-    if (status.pairing) sawLive.current = true;
-    else if (sawLive.current) {
+      setPairedName(outcome.name);
+    } else if (outcome.kind === 'voided') {
       setOffer(null);
       setEnded('voided');
+    } else {
+      sawLive.current = outcome.sawLive;
     }
   }, [status, offer]);
 
   useEffect(() => {
     if (pairedName === null) return;
-    const timer = setTimeout(onClose, CLOSE_AFTER_PAIRED_MS);
+    const timer = setTimeout(() => onCloseRef.current(), CLOSE_AFTER_PAIRED_MS);
     return () => clearTimeout(timer);
-  }, [pairedName, onClose]);
+  }, [pairedName]);
 
   // Leaving with a live offer cancels it in main too, whichever way the dialog
   // went away — an offer outliving its dialog is a working QR nobody watches.
+  // `closedRef` covers the offer still in flight (see requestOffer).
   useEffect(() => () => {
+    closedRef.current = true;
     if (offerRef.current) remoteBridge()?.pairCancel().catch(() => undefined);
   }, []);
 
@@ -143,7 +219,12 @@ export default function PairDeviceDialog({ status, onClose }: PairDeviceDialogPr
     const knownIds = new Set(status.devices.map((d) => d.id));
     const offeredAt = Date.now();
     try {
-      const r = await bridge.pairStart({ name: name.trim() || t('settings.remote.pair.defaultName'), scope: effectiveScope });
+      const r = await requestOffer(
+        bridge,
+        { name: name.trim() || t('settings.remote.pair.defaultName'), scope: effectiveScope },
+        () => closedRef.current,
+      );
+      if (r === null) return;
       if (isBridgeError(r)) setError(r.error);
       else {
         setNow(Date.now());
@@ -157,6 +238,7 @@ export default function PairDeviceDialog({ status, onClose }: PairDeviceDialogPr
   };
 
   const cancel = () => {
+    closedRef.current = true;
     if (offerRef.current) {
       offerRef.current = null;
       setOffer(null);
@@ -181,7 +263,9 @@ export default function PairDeviceDialog({ status, onClose }: PairDeviceDialogPr
     return () => window.removeEventListener('keydown', onKey, true);
   }, []);
 
-  const secondsLeft = offer ? Math.max(0, Math.ceil((offer.expiresAt - now) / 1000)) : 0;
+  // The QR only changes with the offer; the 1 s countdown must not redraw it.
+  const qrSrc = useMemo(() => (offer ? qrDataUri(offer.url) : ''), [offer]);
+  const secondsLeft =offer ? Math.max(0, Math.ceil((offer.expiresAt - now) / 1000)) : 0;
   const unreachable = config.bind === 'loopback' && config.publicUrl === '';
 
   return createPortal(
@@ -191,7 +275,7 @@ export default function PairDeviceDialog({ status, onClose }: PairDeviceDialogPr
 
         {pairedName !== null && (
           <div className="remote-settings__paired" role="status">
-            {t('settings.remote.pair.paired').replace('{name}', pairedName)}
+            {fillTemplate(t('settings.remote.pair.paired'), { name: pairedName })}
           </div>
         )}
 
@@ -207,7 +291,7 @@ export default function PairDeviceDialog({ status, onClose }: PairDeviceDialogPr
 
         {offer && (
           <div className="remote-settings__offer">
-            <img className="remote-settings__qr" src={qrDataUri(offer.url)} alt={t('settings.remote.pair.qrAlt')} />
+            <img className="remote-settings__qr" src={qrSrc} alt={t('settings.remote.pair.qrAlt')} />
             <p className="settings-hint">{t('settings.remote.pair.scan')}</p>
             <div className="remote-settings__inline">
               <input
@@ -220,7 +304,7 @@ export default function PairDeviceDialog({ status, onClose }: PairDeviceDialogPr
               <CopyButton text={offer.url} />
             </div>
             <p className="remote-settings__countdown">
-              {t('settings.remote.pair.expiresIn').replace('{seconds}', String(secondsLeft))}
+              {fillTemplate(t('settings.remote.pair.expiresIn'), { seconds: secondsLeft })}
               {' · '}
               {offer.scope === 'operator' ? t('settings.remote.scope.operator') : t('settings.remote.scope.viewer')}
             </p>

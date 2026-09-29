@@ -608,6 +608,7 @@ export const hi: Translation = {
   'settings.remote.error.uiNotBuilt': 'wmux के इस बिल्ड में फ़ोन वाला पेज नहीं है।',
   'settings.remote.error.lanAddressGone': 'नेटवर्क पता {host} अब इस कंप्यूटर पर नहीं है। कोई दूसरा इंटरफ़ेस चुनें या “केवल यह कंप्यूटर” पर स्विच करें।',
   'settings.remote.rejectedOrigin': '{origin} पर एक ब्राउज़र अस्वीकार किया गया, क्योंकि wmux उस पते को नहीं जानता।',
+  'settings.remote.rejectedOriginCaution': 'इस कंप्यूटर पर खुला कोई भी वेब पेज यह संदेश ला सकता है। इसका उपयोग तभी करें जब आप इस पते को अपना मानते हों, जैसे आपका Tailscale URL।',
   'settings.remote.useAsPublicUrl': 'सार्वजनिक URL के रूप में उपयोग करें',
   'settings.remote.reachability': 'कहाँ से पहुँच',
   'settings.remote.bindLoopback': 'केवल यह कंप्यूटर',

@@ -597,6 +597,7 @@ export const de: Translation = {
   'settings.remote.error.uiNotBuilt': 'Die Smartphone-Seite fehlt in diesem wmux-Build.',
   'settings.remote.error.lanAddressGone': 'Die Netzwerkadresse {host} existiert auf diesem Computer nicht mehr. Wählen Sie eine andere Schnittstelle oder wechseln Sie zu „Nur dieser Computer“.',
   'settings.remote.rejectedOrigin': 'Ein Browser unter {origin} wurde abgewiesen, weil wmux diese Adresse nicht kennt.',
+  'settings.remote.rejectedOriginCaution': 'Jede auf diesem Computer geöffnete Webseite kann diese Meldung auslösen. Verwende sie nur, wenn du die Adresse als deine eigene erkennst, zum Beispiel deine Tailscale-URL.',
   'settings.remote.useAsPublicUrl': 'Als öffentliche URL verwenden',
   'settings.remote.reachability': 'Erreichbar von',
   'settings.remote.bindLoopback': 'Nur dieser Computer',

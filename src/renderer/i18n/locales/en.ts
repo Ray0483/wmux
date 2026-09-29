@@ -891,6 +891,7 @@ export const en = {
   'settings.remote.error.uiNotBuilt': 'The phone page is missing from this build of wmux.',
   'settings.remote.error.lanAddressGone': 'The network address {host} is no longer on this computer. Pick another interface, or switch to “This computer only”.',
   'settings.remote.rejectedOrigin': 'A browser at {origin} was refused because wmux does not know that address.',
+  'settings.remote.rejectedOriginCaution': 'Any web page open on this computer can cause this message. Use it only if you recognise the address as your own, for example your Tailscale URL.',
   'settings.remote.useAsPublicUrl': 'Use as Public URL',
   'settings.remote.reachability': 'Reachable from',
   'settings.remote.bindLoopback': 'This computer only',

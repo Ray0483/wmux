@@ -608,6 +608,7 @@ export const tr: Translation = {
   'settings.remote.error.uiNotBuilt': 'Telefon sayfası bu wmux sürümünde eksik.',
   'settings.remote.error.lanAddressGone': '{host} ağ adresi artık bu bilgisayarda yok. Başka bir arabirim seçin veya “Yalnızca bu bilgisayar” seçeneğine geçin.',
   'settings.remote.rejectedOrigin': '{origin} adresindeki bir tarayıcı reddedildi, çünkü wmux bu adresi tanımıyor.',
+  'settings.remote.rejectedOriginCaution': 'Bu bilgisayarda açık herhangi bir web sayfası bu mesaja yol açabilir. Yalnızca adresi kendinize ait olarak tanıyorsanız kullanın, örneğin Tailscale URL’niz.',
   'settings.remote.useAsPublicUrl': 'Genel URL olarak kullan',
   'settings.remote.reachability': 'Erişilebildiği yer',
   'settings.remote.bindLoopback': 'Yalnızca bu bilgisayar',

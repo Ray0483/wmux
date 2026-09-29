@@ -6,7 +6,8 @@ import type {
   RemoteDeviceView,
 } from '../../../shared/remote-console-config';
 import { useT, type Translator } from '../../i18n';
-import PairDeviceDialog, { RemoteRecipes, isBridgeError, remoteBridge, remoteErrorText } from './PairDeviceDialog';
+import { normalizePublicUrl } from '../../../shared/remote-console-config';
+import PairDeviceDialog, { RemoteRecipes, fillTemplate, isBridgeError, remoteBridge, remoteErrorText } from './PairDeviceDialog';
 import '../../styles/remote-settings.css';
 
 /**
@@ -39,10 +40,10 @@ function isStatus(value: unknown): value is RemoteConsoleStatus {
 function lastErrorText(t: Translator, status: RemoteConsoleStatus): string | null {
   const { config } = status;
   switch (status.lastError) {
-    case 'port-busy': return t('settings.remote.error.portBusy').replace('{port}', String(config.port));
+    case 'port-busy': return fillTemplate(t('settings.remote.error.portBusy'), { port: config.port });
     case 'bind-failed': return t('settings.remote.error.bindFailed');
     case 'ui-not-built': return t('settings.remote.error.uiNotBuilt');
-    case 'lan-address-gone': return t('settings.remote.error.lanAddressGone').replace('{host}', config.lanHost ?? '');
+    case 'lan-address-gone': return fillTemplate(t('settings.remote.error.lanAddressGone'), { host: config.lanHost ?? '' });
     default: return null;
   }
 }
@@ -206,6 +207,24 @@ function EnableRow({ t, status, busy, apply }: RowProps) {
   );
 }
 
+/**
+ * The refused origin worth offering as the Public URL, or null. It is whatever
+ * Origin header reached the listener, and on a loopback bind ANY web page open
+ * in this computer's own browser can send one just by trying a WebSocket to
+ * 127.0.0.1 — so it is attacker-chosen text sitting beside a one-click "trust
+ * this" button. It is offered only when it is already a bare http(s) origin
+ * (the same `normalizePublicUrl` main validates with, so the click cannot come
+ * back as bad-public-url) and differs from what is set, and the card says in
+ * words to accept it only when the user recognises it.
+ */
+export function suggestedPublicUrl(status: Pick<RemoteConsoleStatus, 'lastRejectedOrigin' | 'config'>): string | null {
+  const raw = status.lastRejectedOrigin;
+  if (!raw) return null;
+  const origin = normalizePublicUrl(raw);
+  if (!origin || origin !== raw) return null;
+  return origin === status.config.publicUrl ? null : origin;
+}
+
 function StatusLine({ t, status, busy, apply }: RowProps) {
   const { config } = status;
   const error = config.enabled ? lastErrorText(t, status) : null;
@@ -214,13 +233,14 @@ function StatusLine({ t, status, busy, apply }: RowProps) {
   if (!config.enabled) line = t('settings.remote.statusOff');
   else if (error) line = error;
   else if (status.listening) {
-    line = t('settings.remote.statusListening')
-      .replace('{host}', status.listening.host)
-      .replace('{port}', String(status.listening.port))
-      .replace('{count}', String(connected));
+    line = fillTemplate(t('settings.remote.statusListening'), {
+      host: status.listening.host,
+      port: status.listening.port,
+      count: connected,
+    });
   } else line = t('settings.remote.statusStarting');
 
-  const rejected = status.lastRejectedOrigin;
+  const rejected = suggestedPublicUrl(status);
   return (
     <>
       <div className={`remote-settings__status ${error ? 'remote-settings__status--error' : ''}`} role="status">
@@ -230,9 +250,10 @@ function StatusLine({ t, status, busy, apply }: RowProps) {
           was never told about — `tailscale serve` hands out an https origin
           the user may not have pasted anywhere. Offer the refused origin as
           the fix rather than making them find and retype it. */}
-      {rejected && rejected !== config.publicUrl && (
+      {rejected && (
         <div className="remote-settings__card remote-settings__card--warn">
-          <p>{t('settings.remote.rejectedOrigin').replace('{origin}', rejected)}</p>
+          <p>{fillTemplate(t('settings.remote.rejectedOrigin'), { origin: rejected })}</p>
+          <p className="settings-hint">{t('settings.remote.rejectedOriginCaution')}</p>
           <button className="settings-button" disabled={busy} onClick={() => { apply({ publicUrl: rejected }); }}>
             {t('settings.remote.useAsPublicUrl')}
           </button>
@@ -296,7 +317,7 @@ function Reachability({ t, status, busy, apply }: RowProps) {
             >
               {options.map((addr) => (
                 <option key={addr} value={addr}>
-                  {lanAddresses.includes(addr) ? addr : t('settings.remote.addressGone').replace('{host}', addr)}
+                  {lanAddresses.includes(addr) ? addr : fillTemplate(t('settings.remote.addressGone'), { host: addr })}
                 </option>
               ))}
             </select>
@@ -529,7 +550,7 @@ function DevicesTable({ t, status }: { t: Translator; status: RemoteConsoleStatu
       )}
       {devices.length > 0 && confirmAll && (
         <div className="remote-settings__card remote-settings__card--danger">
-          <p>{t('settings.remote.revokeAllConfirm').replace('{count}', String(devices.length))}</p>
+          <p>{fillTemplate(t('settings.remote.revokeAllConfirm'), { count: devices.length })}</p>
           <div className="remote-settings__actions">
             <button
               className="settings-button settings-button--danger"

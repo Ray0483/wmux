@@ -597,6 +597,7 @@ export const pt: Translation = {
   'settings.remote.error.uiNotBuilt': 'A página para celular está faltando nesta versão do wmux.',
   'settings.remote.error.lanAddressGone': 'O endereço de rede {host} não existe mais neste computador. Escolha outra interface ou mude para “Somente este computador”.',
   'settings.remote.rejectedOrigin': 'Um navegador em {origin} foi recusado porque o wmux não conhece esse endereço.',
+  'settings.remote.rejectedOriginCaution': 'Qualquer página web aberta neste computador pode causar esta mensagem. Use-o apenas se reconhecer o endereço como seu, por exemplo o seu URL do Tailscale.',
   'settings.remote.useAsPublicUrl': 'Usar como URL pública',
   'settings.remote.reachability': 'Acessível a partir de',
   'settings.remote.bindLoopback': 'Somente este computador',

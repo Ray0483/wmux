@@ -597,6 +597,7 @@ export const it: Translation = {
   'settings.remote.error.uiNotBuilt': 'In questa build di wmux manca la pagina per il telefono.',
   'settings.remote.error.lanAddressGone': 'L’indirizzo di rete {host} non esiste più su questo computer. Scegli un’altra interfaccia o passa a «Solo questo computer».',
   'settings.remote.rejectedOrigin': 'Un browser su {origin} è stato rifiutato perché wmux non conosce quell’indirizzo.',
+  'settings.remote.rejectedOriginCaution': 'Qualsiasi pagina web aperta su questo computer può causare questo messaggio. Usalo solo se riconosci l’indirizzo come tuo, ad esempio il tuo URL Tailscale.',
   'settings.remote.useAsPublicUrl': 'Usa come URL pubblico',
   'settings.remote.reachability': 'Raggiungibile da',
   'settings.remote.bindLoopback': 'Solo questo computer',

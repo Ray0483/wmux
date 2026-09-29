@@ -617,6 +617,7 @@ export const ko: Translation = {
   'settings.remote.error.uiNotBuilt': '이 wmux 빌드에 휴대폰용 페이지가 없습니다.',
   'settings.remote.error.lanAddressGone': '네트워크 주소 {host}이(가) 더 이상 이 컴퓨터에 없습니다. 다른 인터페이스를 선택하거나 “이 컴퓨터만”으로 전환하세요.',
   'settings.remote.rejectedOrigin': 'wmux가 모르는 주소라서 {origin}의 브라우저가 거부되었습니다.',
+  'settings.remote.rejectedOriginCaution': '이 컴퓨터에서 열린 어떤 웹 페이지라도 이 메시지를 일으킬 수 있습니다. Tailscale URL처럼 본인의 주소임을 확인한 경우에만 사용하세요.',
   'settings.remote.useAsPublicUrl': '공개 URL로 사용',
   'settings.remote.reachability': '접근 범위',
   'settings.remote.bindLoopback': '이 컴퓨터만',

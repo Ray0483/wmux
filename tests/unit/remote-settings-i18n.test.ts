@@ -1,8 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DICTIONARIES, SUPPORTED_LANGUAGES, type TranslationKey } from '../../src/renderer/i18n';
 import { en } from '../../src/renderer/i18n/locales/en';
+import { DEFAULT_REMOTE_CONFIG } from '../../src/shared/remote-console-config';
+import { fillTemplate, offerOutcome, requestOffer } from '../../src/renderer/components/Settings/PairDeviceDialog';
+import { suggestedPublicUrl } from '../../src/renderer/components/Settings/RemoteConsoleSettings';
 
 // Settings → Remote (#254). This tab is where a user decides whether wmux is
 // reachable from another device and hands out credentials for it; an English
@@ -63,5 +66,102 @@ describe('remote console translations', () => {
     // And nothing defined for the tab is dead weight in 18 files.
     const unused = REMOTE_KEYS.filter((k) => !used.has(k));
     expect(unused).toEqual([]);
+  });
+});
+
+// ── The dialog's and the tab's pure decisions (#254 review) ─────────────
+// vitest runs in node with no React renderer, so the effects are reduced to
+// plumbing around these helpers and the helpers are what gets pinned.
+
+describe('fillTemplate', () => {
+  it('substitutes values literally, even ones carrying $ patterns', () => {
+    // A device name is whatever the phone POSTed; `String.replace` with a
+    // string would expand $' into the template tail.
+    expect(fillTemplate('Paired: {name}', { name: "$'x$&" })).toBe("Paired: $'x$&");
+    expect(fillTemplate('{host}:{port} · {count}', { host: 'h', port: 9790, count: 2 })).toBe('h:9790 · 2');
+  });
+
+  it('leaves an unknown placeholder visible rather than blanking it', () => {
+    expect(fillTemplate('a {missing} b', {})).toBe('a {missing} b');
+  });
+});
+
+describe('offerOutcome', () => {
+  const offer = { expiresAt: 5_000, offeredAt: 1_000, knownIds: new Set(['dev-old']) };
+  const device = (id: string, createdAt: number) =>
+    ({ id, name: `n-${id}`, scope: 'viewer' as const, createdAt, lastSeenAt: createdAt });
+
+  it('reports the pairing when a new device appears after the offer', () => {
+    const status = { devices: [device('dev-old', 10), device('dev-new', 1_500)], pairing: null };
+    expect(offerOutcome(status, offer, true)).toEqual({ kind: 'paired', name: 'n-dev-new' });
+  });
+
+  it('ignores a device that predates the offer', () => {
+    const status = { devices: [device('dev-x', 900)], pairing: { expiresAt: 5_000, scope: 'viewer' as const } };
+    expect(offerOutcome(status, offer, false)).toEqual({ kind: 'live', sawLive: true });
+  });
+
+  it('does not call an offer voided before it has been seen', () => {
+    expect(offerOutcome({ devices: [], pairing: null }, offer, false)).toEqual({ kind: 'live', sawLive: false });
+    // A stale push still carrying the PREVIOUS offer is not this one.
+    const stale = { devices: [], pairing: { expiresAt: 1_234, scope: 'viewer' as const } };
+    expect(offerOutcome(stale, offer, false)).toEqual({ kind: 'live', sawLive: false });
+  });
+
+  it('calls it voided when pairing goes null after being seen', () => {
+    expect(offerOutcome({ devices: [], pairing: null }, offer, true)).toEqual({ kind: 'voided' });
+  });
+
+  it('calls it voided when another window superseded it with a newer offer', () => {
+    const newer = { devices: [], pairing: { expiresAt: 9_000, scope: 'operator' as const } };
+    expect(offerOutcome(newer, offer, true)).toEqual({ kind: 'voided' });
+  });
+});
+
+describe('requestOffer', () => {
+  const OFFER = { url: 'http://127.0.0.1:9790/#pair=s', expiresAt: 1, scope: 'viewer' as const };
+
+  it('returns the offer while the dialog is open', async () => {
+    const pairCancel = vi.fn(async () => undefined);
+    const r = await requestOffer({ pairStart: async () => OFFER, pairCancel }, { name: 'P', scope: 'viewer' }, () => false);
+    expect(r).toBe(OFFER);
+    expect(pairCancel).not.toHaveBeenCalled();
+  });
+
+  it('cancels in main an offer that arrives after the dialog closed', async () => {
+    let closed = false;
+    const pairCancel = vi.fn(async () => undefined);
+    const pairStart = async () => { closed = true; return OFFER; };
+    const r = await requestOffer({ pairStart, pairCancel }, { name: 'P', scope: 'viewer' }, () => closed);
+    expect(r).toBeNull();
+    expect(pairCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cancel when main refused to mint', async () => {
+    const pairCancel = vi.fn(async () => undefined);
+    const r = await requestOffer({ pairStart: async () => ({ error: 'x' }), pairCancel }, { name: 'P', scope: 'viewer' }, () => true);
+    expect(r).toBeNull();
+    expect(pairCancel).not.toHaveBeenCalled();
+  });
+});
+
+describe('suggestedPublicUrl', () => {
+  const config = { ...DEFAULT_REMOTE_CONFIG, publicUrl: 'https://mine.ts.net' };
+
+  it('offers a well-formed refused origin that is not already set', () => {
+    expect(suggestedPublicUrl({ config, lastRejectedOrigin: 'https://pc.tailnet.ts.net' })).toBe('https://pc.tailnet.ts.net');
+  });
+
+  it('offers nothing for the current Public URL, null, or a non-origin', () => {
+    expect(suggestedPublicUrl({ config, lastRejectedOrigin: 'https://mine.ts.net' })).toBeNull();
+    expect(suggestedPublicUrl({ config, lastRejectedOrigin: null })).toBeNull();
+    expect(suggestedPublicUrl({ config, lastRejectedOrigin: 'null' })).toBeNull();
+    expect(suggestedPublicUrl({ config, lastRejectedOrigin: 'chrome-extension://abc' })).toBeNull();
+    expect(suggestedPublicUrl({ config, lastRejectedOrigin: 'https://a.example/path' })).toBeNull();
+  });
+
+  it('shows the caution beside the button', () => {
+    const src = readFileSync(join(__dirname, '../../src/renderer/components/Settings/RemoteConsoleSettings.tsx'), 'utf8');
+    expect(src).toContain("t('settings.remote.rejectedOriginCaution')");
   });
 });

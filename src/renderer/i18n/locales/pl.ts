@@ -608,6 +608,7 @@ export const pl: Translation = {
   'settings.remote.error.uiNotBuilt': 'W tej wersji wmux brakuje strony dla telefonu.',
   'settings.remote.error.lanAddressGone': 'Adres sieciowy {host} nie istnieje już na tym komputerze. Wybierz inny interfejs lub przełącz na „Tylko ten komputer”.',
   'settings.remote.rejectedOrigin': 'Przeglądarka pod adresem {origin} została odrzucona, ponieważ wmux nie zna tego adresu.',
+  'settings.remote.rejectedOriginCaution': 'Ten komunikat może wywołać dowolna strona internetowa otwarta na tym komputerze. Użyj go tylko wtedy, gdy rozpoznajesz ten adres jako swój, na przykład swój adres URL Tailscale.',
   'settings.remote.useAsPublicUrl': 'Użyj jako publicznego URL',
   'settings.remote.reachability': 'Dostępna z',
   'settings.remote.bindLoopback': 'Tylko ten komputer',
