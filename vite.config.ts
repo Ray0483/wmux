@@ -24,7 +24,9 @@ export default defineConfig({
     // bundler decides is common (React) and nothing of the desktop's state.
     rolldownOptions: {
       input: {
-        main: path.resolve(__dirname, 'src/renderer/index.html'),
+        // `index`, not `main`: the key names the emitted chunk, and the release
+        // steps (CLAUDE.md) grep assets/index-*.js for the desktop bundle.
+        index: path.resolve(__dirname, 'src/renderer/index.html'),
         remote: path.resolve(__dirname, 'src/renderer/remote/index.html'),
       },
     },

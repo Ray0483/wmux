@@ -374,8 +374,11 @@ npm run build:main        # Compile TS → dist/main/, dist/preload/, dist/cli/
 npx vite build            # Build renderer → dist/renderer/
 
 # 2. Verify compiled code
-# Check that fixes are in the compiled output:
-python -c "import re; f=open('dist/renderer/assets/index-*.js').read(); print('OK' if 'your_fix_marker' in f else 'MISSING')"
+# Check that fixes are in the compiled output. Grep EVERY renderer chunk, not
+# just the desktop entry (assets/index-*.js): since the phone console became a
+# second entry (#254), code both entries import (React, xterm, src/shared/*)
+# lives in a shared chunk, so a marker in a shared module is not in index-*.js.
+grep -l 'your_fix_marker' dist/renderer/assets/*.js || echo MISSING
 grep -c 'your_fix_string' dist/main/index.js
 
 # 3. Create ASAR staging
@@ -409,7 +412,7 @@ ls build-out/app.asar.unpacked/node_modules/node-pty/prebuilds/win32-x64/
 # extract-file's stdout piping is unreliable on Windows — extract to /tmp instead.
 rm -rf /tmp/asar-verify && mkdir -p /tmp/asar-verify
 ( cd /tmp/asar-verify && npx --prefix "$(pwd)" asar extract "$(pwd)/build-out/app.asar" . )
-grep -c 'your_fix_marker' /tmp/asar-verify/dist/renderer/assets/index-*.js
+grep -l 'your_fix_marker' /tmp/asar-verify/dist/renderer/assets/*.js || echo MISSING   # every chunk, see step 2
 grep -c 'your_fix_string' /tmp/asar-verify/dist/main/index.js
 
 # 6. Create release staging

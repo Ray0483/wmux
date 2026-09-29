@@ -28,6 +28,14 @@ const MANIFEST = path.join(DIST, REMOTE_MANIFEST_FILE);
 const built = fs.existsSync(PAGE) && fs.existsSync(MANIFEST);
 const required = process.env.WMUX_REQUIRE_BUILD === '1';
 
+describe('vite entries (#254)', () => {
+  it('names the desktop entry index, so its chunk stays assets/index-*.js', () => {
+    const cfg = fs.readFileSync(path.resolve(__dirname, '../../vite.config.ts'), 'utf8');
+    expect(cfg).toContain("index: path.resolve(__dirname, 'src/renderer/index.html')");
+    expect(cfg).not.toContain('main: path.resolve');
+  });
+});
+
 describe.runIf(required)('remote UI build output is required', () => {
   it('dist/renderer carries the phone page and its manifest, and dist/main the runtime', () => {
     expect(fs.existsSync(PAGE), PAGE).toBe(true);
@@ -47,6 +55,11 @@ interface Chunk { file: string; imports?: string[]; css?: string[]; assets?: str
 describe.skipIf(!built)('remote UI build output', () => {
   const html = built ? fs.readFileSync(PAGE, 'utf8') : '';
   const manifest: Record<string, Chunk> = built ? JSON.parse(fs.readFileSync(MANIFEST, 'utf8')) : {};
+
+  it('the desktop entry is still emitted as assets/index-*.js (the release greps rely on it)', () => {
+    expect(manifest['index.html']?.isEntry).toBe(true);
+    expect(manifest['index.html']?.file).toMatch(/^assets\/index-[^/]+\.js$/);
+  });
 
   it('emits the manifest at the dist root with the remote entry key', () => {
     expect(REMOTE_MANIFEST_FILE).toBe('remote-manifest.json');
