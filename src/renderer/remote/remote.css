@@ -318,6 +318,20 @@ button { cursor: pointer; }
 .rc-term__host { height: 100%; padding: 4px; }
 .rc-term__wrap--pan .rc-term__host { width: max-content; }
 .rc-term__host .xterm { height: 100%; }
+/* xterm 6 ships `.xterm-viewport { background-color: #000; overflow-y: scroll }`
+   and paints the theme background only on the scrollable element, which is
+   as tall as the GRID. The phone keeps the desktop's grid and scales the font,
+   so the box below the last row was an opaque #000 slab with a native
+   scrollbar. Same override the desktop needed (terminal.css, #89); the theme
+   colour is painted once, on .rc-term. No native scrollbar: the phone scrolls
+   through its own recogniser. */
+.rc-term__host .xterm-viewport {
+  background-color: transparent !important;
+  overflow-y: hidden !important;
+}
+.rc-term__host .xterm-scrollable-element {
+  background-color: transparent !important;
+}
 
 .rc-term__overlay {
   position: absolute;
