@@ -21,6 +21,7 @@ import type { RemoteAgentState, RemoteRosterEntry } from '../../shared/remote-co
 import { SURFACE_ID_RE, wireChoiceIds } from '../../shared/remote-console-protocol';
 import type { RemoteRosterSource } from '../../shared/remote-console-config';
 import { capText, stripBidi } from '../../shared/remote-input';
+import type { PromptView } from './contract';
 
 export const LABEL_MAX = 200;
 const STATES: ReadonlySet<string> = new Set(['blocked', 'working', 'idle', 'unknown']);
@@ -149,39 +150,53 @@ export function sortRoster<T extends Sortable>(entries: readonly T[]): T[] {
 
 const clean = (s: string): string => capText(stripBidi(s), LABEL_MAX);
 
-const sameIds = (a: readonly string[], b: readonly string[]): boolean =>
-  a.length === b.length && a.every((id, i) => id === b[i]);
+/**
+ * Does the renderer's copy of a blocked pane say exactly what main holds —
+ * the same reason, the same answers (ids AND labels) in the same order?
+ */
+export function sameQuestion(src: RemoteRosterSource, main: PromptView): boolean {
+  if (src.blockedReason !== main.reason || src.choices.length !== main.choices.length) return false;
+  return src.choices.every((c, i) => c.id === main.choices[i].id && c.label === main.choices[i].label);
+}
 
 /**
  * The wire entry. Explicit fields only; choices keep `{id,label,isDefault}`.
  * `promptId` is main's own (agent-state), never the renderer's: it is what an
  * answer is checked against, so it comes from the side that checks it.
  *
+ * But the TEXT — reason, labels — is the renderer's, a hop behind main, and
+ * `promptId` is read at send time. An agent that re-blocks on a new question
+ * with the same ids (`yes`/`no`) in between would otherwise put "Run tests?"
+ * on the phone under the id of "Drop the prod table?", and a tap on Yes would
+ * pass the stale check and answer the second. So `mainView` (what main holds
+ * now) is compared with the renderer's copy, ids AND labels AND reason, and
+ * while they disagree the entry carries neither a prompt id nor choices: the
+ * card says to open the pane rather than offer buttons for a question nobody
+ * is asking. The next poll, a coalesced 150 ms later, brings the new text.
+ *
  * Every declared choice travels. `report-agent` accepts ids the wire cannot
  * carry ("allow once", "1."), so those go under an opaque index id
- * (`wireChoiceIds`) that the answer path maps back to the declared id. An index
- * is only meaningful against the list main will resolve it in: `mainIds` is
- * that list (agent-state's current choices), and while the renderer's copy
- * lags it an opaque id is withheld — a tap on it could otherwise name the
- * choice at that index of a DIFFERENT list. A wire-safe id names itself, so it
- * needs no such check. `mainIds` undefined means "no main list to compare"
- * (pure callers and tests), and every choice is offered.
+ * (`wireChoiceIds`) that the answer path maps back to the declared id — an
+ * index into main's list, which the same comparison proves is this one.
+ * `mainView` undefined means "nothing to compare against" (pure callers and
+ * tests), and the renderer's copy is offered as it is.
  */
 export function toWire(
   src: RemoteRosterSource,
   done: boolean,
   promptId: number | null = null,
-  mainIds?: readonly string[] | null,
+  mainView?: PromptView | null,
 ): RemoteRosterEntry {
-  const declared = src.choices.map((c) => c.id);
-  const wireIds = wireChoiceIds(declared);
-  const inSync = mainIds === undefined || (mainIds !== null && sameIds(mainIds, declared));
+  const inSync = mainView === undefined
+    || (src.state === 'blocked' && mainView !== null && sameQuestion(src, mainView));
+  const wireIds = wireChoiceIds(src.choices.map((c) => c.id));
   const choices: RemoteRosterEntry['choices'] = [];
-  src.choices.forEach((c, i) => {
-    const id = wireIds[i];
-    if (id !== c.id && !inSync) return;
-    choices.push(c.isDefault === true ? { id, label: clean(c.label), isDefault: true } : { id, label: clean(c.label) });
-  });
+  if (inSync) {
+    src.choices.forEach((c, i) => {
+      const id = wireIds[i];
+      choices.push(c.isDefault === true ? { id, label: clean(c.label), isDefault: true } : { id, label: clean(c.label) });
+    });
+  }
   return {
     s: src.surfaceId,
     workspaceId: capText(src.workspaceId, LABEL_MAX),
@@ -193,7 +208,7 @@ export function toWire(
     done,
     blockedReason: src.blockedReason === null ? null : clean(src.blockedReason),
     choices,
-    promptId,
+    promptId: inSync ? promptId : null,
     answerPending: src.answerPending,
     dwellMs: Math.round(src.dwellMs),
   };
@@ -204,11 +219,11 @@ export function buildWireRoster(
   list: readonly RemoteRosterSource[],
   tracker: DoneTracker,
   promptOf: (surfaceId: string) => number | null = () => null,
-  choiceIdsOf?: (surfaceId: string) => readonly string[] | null,
+  viewOf?: (surfaceId: string) => PromptView | null,
 ): RemoteRosterEntry[] {
   const sortable = list.map((src) => ({ src, doneAt: src.state === 'working' ? null : tracker.doneAt(src.surfaceId) }));
   return sortRoster(sortable).map((e) =>
-    toWire(e.src, e.doneAt !== null, promptOf(e.src.surfaceId), choiceIdsOf?.(e.src.surfaceId)));
+    toWire(e.src, e.doneAt !== null, promptOf(e.src.surfaceId), viewOf?.(e.src.surfaceId)));
 }
 
 /**

@@ -791,15 +791,17 @@ export function currentPromptId(surfaceId: SurfaceId): number | null {
 }
 
 /**
- * The declared ids of the question a pane is asking right now, in declared
- * order, or null when it is not blocked (#254). The roster's choices come from
- * the renderer, a hop behind this record; an opaque wire id is an INDEX, so the
- * roster only mints one while the renderer's list still matches this one.
+ * What the question a pane is asking right now SAYS — its reason and its
+ * declared answers (id and label, in declared order) — or null when it is not
+ * blocked (#254). The Remote Console's roster text comes from the renderer, a
+ * hop behind this record, while `currentPromptId` is read here at send time;
+ * the roster attaches the prompt id only while the renderer's copy still says
+ * exactly this, so a card can never show one question under the next one's id.
  */
-export function currentChoiceIds(surfaceId: SurfaceId): string[] | null {
+export function currentPromptView(surfaceId: SurfaceId): { reason: string | null; choices: { id: string; label: string }[] } | null {
   const record = records.get(surfaceId);
   if (!record || resolveState(record, Date.now()) !== 'blocked') return null;
-  return record.choices.map(c => c.id);
+  return { reason: record.blockedReason, choices: record.choices.map(c => ({ id: c.id, label: c.label })) };
 }
 
 export function getAgentState(surfaceId: SurfaceId): AgentStateSnapshot | undefined {

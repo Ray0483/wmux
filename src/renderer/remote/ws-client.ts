@@ -33,6 +33,8 @@
  *     confirmed, check the terminal" rather than "could not send", because it
  *     may well have landed.
  *
+ *  5. A frame over MAX_FRAME bytes is never sent or queued (see `request`).
+ *
  * Close codes decide whether to come back: 4401 (revoked) and 4400 (protocol
  * mismatch — the page is older than the desktop) are final; everything else,
  * 1001 "stopping or reconfigured" included, reconnects with backoff.
@@ -40,6 +42,7 @@
 
 import {
   CLOSE_CODES,
+  MAX_FRAME,
   PROTOCOL_VERSION,
   type ClientMessage,
   type ServerMessage,
@@ -184,6 +187,11 @@ function parseServerMessage(data: unknown): ServerMessage | null {
     }
   } catch { /* a malformed frame is ignored, not fatal */ }
   return null;
+}
+
+/** The UTF-8 size of a frame as it goes on the wire — what the server's `maxPayload` measures. */
+export function frameBytes(msg: ClientMessage): number {
+  return new TextEncoder().encode(JSON.stringify(msg)).length;
 }
 
 /** A close code that means "do not come back". */
@@ -388,6 +396,13 @@ export function createWsClient(deps: WsClientDeps, now: () => number = Date.now)
 
     request(frame) {
       if (state.status === 'stopped') return Promise.reject(new Error('remote console stopped'));
+      // Rule 5: never queue a frame the server cannot read. ws closes the
+      // socket (1009) on a payload over MAX_FRAME BYTES before the session
+      // sees it, so the `too-long` ack it promises never comes — and rule 2
+      // then resent the same frame after every reconnect, closing it again,
+      // until rule 4 called it "not confirmed". Answered here, as the ack the
+      // server would have sent.
+      if (frameBytes(frame) > MAX_FRAME) return Promise.resolve({ t: 'ack', nonce: frame.nonce, ok: false, code: 'too-long' });
       return new Promise<AckMessage>((resolve, reject) => {
         // A resend with force reuses the nonce: the newer frame replaces the
         // older one, and the older promise is settled by the same ack.

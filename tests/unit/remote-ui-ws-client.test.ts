@@ -326,3 +326,33 @@ describe('ws-client state machine', () => {
     expect(seen).toEqual([]);
   });
 });
+
+describe('ws-client: a frame the server cannot read is never sent (#254)', () => {
+  it('a send over 64 KiB of UTF-8 is answered too-long at once, never queued or resent', async () => {
+    const { client, last, clock } = setup();
+    client.start();
+    last().open();
+    last().receive(welcome);
+    // ~66 KB of UTF-8 from 22 000 three-byte characters: under 64 K code units.
+    const text = '字'.repeat(22_000);
+    const ack = await client.request(sendFrame('nonce-big-000001', { text }));
+    expect(ack).toEqual({ t: 'ack', nonce: 'nonce-big-000001', ok: false, code: 'too-long' });
+    expect(client.pendingCount).toBe(0);
+    expect(last().sent.filter((m) => (m as { t: string }).t === 'send')).toHaveLength(0);
+    // A reconnect has nothing to replay.
+    last().drop(1009);
+    clock.advance(1000);
+    last().open();
+    last().receive(welcome);
+    expect(last().sent.filter((m) => (m as { t: string }).t === 'send')).toHaveLength(0);
+  });
+
+  it('a frame just under the limit still goes out', () => {
+    const { client, last } = setup();
+    client.start();
+    last().open();
+    last().receive(welcome);
+    client.request(sendFrame('nonce-ok-0000001', { text: 'a'.repeat(16_000) })).catch(() => undefined);
+    expect(last().sent.filter((m) => (m as { t: string }).t === 'send')).toHaveLength(1);
+  });
+});

@@ -17,7 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClientMessage, RemoteKey, RemoteRosterEntry } from '../../../shared/remote-console-protocol';
 import { ackMessageKey, stateWordKey, type RemoteT } from '../i18n';
-import { armFromConfirm, tapKey, type KeyArm } from '../composer-state';
+import { armFromConfirm, tapKey, waivablePrompt, type KeyArm } from '../composer-state';
 import { loadFitMode, saveFitMode, type FitMode } from '../fit';
 import { isUnconfirmed, newNonce, type WsClient, type WsStatus } from '../ws-client';
 import { ChoiceRow } from '../components/ChoiceRow';
@@ -113,7 +113,8 @@ export function AttachScreen({ client, s, entry, status, operator, maxText, font
         // The server knew better than the roster (declared blocked, or a live
         // run depth): arm with the nonce it refused, so the next tap is it.
         if (ack.code === 'confirm' && ack.confirm) {
-          armPrompt.current = ack.prompt ?? entry?.promptId ?? null;
+          // Only a prompt this phone displays can be waived (see waivablePrompt).
+          armPrompt.current = waivablePrompt(ack.prompt, entry?.promptId ?? null);
           setArm(armFromConfirm(key, ack.nonce, Date.now(), ack.confirm, r.force));
         }
         else onError(t.t(ackMessageKey(ack.code), { max: maxText }));

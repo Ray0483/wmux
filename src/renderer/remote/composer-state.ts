@@ -59,7 +59,14 @@ export interface ComposerState {
 
 export type ComposerAction =
   | { type: 'edit'; text: string }
-  | { type: 'submit'; nonce: string; blocked: boolean }
+  /**
+   * `maxText`: the welcome's limit. Checked HERE, before any frame exists: a
+   * text past it is refused locally as `too-long`, the way the server would —
+   * except that the server never gets the chance for a long enough paste,
+   * because ws closes the socket (1009) on a frame over 64 KiB before the
+   * session reads it, and ws-client then resent it after every reconnect.
+   */
+  | { type: 'submit'; nonce: string; blocked: boolean; maxText?: number }
   | { type: 'ack'; nonce: string; ok: boolean; code?: AckCode; confirm?: ConfirmKind; submitSkipped?: boolean }
   | { type: 'accept' }
   | { type: 'cancel' }
@@ -89,8 +96,12 @@ export function composerLabel(s: ComposerState, blocked: boolean): ComposerLabel
   return blocked ? 'insert' : 'send';
 }
 
-function onSubmit(s: ComposerState, nonce: string, blocked: boolean): ComposerState {
+function onSubmit(s: ComposerState, nonce: string, blocked: boolean, maxText?: number): ComposerState {
   if (!canSubmit(s, blocked)) return s;
+  // The same count the session makes (UTF-16 code units, before sanitising).
+  if (maxText !== undefined && s.draft.length > maxText) {
+    return { ...s, phase: 'failed', code: 'too-long', confirm: null, frame: null, submitSkipped: false };
+  }
   if (blocked) {
     return {
       ...s,
@@ -142,7 +153,7 @@ export function composerReducer(s: ComposerState, a: ComposerAction): ComposerSt
       return settled ? { ...s, draft: a.text, phase: 'idle', code: null, submitSkipped: false } : { ...s, draft: a.text };
     }
     case 'submit':
-      return onSubmit(s, a.nonce, a.blocked);
+      return onSubmit(s, a.nonce, a.blocked, a.maxText);
     case 'ack':
       return onAck(s, a);
     case 'accept':
@@ -208,15 +219,49 @@ export function clearSentDraft(storage: DraftStorage | null, surfaceId: string, 
 export const ARM_WINDOW_MS = 1500;
 
 /**
- * Keys that need a second tap, from the roster alone. ESC and ^C while an agent
- * is working end its run (a bare ESC also clears blocked, agent-state.ts); Enter,
- * y and n while it is blocked answer a question. Arrows never arm — menu
- * navigation must stay one tap.
+ * The keys the SERVER treats as answering a blocked prompt (session.ts,
+ * `REMOTE_ANSWERING_KEYS`). Mirrored here so the phone warns on the first tap
+ * instead of learning it from a `confirm` round trip.
  */
+const ANSWERING_KEYS: ReadonlySet<RemoteKey> = new Set<RemoteKey>(['enter', 'y', 'n', 'esc', 'tab', 'shift-tab', 'backspace']);
+
+/**
+ * Every confirm a key needs, from the roster alone, in the order the server
+ * asks them — the last one is what the armed key says it will do.
+ *
+ * ESC and ^C while an agent is working end its run. On a BLOCKED agent the
+ * server asks two separate questions: `blocked` for any answering key (ESC
+ * included), and `interrupt` for ESC/^C while a run is open — which it usually
+ * is, since a permission prompt appears mid-run. Arming only one of them cost
+ * three taps for one Esc, the middle one labelled "answer". So both are
+ * accepted up front and the key says the graver thing: interrupt. Arrows never
+ * arm — menu navigation must stay one tap.
+ */
+export function keyArmKinds(key: RemoteKey, state: RemoteAgentState | null): ConfirmKind[] {
+  const interrupts = key === 'esc' || key === 'ctrl-c';
+  if (state === 'working') return interrupts ? ['interrupt'] : [];
+  if (state !== 'blocked') return [];
+  const kinds: ConfirmKind[] = ANSWERING_KEYS.has(key) ? ['blocked'] : [];
+  if (interrupts) kinds.push('interrupt');
+  return kinds;
+}
+
+/** The confirm an armed key is labelled with: the last (gravest) of `keyArmKinds`, or null. */
 export function keyNeedsArming(key: RemoteKey, state: RemoteAgentState | null): ConfirmKind | null {
-  if (state === 'working' && (key === 'esc' || key === 'ctrl-c')) return 'interrupt';
-  if (state === 'blocked' && (key === 'enter' || key === 'y' || key === 'n')) return 'blocked';
-  return null;
+  return keyArmKinds(key, state).at(-1) ?? null;
+}
+
+/**
+ * The prompt a `blocked` waiver may name after the server asked: the one this
+ * phone is DISPLAYING, and only if the server asked about that same one. The
+ * server's ack names its live prompt at refusal time; adopting it made the
+ * waiver cover a question the phone had never shown. When they differ the
+ * waiver names nothing, the server asks again, and by then the roster shows
+ * the new question.
+ */
+export function waivablePrompt(ackPrompt: number | undefined, displayed: number | null): number | null {
+  if (displayed === null) return null;
+  return ackPrompt === undefined || ackPrompt === displayed ? displayed : null;
 }
 
 export interface KeyArm {
@@ -247,8 +292,8 @@ export function tapKey(
     return { action: 'send', nonce: arm.nonce, force: arm.force, arm: null };
   }
   const nonce = mintNonce();
-  const kind = keyNeedsArming(key, state);
-  if (kind) return { action: 'arm', arm: { key, nonce, until: now + ARM_WINDOW_MS, force: [kind] } };
+  const kinds = keyArmKinds(key, state);
+  if (kinds.length > 0) return { action: 'arm', arm: { key, nonce, until: now + ARM_WINDOW_MS, force: kinds } };
   return { action: 'send', nonce, force: [], arm: null };
 }
 

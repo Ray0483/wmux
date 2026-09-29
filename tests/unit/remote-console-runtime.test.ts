@@ -410,12 +410,35 @@ describe('ConsoleRuntime sessions, roster, terminal', () => {
     const phone = await openPhone(port, await pairViaHttp(rt, port));
     phone.ws.send(JSON.stringify({ t: 'hello', v: 1 }));
     await phone.next('welcome');
-    // The hello answer is the (still empty) roster; the pumped one follows.
-    let agents = await phone.next('agents');
-    if ((agents.list as unknown[]).length === 0) agents = await phone.next('agents');
+    // Nothing polled yet at hello: no roster is sent then (an empty one would
+    // read as "No agents are running"); the first frame is the pumped one.
+    const agents = await phone.next('agents');
     expect(agents).toMatchObject({ list: [{ s: S, state: 'working' }] });
     expect(calls).toBeGreaterThanOrEqual(2);
     expect(ops.log).toHaveBeenCalledWith('remote-roster-timeout', { ms: 60 });
+  });
+
+  it('a blocked card carries the prompt id only while the renderer copy is the question main holds (#254)', async () => {
+    const card = (reason: string) => [[{
+      surfaceId: S, workspaceId: 'ws-1', workspaceTitle: 'Work', label: 'claude', kind: null,
+      state: 'blocked', stateSource: 'declared', blockedReason: reason,
+      choices: [{ id: 'yes', label: 'Yes' }, { id: 'no', label: 'No' }], answerPending: false, dwellMs: 0,
+    }]];
+    let rendererReason = 'Run tests?';
+    const mainReason = 'Drop prod table?';
+    const ops = fakeOps({
+      listRoster: vi.fn(async () => card(rendererReason)) as never,
+      promptId: () => 42,
+      promptView: () => ({ reason: mainReason, choices: [{ id: 'yes', label: 'Yes' }, { id: 'no', label: 'No' }] }),
+    });
+    const { rt, port } = await enabledRuntime(ops);
+    const phone = await openPhone(port, await pairViaHttp(rt, port));
+    phone.ws.send(JSON.stringify({ t: 'hello', v: 1 }));
+    const stale = await phone.next('agents');
+    expect(stale).toMatchObject({ list: [{ blockedReason: 'Run tests?', promptId: null, choices: [] }] });
+    rendererReason = mainReason;
+    rt.notifyAgentStateChanged();
+    expect(await phone.next('agents')).toMatchObject({ list: [{ blockedReason: 'Drop prod table?', promptId: 42 }] });
   });
 
   it('agents are sent only on change; a working → idle edge marks Done', async () => {

@@ -177,6 +177,8 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
   private rendererSender: ((wc: WebContents, req: RemoteRendererRequest) => boolean) | null = null;
   private notifyState: NotifyState = createNotifyState();
   private roster: RemoteRosterSource[] = [];
+  /** Whether `roster` came from a poll since the pump last started, rather than being stopPump's reset. */
+  private rosterFresh = false;
   private pumpTimer: ReturnType<typeof setInterval> | null = null;
   private coalesceTimer: Timer | null = null;
   private expireTimer: ReturnType<typeof setInterval> | null = null;
@@ -644,6 +646,7 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     if (this.coalesceTimer) clearTimeout(this.coalesceTimer);
     this.coalesceTimer = null;
     this.roster = [];
+    this.rosterFresh = false;
     this.trackers.clear();
   }
 
@@ -704,6 +707,7 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     if (!this.pumpTimer) return;
     const now = Date.now();
     this.roster = mergeRosters(raw);
+    this.rosterFresh = true;
     for (const t of this.trackers.values()) t.update(this.roster, now);
     const notes = diffNotifications(this.notifyState, this.roster, now);
     this.broadcastRoster(now);
@@ -717,8 +721,13 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
   private sendRosterTo(clientId: string, now: number): void {
     const live = this.sessions.get(clientId);
     if (!live?.session.isHelloed) return;
-    const choiceIds = this.ops.choiceIds?.bind(this.ops);
-    const list = buildWireRoster(this.roster, this.tracker(live.client.device.id), (s) => this.ops.promptId(s), choiceIds);
+    // Not polled yet since the pump started: `this.roster` is the empty list
+    // stopPump left, not a fact about the desktop, and sending it would flash
+    // "No agents are running" on a reconnecting phone. pumpStep broadcasts to
+    // every greeted client as soon as the first poll lands.
+    if (!this.rosterFresh) return;
+    const viewOf = this.ops.promptView?.bind(this.ops);
+    const list = buildWireRoster(this.roster, this.tracker(live.client.device.id), (s) => this.ops.promptId(s), viewOf);
     const key = rosterChangeKey(list);
     if (this.lastSentKey.get(clientId) === key) return;
     this.lastSentKey.set(clientId, key);

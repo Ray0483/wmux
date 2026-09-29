@@ -8,10 +8,12 @@ import {
   composerReducer,
   initialComposer,
   isArmed,
+  keyArmKinds,
   keyNeedsArming,
   loadDraft,
   saveDraft,
   tapKey,
+  waivablePrompt,
   type ComposerState,
   type DraftStorage,
 } from '../../src/renderer/remote/composer-state';
@@ -212,5 +214,36 @@ describe('key arming', () => {
     const arm = armFromConfirm('enter', 'nonce-refused', 100, 'blocked', ['interrupt']);
     expect(arm.force).toEqual(['interrupt', 'blocked']);
     expect(armFromConfirm('enter', 'nonce-refused', 100, 'blocked', ['blocked']).force).toEqual(['blocked']);
+  });
+});
+
+describe('review fixes, round 3 (#254)', () => {
+  it('a draft longer than the welcome limit fails too-long locally: no frame, the text stays', () => {
+    let s = typed('x'.repeat(11));
+    s = composerReducer(s, { type: 'submit', nonce: 'n-00000001', blocked: false, maxText: 10 });
+    expect(s).toMatchObject({ phase: 'failed', code: 'too-long', frame: null, draft: 'x'.repeat(11) });
+    s = composerReducer(typed('x'.repeat(10)), { type: 'submit', nonce: 'n-00000002', blocked: false, maxText: 10 });
+    expect(s.phase).toBe('sending');
+  });
+
+  it('on a blocked agent every answering key arms, and Esc/^C arm for BOTH server questions', () => {
+    for (const k of ['enter', 'y', 'n', 'tab', 'shift-tab', 'backspace'] as const) {
+      expect(keyArmKinds(k, 'blocked')).toEqual(['blocked']);
+    }
+    expect(keyArmKinds('esc', 'blocked')).toEqual(['blocked', 'interrupt']);
+    expect(keyNeedsArming('esc', 'blocked')).toBe('interrupt');
+    expect(keyArmKinds('ctrl-c', 'blocked')).toEqual(['interrupt']);
+    expect(keyArmKinds('up', 'blocked')).toEqual([]);
+    const first = tapKey(null, 'esc', 'blocked', 0, () => 'nonce-esc-00001');
+    expect(first).toMatchObject({ action: 'arm', arm: { force: ['blocked', 'interrupt'] } });
+    const second = tapKey(first.action === 'arm' ? first.arm : null, 'esc', 'blocked', 100, () => 'never');
+    expect(second).toEqual({ action: 'send', nonce: 'nonce-esc-00001', force: ['blocked', 'interrupt'], arm: null });
+  });
+
+  it('a blocked waiver names only the prompt the phone displays, never a newer one the server names', () => {
+    expect(waivablePrompt(7, 7)).toBe(7);
+    expect(waivablePrompt(undefined, 7)).toBe(7);
+    expect(waivablePrompt(8, 7)).toBeNull();
+    expect(waivablePrompt(8, null)).toBeNull();
   });
 });

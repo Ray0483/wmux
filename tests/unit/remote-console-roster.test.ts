@@ -7,9 +7,24 @@ import {
   mergeRosters,
   parseRosterSource,
   rosterChangeKey,
+  sameQuestion,
   sortRoster,
   toWire,
 } from '../../src/main/remote-console/roster';
+
+describe('sameQuestion (#254)', () => {
+  it('compares reason, ids and labels in order', () => {
+    const s = {
+      surfaceId: 'surf-00000001-0000-4000-8000-000000000000', workspaceId: 'ws', workspaceTitle: 'W', label: 'l', kind: null,
+      state: 'blocked' as const, stateSource: 'declared' as const, blockedReason: 'r',
+      choices: [{ id: 'y', label: 'Yes', isDefault: true }], answerPending: false, dwellMs: 0,
+    };
+    expect(sameQuestion(s, { reason: 'r', choices: [{ id: 'y', label: 'Yes' }] })).toBe(true);
+    expect(sameQuestion(s, { reason: 'x', choices: [{ id: 'y', label: 'Yes' }] })).toBe(false);
+    expect(sameQuestion(s, { reason: 'r', choices: [{ id: 'y', label: 'Oui' }] })).toBe(false);
+    expect(sameQuestion(s, { reason: 'r', choices: [] })).toBe(false);
+  });
+});
 import type { RemoteRosterSource } from '../../src/shared/remote-console-config';
 
 const sid = (n: number): string => `surf-0000000${n}-0000-4000-8000-000000000000`;
@@ -114,11 +129,43 @@ describe('toWire', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('withholds opaque ids while the renderer list lags main\'s, keeps self-naming ones', () => {
+  it('offers choices (opaque ids included) and the prompt id only while the renderer copy is main\'s question', () => {
     const choices = [{ id: 'allow once', label: 'Allow once' }, { id: 'deny', label: 'Deny' }];
-    expect(toWire(src(1, { choices }), false, 7, ['allow once', 'deny']).choices.map((c) => c.id)).toEqual(['c0', 'deny']);
-    expect(toWire(src(1, { choices }), false, 7, ['deny', 'allow once']).choices.map((c) => c.id)).toEqual(['deny']);
-    expect(toWire(src(1, { choices }), false, null, null).choices.map((c) => c.id)).toEqual(['deny']);
+    const blocked = src(1, { state: 'blocked', blockedReason: 'permission: Bash', choices });
+    const view = { reason: 'permission: Bash', choices };
+    const same = toWire(blocked, false, 7, view);
+    expect(same.choices.map((c) => c.id)).toEqual(['c0', 'deny']);
+    expect(same.promptId).toBe(7);
+    // Reordered, or main no longer blocked: neither the buttons nor the id.
+    for (const lag of [{ reason: 'permission: Bash', choices: [...choices].reverse() }, null]) {
+      const w = toWire(blocked, false, 7, lag);
+      expect(w.choices).toEqual([]);
+      expect(w.promptId).toBeNull();
+    }
+  });
+
+  it('never pairs one question\'s text with the next question\'s prompt id, even with the same ids (#254)', () => {
+    // The renderer still shows prompt A; main already re-blocked on B with the
+    // same wire-safe ids and bumped promptId. A tap on this card's Yes would
+    // otherwise pass the stale check and answer B.
+    const a = src(1, {
+      state: 'blocked', blockedReason: 'Run tests?',
+      choices: [{ id: 'yes', label: 'Yes' }, { id: 'no', label: 'No' }],
+    });
+    const newReason = { reason: 'Drop prod table?', choices: [{ id: 'yes', label: 'Yes' }, { id: 'no', label: 'No' }] };
+    const newLabels = { reason: 'Run tests?', choices: [{ id: 'yes', label: 'Yes, drop it' }, { id: 'no', label: 'No' }] };
+    for (const b of [newReason, newLabels]) {
+      const w = toWire(a, false, 42, b);
+      expect(w.promptId).toBeNull();
+      expect(w.choices).toEqual([]);
+      expect(w.blockedReason).toBe('Run tests?');
+    }
+    const t = new DoneTracker();
+    const [w] = buildWireRoster([a], t, () => 42, () => newReason);
+    expect(w.promptId).toBeNull();
+    const [ok] = buildWireRoster([a], t, () => 41, () => ({ reason: 'Run tests?', choices: a.choices }));
+    expect(ok.promptId).toBe(41);
+    expect(ok.choices.map((c) => c.id)).toEqual(['yes', 'no']);
   });
 
   it('unknown parity: a silent agent is state unknown, never done, and sorts last (#235)', () => {

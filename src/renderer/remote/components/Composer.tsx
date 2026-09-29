@@ -20,6 +20,7 @@ import {
   initialComposer,
   loadDraft,
   saveDraft,
+  waivablePrompt,
   type ComposerAction,
   type ComposerFrame,
   type ComposerState,
@@ -78,7 +79,9 @@ export function Composer({ client, s, blocked, prompt, maxText, t }: Readonly<Pr
     if (frame.force.includes('blocked') && waived !== null) msg.prompt = waived;
     client.request(msg).then(
       (ack) => {
-        if (ack.code === 'confirm' && ack.confirm === 'blocked') confirmPrompt.current = ack.prompt ?? promptRef.current;
+        // Only the prompt this phone is showing may be waived; a newer one
+        // the server names is asked again once the roster shows it.
+        if (ack.code === 'confirm' && ack.confirm === 'blocked') confirmPrompt.current = waivablePrompt(ack.prompt, promptRef.current);
         // Also when this composer is already unmounted — see clearSentDraft.
         if (ack.ok) clearSentDraft(safeStorage(), s, frame.text);
         dispatch({ type: 'ack', nonce: ack.nonce, ok: ack.ok, code: ack.code, confirm: ack.confirm, submitSkipped: ack.submitSkipped });
@@ -100,7 +103,7 @@ export function Composer({ client, s, blocked, prompt, maxText, t }: Readonly<Pr
   const submit = () => {
     // Blocked: the sheet opens now, about the prompt on screen now.
     confirmPrompt.current = blocked ? promptRef.current : null;
-    act({ type: 'submit', nonce: newNonce(), blocked });
+    act({ type: 'submit', nonce: newNonce(), blocked, maxText });
   };
 
   const label = composerLabel(state, blocked);

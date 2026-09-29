@@ -22,7 +22,13 @@ import type {
 } from '../../shared/remote-console-config';
 import type { RemoteScope } from '../../shared/remote-console-protocol';
 
-export type DeliverAnswerReason = 'not-blocked' | 'no-choices' | 'unknown-choice' | 'unknown-surface' | 'write-failed' | 'stale';
+/** A prompt's reason and declared answers, as agent-state holds them. */
+export interface PromptView {
+  reason: string | null;
+  choices: readonly { id: string; label: string }[];
+}
+
+export type DeliverAnswerReason ='not-blocked' | 'no-choices' | 'unknown-choice' | 'unknown-surface' | 'write-failed' | 'stale';
 
 export interface ConsoleOps {
   /** `__wmux_remoteRoster()` on every window; one array per window, merged by the runtime (#143). */
@@ -42,12 +48,15 @@ export interface ConsoleOps {
    */
   promptId(id: string): number | null;
   /**
-   * The current prompt's declared choice ids in declared order, or null when
-   * not blocked. An opaque wire choice id is an index into THIS list, so the
-   * roster withholds opaque ids while the renderer's copy disagrees with it.
-   * Optional: without it every choice is offered as the renderer declared it.
+   * What the current prompt says — reason, and declared answers (id + label)
+   * in declared order — or null when not blocked. The roster's text comes from
+   * the renderer, a hop behind; `promptId` is attached (and choices offered)
+   * only while the renderer's copy says exactly this, so a card never pairs
+   * one question's text with the next one's id. An opaque wire choice id is an
+   * index into THIS list too. Optional: without it the renderer's copy is
+   * offered as-is (pure callers and tests).
    */
-  choiceIds?(id: string): readonly string[] | null;
+  promptView?(id: string): PromptView | null;
   /** The `pane.answer_agent` path: blocked-only, declared payload only, never clears blocked; `stale` when `promptId` is not the live prompt. */
   deliverAnswer(id: string, choiceId: string, promptId: number): Promise<{ ok: true } | { ok: false; reason: DeliverAnswerReason }>;
   notifyDesktop(notice: RemoteDesktopNotice): void;
