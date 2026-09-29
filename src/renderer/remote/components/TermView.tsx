@@ -1,0 +1,288 @@
+/**
+ * The phone's read-only mirror of one desktop terminal (#254).
+ *
+ * It is a MIRROR, and every wiring choice below follows from that:
+ *
+ *  - `disableStdin`, and no `onData` at all. Keystrokes reach the PTY only
+ *    through the composer and the key bar, which carry nonces, arm, and pass
+ *    the server's blocked/interrupt guards. An xterm wired to the socket would
+ *    be a second input path around every one of those.
+ *  - The grid is the desktop's (`term.reset` carries cols×rows). The phone
+ *    never resizes a PTY (I4) — only the FONT is ours, per fit.ts.
+ *  - No clipboard or OSC 52 addon: a program in the pane must not be able to
+ *    write the phone's clipboard.
+ *  - Links: only `http:`/`https:`, only OSC 8 hyperlinks the program declared,
+ *    and only after a confirm sheet shows the full URL — a terminal is the
+ *    easiest place in the world to make link text lie about its target.
+ *
+ * Scrolling is LOCAL: a finger scrolls this xterm's own scrollback, through the
+ * same pure recognisers the desktop uses (touch-pan.ts, touch-fling.ts), and
+ * never becomes wheel reports to the PTY. The alternate screen has no
+ * scrollback, so there the hint points at PgUp/PgDn on the key bar.
+ *
+ * Terminal output never touches React state: `term.data` goes straight from
+ * the socket listener into `term.write`. A setState per chunk would re-render
+ * the whole attach screen at PTY speed, which is #141 on a phone CPU.
+ */
+
+import { useEffect, useRef, useState } from 'react';
+import { Terminal, type ITheme } from '@xterm/xterm';
+import type { ServerMessage } from '../../../shared/remote-console-protocol';
+import { createTouchPanTracker } from '../../utils/touch-pan';
+import { createFlingVelocityTracker, startFling, stepFling, type Fling } from '../../utils/touch-fling';
+import { fontForMode, type FitMode } from '../fit';
+import type { RemoteT } from '../i18n';
+import type { WsClient } from '../ws-client';
+
+/** A URL this view will offer to open, or null. Everything that is not plain http(s) is refused. */
+export function safeHttpUrl(text: string): string | null {
+  try {
+    const u = new URL(text);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
+const DARK: ITheme = { background: '#0d1117', foreground: '#e6edf3', cursor: '#e6edf3', selectionBackground: '#264f78' };
+const LIGHT: ITheme = {
+  background: '#ffffff', foreground: '#1f2328', cursor: '#1f2328', selectionBackground: '#b6d7ff',
+  // The default ANSI white is unreadable on white; darken the two that vanish.
+  white: '#6e7781', brightWhite: '#8c959f', yellow: '#9a6700', brightYellow: '#7d4e00',
+};
+
+type TermStatus = 'loading' | 'live' | 'lag' | 'exit' | 'error';
+type TermError = Extract<ServerMessage, { t: 'term.error' }>['code'];
+
+interface Props {
+  client: WsClient;
+  s: string;
+  mode: FitMode;
+  fontScale: number;
+  dark: boolean;
+  t: RemoteT;
+  onLink(url: string): void;
+}
+
+function errorKey(code: TermError) {
+  if (code === 'timeout') return 'attach.errTimeout' as const;
+  if (code === 'gone') return 'attach.errGone' as const;
+  return 'attach.errNoTerminal' as const;
+}
+
+export function TermView({ client, s, mode, fontScale, dark, t, onLink }: Readonly<Props>) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<Terminal | null>(null);
+  const onLinkRef = useRef(onLink);
+  onLinkRef.current = onLink;
+  const layoutRef = useRef({ mode, fontScale });
+  layoutRef.current = { mode, fontScale };
+
+  const [status, setStatus] = useState<TermStatus>('loading');
+  const [exitCode, setExitCode] = useState(0);
+  const [error, setError] = useState<TermError | null>(null);
+  const [alt, setAlt] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
+
+  // ── Terminal lifetime + stream ──────────────────────────────────────────
+  useEffect(() => {
+    const host = hostRef.current;
+    const wrap = wrapRef.current;
+    if (!host || !wrap) return;
+    const term = new Terminal({
+      disableStdin: true,
+      cols: 80,
+      rows: 24,
+      scrollback: 1000,
+      cursorBlink: false,
+      fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+      fontSize: 13,
+      linkHandler: {
+        allowNonHttpProtocols: false,
+        activate: (_e, text) => {
+          const url = safeHttpUrl(text);
+          if (url) onLinkRef.current(url);
+        },
+      },
+    });
+    termRef.current = term;
+    term.open(host);
+
+    const refit = () => {
+      const { mode: m, fontScale: sc } = layoutRef.current;
+      const size = fontForMode(m, wrap.clientWidth, term.cols, sc);
+      if (term.options.fontSize !== size) term.options.fontSize = size;
+    };
+    const trackBottom = () => {
+      const b = term.buffer.active;
+      setAtBottom(b.viewportY >= b.baseY);
+    };
+
+    const subs = [
+      term.buffer.onBufferChange((b) => setAlt(b.type === 'alternate')),
+      term.onScroll(trackBottom),
+      term.onWriteParsed(trackBottom),
+    ];
+
+    const unsubscribe = client.subscribe((msg) => {
+      if (!msg.t.startsWith('term.') || !('s' in msg) || msg.s !== s) return;
+      switch (msg.t) {
+        case 'term.reset':
+          term.reset();
+          term.resize(msg.cols, msg.rows);
+          refit();
+          term.write(msg.data);
+          setError(null);
+          setStatus('live');
+          break;
+        case 'term.data':
+          term.write(msg.data);
+          break;
+        case 'term.lag':
+          setStatus('lag');
+          break;
+        case 'term.exit':
+          setExitCode(msg.code);
+          setStatus('exit');
+          break;
+        case 'term.error':
+          setError(msg.code);
+          setStatus('error');
+          break;
+      }
+    });
+
+    const ro = new ResizeObserver(refit);
+    ro.observe(wrap);
+    client.attach(s);
+
+    return () => {
+      unsubscribe();
+      client.detach();
+      ro.disconnect();
+      for (const d of subs) d.dispose();
+      term.dispose();
+      termRef.current = null;
+    };
+  }, [client, s]);
+
+  // ── Font follows the fit mode / scale ───────────────────────────────────
+  useEffect(() => {
+    const term = termRef.current;
+    const wrap = wrapRef.current;
+    if (!term || !wrap) return;
+    term.options.fontSize = fontForMode(mode, wrap.clientWidth, term.cols, fontScale);
+  }, [mode, fontScale]);
+
+  useEffect(() => {
+    const term = termRef.current;
+    if (term) term.options.theme = dark ? DARK : LIGHT;
+  }, [dark]);
+
+  // ── Touch: local scrollback via the desktop's pure recognisers ─────────
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const pan = createTouchPanTracker();
+    const velocity = createFlingVelocityTracker();
+    let carry = 0;
+    let fling: Fling | null = null;
+    let raf = 0;
+    let lastFrame = 0;
+
+    const cellHeight = (): number => {
+      const term = termRef.current;
+      const screen = hostRef.current?.querySelector('.xterm-screen');
+      if (!term || !screen || term.rows <= 0) return 16;
+      return Math.max(1, screen.clientHeight / term.rows);
+    };
+    // Pixels in, whole lines out, remainder carried — so a slow drag still
+    // scrolls, one line per cell of travel, instead of rounding to nothing.
+    const scrollPx = (px: number) => {
+      const term = termRef.current;
+      if (!term) return;
+      carry += px;
+      const h = cellHeight();
+      const lines = Math.trunc(carry / h);
+      if (lines !== 0) {
+        carry -= lines * h;
+        term.scrollLines(lines);
+      }
+    };
+    const stopFling = () => {
+      fling = null;
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+    };
+    const frame = (ts: number) => {
+      if (!fling) return;
+      const step = stepFling(fling, ts - lastFrame);
+      lastFrame = ts;
+      scrollPx(step.deltaY);
+      fling = step.next;
+      raf = fling ? requestAnimationFrame(frame) : 0;
+    };
+
+    const onDown = (e: PointerEvent) => {
+      stopFling();
+      if (e.pointerType !== 'touch') return;
+      pan.down(e.pointerId, e.clientX, e.clientY);
+      velocity.reset();
+      carry = 0;
+    };
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      const delta = pan.move(e.pointerId, e.clientX, e.clientY);
+      if (!pan.panning) return;
+      e.preventDefault();
+      velocity.add(e.timeStamp, e.clientY);
+      if (delta !== 0) scrollPx(delta);
+    };
+    const onUp = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      const wasPanning = pan.panning;
+      pan.up(e.pointerId);
+      if (e.type === 'pointerup' && wasPanning && pan.phase === 'idle') {
+        fling = startFling(velocity.releaseVelocity(e.timeStamp));
+        if (fling) {
+          lastFrame = performance.now();
+          raf = requestAnimationFrame(frame);
+        }
+      }
+    };
+
+    wrap.addEventListener('pointerdown', onDown);
+    wrap.addEventListener('pointermove', onMove, { passive: false });
+    wrap.addEventListener('pointerup', onUp);
+    wrap.addEventListener('pointercancel', onUp);
+    return () => {
+      stopFling();
+      wrap.removeEventListener('pointerdown', onDown);
+      wrap.removeEventListener('pointermove', onMove);
+      wrap.removeEventListener('pointerup', onUp);
+      wrap.removeEventListener('pointercancel', onUp);
+    };
+  }, []);
+
+  let overlay: string | null = null;
+  if (status === 'loading') overlay = t.t('attach.loading');
+  else if (status === 'error' && error) overlay = t.t(errorKey(error));
+  else if (status === 'exit') overlay = t.t('attach.exited', { code: exitCode });
+
+  return (
+    <div className="rc-term">
+      <div ref={wrapRef} className={mode === 'pan' ? 'rc-term__wrap rc-term__wrap--pan' : 'rc-term__wrap'}>
+        <div ref={hostRef} className="rc-term__host" />
+      </div>
+      {overlay && <div className="rc-term__overlay" role="status">{overlay}</div>}
+      {status === 'lag' && <div className="rc-term__pill rc-term__pill--lag" role="status">{t.t('attach.lag')}</div>}
+      {alt && status === 'live' && <div className="rc-term__hint">{t.t('attach.altHint')}</div>}
+      {!atBottom && !alt && (
+        <button type="button" className="rc-term__pill rc-term__jump" onClick={() => termRef.current?.scrollToBottom()}>
+          {t.t('attach.jumpBottom')} ↓
+        </button>
+      )}
+    </div>
+  );
+}

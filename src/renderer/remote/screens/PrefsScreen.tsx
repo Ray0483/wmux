@@ -1,0 +1,175 @@
+/**
+ * Phone-side preferences (#254): language, theme, text size, alerts, and
+ * "Forget this device".
+ *
+ * These live in this browser's localStorage and nowhere else — they are about
+ * how THIS phone renders, not about wmux, and the desktop never needs to know.
+ * Every access is in try/catch (private mode, blocked site data) and a failure
+ * just means the defaults.
+ *
+ * The limitations line is deliberate honesty: with no service worker and no
+ * Web Push in 2.15.0, a closed page receives nothing, and iOS Safari has no
+ * `navigator.vibrate`. Saying so beats a user trusting an alert that cannot come.
+ */
+
+import { useState } from 'react';
+import { REMOTE_LANGUAGES, isRemoteLang, type RemoteLang, type RemoteT } from '../i18n';
+import type { RemoteScope } from '../../../shared/remote-console-protocol';
+import { ConfirmSheet } from '../components/ConfirmSheet';
+
+export type ThemePref = 'system' | 'light' | 'dark';
+
+export interface RemotePrefs {
+  lang: 'auto' | RemoteLang;
+  theme: ThemePref;
+  fontScale: number;
+}
+
+export const DEFAULT_PREFS: RemotePrefs = { lang: 'auto', theme: 'system', fontScale: 1 };
+export const FONT_SCALES = [0.85, 1, 1.15, 1.3] as const;
+const PREFS_KEY = 'wmux-remote-prefs';
+
+export function loadPrefs(): RemotePrefs {
+  try {
+    const raw: unknown = JSON.parse(globalThis.localStorage?.getItem(PREFS_KEY) ?? 'null');
+    if (typeof raw !== 'object' || raw === null) return DEFAULT_PREFS;
+    const o = raw as Record<string, unknown>;
+    return {
+      lang: o.lang === 'auto' || isRemoteLang(o.lang) ? o.lang : 'auto',
+      theme: o.theme === 'light' || o.theme === 'dark' ? o.theme : 'system',
+      fontScale: FONT_SCALES.includes(o.fontScale as (typeof FONT_SCALES)[number]) ? (o.fontScale as number) : 1,
+    };
+  } catch {
+    return DEFAULT_PREFS;
+  }
+}
+
+export function savePrefs(p: RemotePrefs): void {
+  try { globalThis.localStorage?.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* defaults next time */ }
+}
+
+type AlertState = 'on' | 'off' | 'denied' | 'unavailable';
+
+function alertState(): AlertState {
+  // A Notification needs a secure context: a LAN bind over plain http never has one.
+  if (!globalThis.isSecureContext || typeof Notification === 'undefined') return 'unavailable';
+  if (Notification.permission === 'granted') return 'on';
+  return Notification.permission === 'denied' ? 'denied' : 'off';
+}
+
+interface Props {
+  t: RemoteT;
+  prefs: RemotePrefs;
+  host: string;
+  device: { name: string; scope: RemoteScope } | null;
+  effectiveScope: RemoteScope;
+  onChange(p: RemotePrefs): void;
+  onBack(): void;
+  onForget(): void;
+}
+
+export function PrefsScreen({ t, prefs, host, device, effectiveScope, onChange, onBack, onForget }: Readonly<Props>) {
+  const [alerts, setAlerts] = useState<AlertState>(alertState);
+  const [confirmForget, setConfirmForget] = useState(false);
+
+  const enableAlerts = () => {
+    // Asked only from this click — a permission prompt on page load is the
+    // pattern every browser now quietly auto-denies.
+    Notification.requestPermission().then(() => setAlerts(alertState()), () => setAlerts(alertState()));
+  };
+
+  const alertText: Record<Exclude<AlertState, 'off'>, string> = {
+    on: t.t('prefs.alertsOn'),
+    denied: t.t('prefs.alertsDenied'),
+    unavailable: t.t('prefs.alertsUnavailable'),
+  };
+
+  return (
+    <main className="rc-screen rc-prefs">
+      <header className="rc-bar">
+        <button type="button" className="rc-bar__btn" onClick={onBack} aria-label={t.t('common.back')}>‹</button>
+        <h1 className="rc-bar__title">{t.t('common.settings')}</h1>
+      </header>
+
+      <div className="rc-prefs__body">
+        <section className="rc-prefs__section">
+          <p className="rc-prefs__line">{t.t('prefs.connectedTo', { host })}</p>
+          {device && <p className="rc-prefs__line">{t.t('prefs.device', { name: device.name })}</p>}
+          <p className="rc-prefs__line rc-prefs__muted">
+            {effectiveScope === 'operator' ? t.t('prefs.scopeOperator') : t.t('prefs.scopeViewer')}
+          </p>
+        </section>
+
+        <label className="rc-field">
+          <span className="rc-field__label">{t.t('prefs.language')}</span>
+          <select
+            className="rc-field__input"
+            value={prefs.lang}
+            onChange={(e) => onChange({ ...prefs, lang: e.target.value as RemotePrefs['lang'] })}
+          >
+            <option value="auto">{t.t('prefs.languageAuto')}</option>
+            {REMOTE_LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
+          </select>
+        </label>
+
+        <fieldset className="rc-field rc-seg">
+          <legend className="rc-field__label">{t.t('prefs.theme')}</legend>
+          {(['system', 'light', 'dark'] as const).map((th) => {
+            const labelKey = { system: 'prefs.themeSystem', light: 'prefs.themeLight', dark: 'prefs.themeDark' } as const;
+            return (
+              <button
+                key={th}
+                type="button"
+                className={prefs.theme === th ? 'rc-seg__btn rc-seg__btn--on' : 'rc-seg__btn'}
+                aria-pressed={prefs.theme === th}
+                onClick={() => onChange({ ...prefs, theme: th })}
+              >
+                {t.t(labelKey[th])}
+              </button>
+            );
+          })}
+        </fieldset>
+
+        <fieldset className="rc-field rc-seg">
+          <legend className="rc-field__label">{t.t('prefs.fontScale')}</legend>
+          {FONT_SCALES.map((sc) => (
+            <button
+              key={sc}
+              type="button"
+              className={prefs.fontScale === sc ? 'rc-seg__btn rc-seg__btn--on' : 'rc-seg__btn'}
+              aria-pressed={prefs.fontScale === sc}
+              style={{ fontSize: `${Math.round(14 * sc)}px` }}
+              onClick={() => onChange({ ...prefs, fontScale: sc })}
+            >
+              A
+            </button>
+          ))}
+        </fieldset>
+
+        <section className="rc-prefs__section">
+          <h2 className="rc-field__label">{t.t('prefs.alerts')}</h2>
+          {alerts === 'off'
+            ? <button type="button" className="rc-btn" onClick={enableAlerts}>{t.t('prefs.enableAlerts')}</button>
+            : <p className="rc-prefs__line">{alertText[alerts]}</p>}
+          <p className="rc-prefs__line rc-prefs__muted">{t.t('prefs.limits')}</p>
+        </section>
+
+        <button type="button" className="rc-btn rc-btn--danger rc-prefs__forget" onClick={() => setConfirmForget(true)}>
+          {t.t('prefs.forget')}
+        </button>
+      </div>
+
+      {confirmForget && (
+        <ConfirmSheet
+          title={t.t('prefs.forgetTitle')}
+          body={t.t('prefs.forgetBody')}
+          okLabel={t.t('prefs.forget')}
+          cancelLabel={t.t('common.cancel')}
+          danger
+          onOk={() => { setConfirmForget(false); onForget(); }}
+          onCancel={() => setConfirmForget(false)}
+        />
+      )}
+    </main>
+  );
+}

@@ -1,0 +1,221 @@
+/**
+ * The composer and the key bar as pure state machines (#254).
+ *
+ * The composer is where a phone types into somebody's agent, so the two
+ * failure modes it must not have are "typed twice" and "typed into a question
+ * it did not see". Both are decided here, without a DOM:
+ *
+ *   idle ──submit──▶ sending ──ack ok──▶ acked            (draft cleared HERE, and only here)
+ *     │                 ├──ack confirm──▶ confirm(kind) ──accept──▶ sending (same nonce, force)
+ *     │                 └──ack refused──▶ failed(code)       └──cancel──▶ idle
+ *     └──submit while blocked──▶ confirm('blocked')   (client pre-arm; Insert = force, no Enter)
+ *
+ * "Draft cleared only on ack ok" is the send-once half: a `sending` that never
+ * hears back (socket died mid-flight) keeps the text in the box AND keeps the
+ * frame pending in ws-client, which resends it with the same nonce — so the
+ * worst case is a duplicate ack, never a duplicate write and never lost text.
+ *
+ * Why "Insert" while blocked: a blocked agent is waiting on a choice, and text
+ * followed by Enter is exactly the keystroke that answers it. The server
+ * guards the same case (`confirm:'blocked'`, #128), but only for DECLARED
+ * blocked state; a DETECTED one has no record in main to guard (spec §0.10),
+ * so the client pre-arms from the roster as the second layer. Insert types the
+ * text without the trailing Enter, which leaves the answer to the human.
+ */
+
+import type { AckCode, ConfirmKind, RemoteAgentState, RemoteKey } from '../../shared/remote-console-protocol';
+
+// ── Composer ──────────────────────────────────────────────────────────────
+
+/** What will be (re)sent. Held across a confirm so the resend is byte-identical but for `force`. */
+export interface ComposerFrame {
+  nonce: string;
+  text: string;
+  submit: boolean;
+  force: boolean;
+}
+
+export type ComposerPhase = 'idle' | 'sending' | 'acked' | 'confirm' | 'failed';
+
+export interface ComposerState {
+  phase: ComposerPhase;
+  draft: string;
+  frame: ComposerFrame | null;
+  confirm: ConfirmKind | null;
+  code: AckCode | null;
+}
+
+export type ComposerAction =
+  | { type: 'edit'; text: string }
+  | { type: 'submit'; nonce: string; blocked: boolean }
+  | { type: 'ack'; nonce: string; ok: boolean; code?: AckCode; confirm?: ConfirmKind }
+  | { type: 'accept' }
+  | { type: 'cancel' }
+  /** The request itself failed (client stopped); the text stays. */
+  | { type: 'error' };
+
+export const initialComposer = (draft = ''): ComposerState => ({
+  phase: 'idle', draft, frame: null, confirm: null, code: null,
+});
+
+/** Can the button be pressed at all? */
+export function canSubmit(s: ComposerState, blocked: boolean): boolean {
+  if (s.phase === 'sending' || s.phase === 'confirm') return false;
+  // An empty Send is a bare Enter, which is a useful thing to send; an empty
+  // Insert types nothing and would only arm a confirm for no reason.
+  return !(blocked && s.draft.length === 0);
+}
+
+export type ComposerLabel = 'send' | 'insert' | 'sending';
+
+export function composerLabel(s: ComposerState, blocked: boolean): ComposerLabel {
+  if (s.phase === 'sending') return 'sending';
+  return blocked ? 'insert' : 'send';
+}
+
+function onSubmit(s: ComposerState, nonce: string, blocked: boolean): ComposerState {
+  if (!canSubmit(s, blocked)) return s;
+  if (blocked) {
+    return {
+      ...s,
+      phase: 'confirm',
+      confirm: 'blocked',
+      code: null,
+      frame: { nonce, text: s.draft, submit: false, force: false },
+    };
+  }
+  return {
+    ...s,
+    phase: 'sending',
+    confirm: null,
+    code: null,
+    frame: { nonce, text: s.draft, submit: true, force: false },
+  };
+}
+
+function onAck(s: ComposerState, a: Extract<ComposerAction, { type: 'ack' }>): ComposerState {
+  // A late ack for a frame the user already moved past is not ours to act on.
+  if (s.phase !== 'sending' || !s.frame || s.frame.nonce !== a.nonce) return s;
+  if (a.ok) return { ...s, phase: 'acked', draft: '', frame: null, confirm: null, code: null };
+  if (a.code === 'confirm' && a.confirm) {
+    return { ...s, phase: 'confirm', confirm: a.confirm, code: null };
+  }
+  return { ...s, phase: 'failed', code: a.code ?? 'write-failed', confirm: null };
+}
+
+function onAccept(s: ComposerState): ComposerState {
+  if (s.phase !== 'confirm' || !s.frame) return s;
+  // A blocked confirm becomes an Insert: the text lands, the Enter does not.
+  // Multiline and interrupt keep what the user asked for, plus force.
+  const submit = s.confirm === 'blocked' ? false : s.frame.submit;
+  return { ...s, phase: 'sending', frame: { ...s.frame, submit, force: true }, confirm: null };
+}
+
+export function composerReducer(s: ComposerState, a: ComposerAction): ComposerState {
+  switch (a.type) {
+    case 'edit': {
+      // Typing after a result returns to idle; typing DURING a send only edits
+      // the box (the in-flight frame already carries its own copy of the text).
+      const settled = s.phase === 'acked' || s.phase === 'failed';
+      return settled ? { ...s, draft: a.text, phase: 'idle', code: null } : { ...s, draft: a.text };
+    }
+    case 'submit':
+      return onSubmit(s, a.nonce, a.blocked);
+    case 'ack':
+      return onAck(s, a);
+    case 'accept':
+      return onAccept(s);
+    case 'cancel':
+      return s.phase === 'confirm' ? { ...s, phase: 'idle', frame: null, confirm: null } : s;
+    case 'error':
+      return s.phase === 'sending' ? { ...s, phase: 'failed', code: 'write-failed', frame: null } : s;
+  }
+}
+
+// ── Draft persistence ─────────────────────────────────────────────────────
+
+/** The subset of Storage used; injected so the tests need no DOM. */
+export interface DraftStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+const DRAFT_PREFIX = 'wmux-remote-draft:';
+
+/**
+ * Every access in try/catch: private browsing, a full quota, or blocked site
+ * data all make Storage throw, and a draft is a convenience — losing it must
+ * never take the composer down with it.
+ */
+export function loadDraft(storage: DraftStorage | null, surfaceId: string): string {
+  if (!storage) return '';
+  try {
+    return storage.getItem(DRAFT_PREFIX + surfaceId) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function saveDraft(storage: DraftStorage | null, surfaceId: string, text: string): void {
+  if (!storage) return;
+  try {
+    if (text) storage.setItem(DRAFT_PREFIX + surfaceId, text);
+    else storage.removeItem(DRAFT_PREFIX + surfaceId);
+  } catch { /* see loadDraft */ }
+}
+
+// ── Key arming ────────────────────────────────────────────────────────────
+
+export const ARM_WINDOW_MS = 1500;
+
+/**
+ * Keys that need a second tap, from the roster alone. ESC and ^C while an agent
+ * is working end its run (a bare ESC also clears blocked, agent-state.ts); Enter,
+ * y and n while it is blocked answer a question. Arrows never arm — menu
+ * navigation must stay one tap.
+ */
+export function keyNeedsArming(key: RemoteKey, state: RemoteAgentState | null): boolean {
+  if (state === 'working') return key === 'esc' || key === 'ctrl-c';
+  if (state === 'blocked') return key === 'enter' || key === 'y' || key === 'n';
+  return false;
+}
+
+export interface KeyArm {
+  key: RemoteKey;
+  nonce: string;
+  until: number;
+}
+
+export type KeyTapResult =
+  | { action: 'send'; nonce: string; force: boolean; arm: null }
+  | { action: 'arm'; arm: KeyArm };
+
+/**
+ * One tap. The second tap inside the window resends the SAME nonce with force,
+ * so a first tap that the SERVER confirmed (and did not execute) and a second
+ * one that it executes are, to its nonce LRU, one action.
+ */
+export function tapKey(
+  arm: KeyArm | null,
+  key: RemoteKey,
+  state: RemoteAgentState | null,
+  now: number,
+  mintNonce: () => string,
+): KeyTapResult {
+  if (arm && arm.key === key && now < arm.until) {
+    return { action: 'send', nonce: arm.nonce, force: true, arm: null };
+  }
+  const nonce = mintNonce();
+  if (keyNeedsArming(key, state)) return { action: 'arm', arm: { key, nonce, until: now + ARM_WINDOW_MS } };
+  return { action: 'send', nonce, force: false, arm: null };
+}
+
+/** A server `confirm` ack for a key arms it with the nonce it refused. */
+export function armFromConfirm(key: RemoteKey, nonce: string, now: number): KeyArm {
+  return { key, nonce, until: now + ARM_WINDOW_MS };
+}
+
+export function isArmed(arm: KeyArm | null, key: RemoteKey, now: number): boolean {
+  return arm !== null && arm.key === key && now < arm.until;
+}
