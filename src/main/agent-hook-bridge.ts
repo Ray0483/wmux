@@ -22,6 +22,7 @@
 
 import { SurfaceId } from '../shared/types';
 import { getAgentState, reportAgent, releaseAgent, ReportAgentParams } from './agent-state';
+import { classifyClaudeNotification } from '../shared/claude-notification';
 
 /** The hook events wmux registers. */
 export type ClaudeHookEvent =
@@ -94,6 +95,11 @@ export interface HookTurnContext {
   known: boolean;
   /** The pane's current declared run refcount. */
   runDepth: number;
+  /**
+   * The Notification payload's `notification_type`, when the hook helper
+   * forwarded one (issue #253). Ignored by every other event.
+   */
+  notificationType?: string | null;
   /**
    * Whether the turn-opening hooks are known to be firing at all. False means
    * `runDepth` carries no information about turn boundaries, so nothing may be
@@ -214,9 +220,24 @@ export function hookToAgentReport(
     // keystroke didn't satisfy the agent, the 60-second nudge puts the pane
     // back to asking" — which is only sound if the nudge cannot ALSO invent a
     // block on a pane that is simply idle. It now cannot.
-    case 'Notification':
-      if (ctx.known && ctx.turnStartTracked && ctx.runDepth === 0) return null;
+    //
+    // ...except that the depth argument has a hole, and #253 found it: a
+    // BACKGROUND subagent keeps firing PreToolUse/PostToolUse on the parent's
+    // surface after the parent's Stop, which puts the depth back at 1, and the
+    // idle nudge that follows once everything has gone quiet was read as a
+    // prompt — "Needs you" on a pane nobody had asked anything. So the payload's
+    // own word comes first: Claude Code labels the nudge `idle_prompt` (and the
+    // text fallback matches the nudge's exact wording, for payloads that carry no
+    // type). Neither is a question, so neither blocks — and neither retracts a
+    // block either, since an idle reminder is no evidence that anything was
+    // answered. The depth heuristic above stays as the fallback for a payload
+    // that says nothing, where it is still the best information there is.
+    case 'Notification': {
+      const kind = classifyClaudeNotification(ctx.notificationType, message);
+      if (kind === 'idle' || kind === 'info') return null;
+      if (kind === 'unknown' && ctx.known && ctx.turnStartTracked && ctx.runDepth === 0) return null;
       return { awaitingHuman: true, reason: message };
+    }
 
     // A tool finished, so a turn is in flight.
     //
@@ -336,6 +357,7 @@ export function applyHookToAgentState(
   event: string,
   message: string | null,
   hookAt?: number,
+  notificationType?: string | null,
 ): void {
   if (!KNOWN_EVENTS.includes(event as ClaudeHookEvent)) return;
   const hookEvent = event as ClaudeHookEvent;
@@ -356,6 +378,7 @@ export function applyHookToAgentState(
     known: state !== undefined,
     runDepth: state?.runDepth ?? 0,
     turnStartTracked,
+    notificationType,
   });
   if (!params) return;
   reportAgent(surfaceId, { ...params, hookAt });

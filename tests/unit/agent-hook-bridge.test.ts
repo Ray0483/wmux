@@ -285,3 +285,74 @@ describe('applyHookToAgentState', () => {
     expect(getAgentState(surf)?.state).toBe('idle');
   });
 });
+
+describe('Notification kinds (issue #253)', () => {
+  it('idle_prompt never blocks, even mid-turn by the depth heuristic', () => {
+    // Depth 1 is exactly what a background subagent leaves behind after the
+    // parent's Stop — the case the depth-only rule read as a prompt.
+    expect(hookToAgentReport('Notification', 'Claude is waiting for your input', ctx({ runDepth: 1, notificationType: 'idle_prompt' })))
+      .toBeNull();
+  });
+
+  it('auth_success is informational and does not block', () => {
+    expect(hookToAgentReport('Notification', 'Authentication successful', ctx({ notificationType: 'auth_success' })))
+      .toBeNull();
+  });
+
+  it('permission_prompt and elicitation_dialog always block', () => {
+    for (const notificationType of ['permission_prompt', 'elicitation_dialog']) {
+      // Even where the depth heuristic alone would have called it a nudge:
+      // the payload's own label outranks the inference.
+      expect(hookToAgentReport('Notification', 'Claude needs your permission to use Bash', ctx({ runDepth: 0, notificationType })))
+        .toEqual({ awaitingHuman: true, reason: 'Claude needs your permission to use Bash' });
+    }
+  });
+
+  it('an unrecognised type blocks rather than going silent', () => {
+    expect(hookToAgentReport('Notification', 'something new', ctx({ runDepth: 0, notificationType: 'future_prompt' }))?.awaitingHuman)
+      .toBe(true);
+  });
+
+  it('legacy payload: the exact idle text does not block, even at depth 1 or before tracking', () => {
+    for (const c of [ctx({ runDepth: 1 }), ctx({ runDepth: 0, turnStartTracked: false }), ctx({ known: false, runDepth: 0 })]) {
+      expect(hookToAgentReport('Notification', 'Claude is waiting for your input', c)).toBeNull();
+    }
+  });
+
+  it('legacy payload: a permission message still blocks mid-turn', () => {
+    expect(hookToAgentReport('Notification', 'Claude needs your permission to use Bash', ctx({ runDepth: 1 }))?.awaitingHuman)
+      .toBe(true);
+  });
+
+  it('a background subagent finishing after Stop does not end in "Needs you"', () => {
+    // The reported sequence: the parent's turn ends with a background agent
+    // still running ("Waiting for 1 background agent to finish"), the agent's
+    // own tool hooks keep landing on the parent's surface, it finishes, and a
+    // minute later Claude Code posts its idle reminder.
+    applyHookToAgentState(surf, 'UserPromptSubmit', null, 1000);
+    applyHookToAgentState(surf, 'PreToolUse', null, 2000);
+    applyHookToAgentState(surf, 'Stop', null, 3000);
+    applyHookToAgentState(surf, 'PreToolUse', null, 4000);
+    applyHookToAgentState(surf, 'PostToolUse', null, 5000);
+    applyHookToAgentState(surf, 'SubagentStop', null, 6000);
+    applyHookToAgentState(surf, 'Notification', 'Claude is waiting for your input', 66000, 'idle_prompt');
+    expect(getAgentState(surf)?.state).not.toBe('blocked');
+    expect(getAgentState(surf)?.blockedReason ?? null).toBeNull();
+  });
+
+  it('the same sequence without a notification_type (older Claude Code) is not blocked either', () => {
+    applyHookToAgentState(surf, 'UserPromptSubmit', null, 1000);
+    applyHookToAgentState(surf, 'Stop', null, 3000);
+    applyHookToAgentState(surf, 'PostToolUse', null, 5000);
+    applyHookToAgentState(surf, 'SubagentStop', null, 6000);
+    applyHookToAgentState(surf, 'Notification', 'Claude is waiting for your input', 66000);
+    expect(getAgentState(surf)?.state).not.toBe('blocked');
+  });
+
+  it('an idle reminder does not retract a block that is really there', () => {
+    applyHookToAgentState(surf, 'UserPromptSubmit', null, 1000);
+    applyHookToAgentState(surf, 'Notification', 'Claude needs your permission to use Bash', 2000, 'permission_prompt');
+    applyHookToAgentState(surf, 'Notification', 'Claude is waiting for your input', 62000, 'idle_prompt');
+    expect(getAgentState(surf)).toMatchObject({ state: 'blocked', blockedReason: 'Claude needs your permission to use Bash' });
+  });
+});

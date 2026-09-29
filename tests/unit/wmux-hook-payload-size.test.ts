@@ -156,3 +156,44 @@ describe('wmux-hook.js oversized payloads (issue #207)', () => {
     expect(req.params.sessionId).toBeUndefined();
   });
 });
+
+describe('wmux-hook.js Notification kind (issue #253)', () => {
+  let close: (() => Promise<void>) | undefined;
+
+  afterEach(async () => {
+    if (close) await close();
+    close = undefined;
+  });
+
+  it('forwards notification_type, which is what tells the idle reminder from a prompt', async () => {
+    const server = await startCapturingServer();
+    close = server.close;
+
+    await runHook(['--event', 'Notification'], envFor(server.port), JSON.stringify({
+      session_id: 'abc123DEF-456_789',
+      hook_event_name: 'Notification',
+      message: 'Claude is waiting for your input',
+      notification_type: 'idle_prompt',
+    }));
+
+    const req = await server.requests;
+    expect(req.params.event).toBe('Notification');
+    expect(req.params.notificationType).toBe('idle_prompt');
+    expect(req.params.message).toBe('Claude is waiting for your input');
+  });
+
+  it('drops a notification_type that is not an identifier', async () => {
+    const server = await startCapturingServer();
+    close = server.close;
+
+    await runHook(['--event', 'Notification'], envFor(server.port), JSON.stringify({
+      hook_event_name: 'Notification',
+      message: 'Claude needs your permission to use Bash',
+      notification_type: 'x'.repeat(500),
+    }));
+
+    const req = await server.requests;
+    expect(req.params.notificationType).toBeUndefined();
+    expect(req.params.message).toBe('Claude needs your permission to use Bash');
+  });
+});

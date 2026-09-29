@@ -933,6 +933,8 @@ function handleHookEvent(params: any): void {
       hookEvent,
       params.message ?? null,
       Number.isFinite(params.at) ? Number(params.at) : undefined,
+      // Tells the idle reminder from a real prompt (issue #253).
+      typeof params.notificationType === 'string' ? params.notificationType : null,
     );
   }
 

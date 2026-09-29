@@ -181,8 +181,26 @@ function salvageSessionId(raw: string): string {
   return SESSION_ID_RE.exec(raw.slice(0, SESSION_ID_SCAN_CHARS))?.[1] ?? '';
 }
 
-function parsePayload(raw: string): { file: string; message: string; sessionId: string; toolName: string; prompt: string } {
-  const out = { file: '', message: '', sessionId: '', toolName: '', prompt: '' };
+/**
+ * `notification_type`'s shape: a short snake_case identifier
+ * (`permission_prompt`, `idle_prompt`, ...). Anything else is dropped rather
+ * than forwarded — this helper's whitelist is what keeps arbitrary payload
+ * content off the pipe, and a value that is not an identifier is not one wmux
+ * can act on anyway.
+ */
+const NOTIFICATION_TYPE_RE = /^[a-z][a-z0-9_]{0,63}$/;
+
+interface HookPayloadFields {
+  file: string;
+  message: string;
+  sessionId: string;
+  toolName: string;
+  prompt: string;
+  notificationType: string;
+}
+
+function parsePayload(raw: string): HookPayloadFields {
+  const out: HookPayloadFields = { file: '', message: '', sessionId: '', toolName: '', prompt: '', notificationType: '' };
   if (!raw.trim()) return out;
   let data: Record<string, any>;
   try {
@@ -200,6 +218,15 @@ function parsePayload(raw: string): { file: string; message: string; sessionId: 
   out.file = data.tool_input?.file_path || data.tool_input?.path || data.input?.file_path || '';
   // The Notification hook payload carries the prompt text in `message`.
   out.message = data.message || '';
+  // Which KIND of Notification this is (issue #253). Claude Code fires the one
+  // hook for a permission prompt and for the ~60s idle reminder alike, and only
+  // the payload's `notification_type` tells them apart reliably — wmux read the
+  // message alone, so an idle reminder that followed a background subagent was
+  // taken for a question and the pane said "Needs you" with nothing to answer.
+  if (event === 'Notification' && typeof data.notification_type === 'string'
+      && NOTIFICATION_TYPE_RE.test(data.notification_type)) {
+    out.notificationType = data.notification_type;
+  }
   // PreToolUse is registered matcher-less (one entry for every tool rather than
   // one entry per tracked tool), so the tool name arrives on stdin not argv.
   if (typeof data.tool_name === 'string') out.toolName = data.tool_name;
@@ -233,7 +260,7 @@ function sendHook(): void {
   // stream nobody is going to end.
   process.stdin.pause();
 
-  const { file, message, sessionId, toolName, prompt } = parsePayload(stdinData);
+  const { file, message, sessionId, toolName, prompt, notificationType } = parsePayload(stdinData);
   if (!tool && toolName) tool = toolName;
 
   const params: Record<string, string | number> = { at: firedAt };
@@ -241,6 +268,7 @@ function sendHook(): void {
   if (tool) params.tool = tool;
   if (file) params.file = file;
   if (message) params.message = message;
+  if (notificationType) params.notificationType = notificationType;
   if (sessionId) params.sessionId = sessionId;
   if (prompt) params.prompt = prompt;
   if (surfaceId) params.surfaceId = surfaceId;

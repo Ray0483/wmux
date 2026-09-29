@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useStore } from './store';
 import { PaneId, SurfaceId, SurfaceRef, WorkspaceId, WorkspaceInfo, SplitNode } from '../shared/types';
 import { cwdReportPatch } from '../shared/paths';
+import { classifyClaudeNotification } from '../shared/claude-notification';
 import SplitContainer from './components/SplitPane/SplitContainer';
 import { updateRatio, getAllPaneIds, findLeaf, replaceSoleTerminalSurface, freezeSurfaceCwds, dropEphemeralSurfaces, dropCodeContent } from './store/split-utils';
 import { DEFAULT_DEV_PORTS, mergeDevPorts, matchDevPorts, firstNewDevPort } from './dev-ports';
@@ -421,6 +422,17 @@ function handleAgentLifecycleEvent(event: any, addNotification: StoreAction, t: 
   const state = useStore.getState();
   const prefs = state.notificationPrefs;
   if (event.event === 'Notification' && prefs.agentInputNotify === false) return;
+  // The idle reminder ("Claude is waiting for your input") and informational
+  // notices are not questions (issue #253). Declared state in main already
+  // refuses to call them "Needs you"; the bell has to agree, or a pane reads idle
+  // while a notification claims it is waiting on the user. A turn that really
+  // ended already posted its own "finished" notification on Stop, so the
+  // reminder a minute later adds nothing — and after a BACKGROUND subagent it
+  // was the only thing posted, pointing at a pane with nothing to answer.
+  if (event.event === 'Notification') {
+    const kind = classifyClaudeNotification(event.notificationType, event.message);
+    if (kind === 'idle' || kind === 'info') return;
+  }
   if (event.event === 'Stop' && prefs.agentStopNotify === false) return;
 
   const sid = (event.surfaceId as string) || '';

@@ -175,8 +175,16 @@ const SESSION_ID_RE = /"session_id"\s*:\s*"([A-Za-z0-9_-]{8,128})"/;
 function salvageSessionId(raw) {
     return SESSION_ID_RE.exec(raw.slice(0, SESSION_ID_SCAN_CHARS))?.[1] ?? '';
 }
+/**
+ * `notification_type`'s shape: a short snake_case identifier
+ * (`permission_prompt`, `idle_prompt`, ...). Anything else is dropped rather
+ * than forwarded — this helper's whitelist is what keeps arbitrary payload
+ * content off the pipe, and a value that is not an identifier is not one wmux
+ * can act on anyway.
+ */
+const NOTIFICATION_TYPE_RE = /^[a-z][a-z0-9_]{0,63}$/;
 function parsePayload(raw) {
-    const out = { file: '', message: '', sessionId: '', toolName: '', prompt: '' };
+    const out = { file: '', message: '', sessionId: '', toolName: '', prompt: '', notificationType: '' };
     if (!raw.trim())
         return out;
     let data;
@@ -196,6 +204,15 @@ function parsePayload(raw) {
     out.file = data.tool_input?.file_path || data.tool_input?.path || data.input?.file_path || '';
     // The Notification hook payload carries the prompt text in `message`.
     out.message = data.message || '';
+    // Which KIND of Notification this is (issue #253). Claude Code fires the one
+    // hook for a permission prompt and for the ~60s idle reminder alike, and only
+    // the payload's `notification_type` tells them apart reliably — wmux read the
+    // message alone, so an idle reminder that followed a background subagent was
+    // taken for a question and the pane said "Needs you" with nothing to answer.
+    if (event === 'Notification' && typeof data.notification_type === 'string'
+        && NOTIFICATION_TYPE_RE.test(data.notification_type)) {
+        out.notificationType = data.notification_type;
+    }
     // PreToolUse is registered matcher-less (one entry for every tool rather than
     // one entry per tracked tool), so the tool name arrives on stdin not argv.
     if (typeof data.tool_name === 'string')
@@ -233,7 +250,7 @@ function sendHook() {
     // caller opened it and never closes it, exiting would otherwise wait on a
     // stream nobody is going to end.
     process.stdin.pause();
-    const { file, message, sessionId, toolName, prompt } = parsePayload(stdinData);
+    const { file, message, sessionId, toolName, prompt, notificationType } = parsePayload(stdinData);
     if (!tool && toolName)
         tool = toolName;
     const params = { at: firedAt };
@@ -245,6 +262,8 @@ function sendHook() {
         params.file = file;
     if (message)
         params.message = message;
+    if (notificationType)
+        params.notificationType = notificationType;
     if (sessionId)
         params.sessionId = sessionId;
     if (prompt)
