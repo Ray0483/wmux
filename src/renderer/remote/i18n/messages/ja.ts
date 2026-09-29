@@ -49,7 +49,7 @@ export const ja: Readonly<Record<string, string>> = {
   'console.waiting': 'コンピューターを待っています…',
   'console.viewerNotice': '閲覧のみ — この接続では入力も回答もできません。',
   'console.controlLimited': 'ここでは閲覧のみ — この端末は操作ありでペアリングされていますが、コンピューターが暗号化されていない HTTP 接続での操作をオフにしています。',
-  'console.repairForControl': 'ここでは閲覧のみ — この端末は操作ありでペアリングされていますが、そのペアリングが暗号化されていない HTTP で使われたため、操作はオフです。操作するには、ここからもう一度ペアリングしてください。',
+  'console.repairForControl': 'ここでは閲覧のみ — この端末は操作ありでペアリングされていますが、そのペアリングが暗号化されていない HTTP で使われたため、操作はオフです。操作するには、コンピューターで新しいコードを作成し（設定 → リモート → 端末をペアリング）、この電話でスキャンしてください。',
   'console.needsYouCount_other': '{n} 件のエージェントが対応を待っています',
 
   'card.openToAnswer': '開いて回答',

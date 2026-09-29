@@ -92,4 +92,18 @@ describe('validateRemoteConfig', () => {
   it('keeps a non-default port in the origin', () => {
     expect(normalizePublicUrl('http://127.0.0.1:9790')).toBe('http://127.0.0.1:9790');
   });
+
+  it('refuses plain http to a host other than this machine or Tailscale: its credentials would cross the LAN in the clear with Control (#254)', () => {
+    expect(normalizePublicUrl('http://desktop.lan:8080')).toBeNull();
+    expect(normalizePublicUrl('http://192.168.1.20:9790')).toBeNull();
+    expect(normalizePublicUrl('http://example.com')).toBeNull();
+    expect(normalizePublicUrl('http://100.128.0.1')).toBeNull();
+    expect(validateRemoteConfig({ publicUrl: 'http://desktop.lan:8080' }, LAN)).toEqual({ ok: false, error: 'bad-public-url' });
+    // https anywhere, and http where nothing crosses an open network.
+    expect(normalizePublicUrl('https://desktop.lan:8443')).toBe('https://desktop.lan:8443');
+    expect(normalizePublicUrl('http://localhost:9790')).toBe('http://localhost:9790');
+    expect(normalizePublicUrl('http://[::1]:9790')).toBe('http://[::1]:9790');
+    expect(normalizePublicUrl('http://my-pc.tailnet.ts.net')).toBe('http://my-pc.tailnet.ts.net');
+    expect(normalizePublicUrl('http://100.101.102.103:9790')).toBe('http://100.101.102.103:9790');
+  });
 });

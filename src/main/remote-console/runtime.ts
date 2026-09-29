@@ -417,7 +417,6 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
       log: (e, f) => this.ops.log(e, f),
       onConnection: (client) => this.onConnection(client),
       onPaired: (device) => this.onPaired(device),
-      onPairingChanged: () => this.emitStatus(),
       onRejectedOrigin: (v) => this.onRejectedOrigin(v),
       onUiNotBuilt: () => {
         if (this.lastError === 'ui-not-built') return;

@@ -254,10 +254,10 @@ async function settle(): Promise<void> {
 
 describe('Settings → Remote (#254)', () => {
   it('a Control device on a plain-HTTP LAN bind reads as limited', () => {
-    expect(deviceScopeKey('operator', { bind: 'lan', allowInsecureControl: false })).toBe('settings.remote.scope.operatorLimited');
-    expect(deviceScopeKey('operator', { bind: 'lan', allowInsecureControl: true })).toBe('settings.remote.scope.operator');
-    expect(deviceScopeKey('operator', { bind: 'loopback', allowInsecureControl: false })).toBe('settings.remote.scope.operator');
-    expect(deviceScopeKey('viewer', { bind: 'lan', allowInsecureControl: false })).toBe('settings.remote.scope.viewer');
+    expect(deviceScopeKey({ scope: 'operator' }, { bind: 'lan', allowInsecureControl: false })).toBe('settings.remote.scope.operatorLimited');
+    expect(deviceScopeKey({ scope: 'operator' }, { bind: 'lan', allowInsecureControl: true })).toBe('settings.remote.scope.operator');
+    expect(deviceScopeKey({ scope: 'operator' }, { bind: 'loopback', allowInsecureControl: false })).toBe('settings.remote.scope.operator');
+    expect(deviceScopeKey({ scope: 'viewer' }, { bind: 'lan', allowInsecureControl: false })).toBe('settings.remote.scope.viewer');
   });
 
   it('revoking one device asks first', async () => {

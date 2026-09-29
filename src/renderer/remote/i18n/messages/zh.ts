@@ -49,7 +49,7 @@ export const zh: Readonly<Record<string, string>> = {
   'console.waiting': '正在等待你的电脑…',
   'console.viewerNotice': '仅查看 — 此连接无法输入或回答。',
   'console.controlLimited': '此处仅查看 — 此设备以控制权限配对，但你的电脑对未加密的 HTTP 连接关闭了控制。',
-  'console.repairForControl': '此处仅查看 — 此设备以控制权限配对，但其配对曾经通过未加密的 HTTP 使用，因此控制已关闭。请从这里重新配对以使用控制。',
+  'console.repairForControl': '此处仅查看 — 此设备以控制权限配对，但其配对曾经通过未加密的 HTTP 使用，因此控制已关闭。要使用控制，请在电脑上生成新代码（设置 → 远程 → 配对设备），并用这部手机扫描。',
   'console.needsYouCount_other': '{n} 个代理在等你处理',
 
   'card.openToAnswer': '打开以回答',

@@ -259,6 +259,63 @@ describe('session: send (rule 4)', () => {
     expect(h.calls.filter((c) => c.startsWith('write'))).toHaveLength(1);
   });
 
+  it('a socket closed during the submit gap, after the text landed, is recorded: the resend on a new socket types nothing (#254)', async () => {
+    const h = await greeted();
+    h.deps.sleep = async (ms) => {
+      h.calls.push(`sleep:${ms}`);
+      h.session.dispose();
+    };
+    const n = nonce();
+    await h.frame({ t: 'send', s: S, nonce: n, text: 'hello', submit: true });
+    expect(h.acks()[0]).toMatchObject({ ok: true, submitSkipped: true });
+    // The ack died with the socket; ws-client resends on the next session,
+    // which shares the device state.
+    const sent: ServerMessage[] = [];
+    const next = new ConsoleSession({ ...h.deps, send: (m) => sent.push(m), sleep: async () => undefined });
+    await next.handleFrame(JSON.stringify({ t: 'hello', v: 1 }));
+    await next.handleFrame(JSON.stringify({ t: 'send', s: S, nonce: n, text: 'hello', submit: true }));
+    expect(h.calls.filter((c) => c.startsWith('write'))).toHaveLength(1);
+    expect(sent.filter((m) => m.t === 'ack')).toEqual([{ t: 'ack', nonce: n, ok: true, submitSkipped: true, duplicate: true }]);
+  });
+
+  it('a trailing Enter whose write throws after the text landed is submit-skipped, not an unrecorded write-failed', async () => {
+    const h = await greeted();
+    const write = h.ops.write;
+    h.ops.write = (s: string, b: string) => {
+      if (b === '\r') throw new Error('pty gone');
+      write(s, b);
+    };
+    const n = nonce();
+    await h.frame({ t: 'send', s: S, nonce: n, text: 'hello', submit: true });
+    expect(h.acks()[0]).toMatchObject({ ok: true, submitSkipped: true });
+    await h.frame({ t: 'send', s: S, nonce: n, text: 'hello', submit: true });
+    expect(h.calls.filter((c) => c.startsWith('write'))).toHaveLength(1);
+  });
+
+  it('a duplicate of an executed nonce keeps submitSkipped (#254)', async () => {
+    const h = await greeted();
+    h.deps.sleep = async () => { h.state.blocked = true; };
+    const n = nonce();
+    await h.frame({ t: 'send', s: S, nonce: n, text: 'hello', submit: true });
+    await h.frame({ t: 'send', s: S, nonce: n, text: 'hello', submit: true });
+    expect(h.acks()[1]).toEqual({ t: 'ack', nonce: n, ok: true, submitSkipped: true, duplicate: true });
+  });
+
+  it('a duplicate of an IN-FLIGHT nonce keeps submitSkipped (#254)', async () => {
+    const h = await greeted();
+    let release: () => void = () => undefined;
+    h.deps.sleep = () => new Promise<void>((r) => { release = () => { h.state.blocked = true; r(); }; });
+    const n = nonce();
+    const first = h.frame({ t: 'send', s: S, nonce: n, text: 'hello', submit: true });
+    await flush();
+    const second = h.frame({ t: 'send', s: S, nonce: n, text: 'hello', submit: true });
+    await flush();
+    release();
+    await Promise.all([first, second]);
+    const dup = h.acks().find((a) => a.duplicate);
+    expect(dup).toEqual({ t: 'ack', nonce: n, ok: true, submitSkipped: true, duplicate: true });
+  });
+
   it('a modes timeout/no-terminal reads as not bracketed (never the phone\'s opinion)', async () => {
     const h = await greeted();
     h.state.bracketed = 'none';

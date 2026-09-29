@@ -513,16 +513,19 @@ function formatDate(ms: number, withTime: boolean): string {
 }
 
 /**
- * The Access column. A Control device on a plain-HTTP LAN bind (without the
- * override) can only watch — main narrows it (server.ts effectiveScopeFor) —
- * so the table says so rather than "Control" beside a phone that cannot type.
+ * The Access column, mirroring main's narrowing (server.ts effectiveScopeFor)
+ * so the table never says "Control" beside a phone that cannot type. A
+ * Control device on a plain-HTTP LAN bind (without the override) can only
+ * watch; anywhere else, so can one whose pairing once crossed plain HTTP
+ * (`cleartext`) — the phone tells its user to pair again, and so does this.
  */
 export function deviceScopeKey(
-  scope: RemoteDeviceView['scope'],
+  device: Pick<RemoteDeviceView, 'scope' | 'cleartext'>,
   config: Pick<RemoteConsoleStatus['config'], 'bind' | 'allowInsecureControl'>,
 ): TranslationKey {
-  if (scope !== 'operator') return 'settings.remote.scope.viewer';
-  return config.bind === 'lan' && !config.allowInsecureControl ? 'settings.remote.scope.operatorLimited' : 'settings.remote.scope.operator';
+  if (device.scope !== 'operator') return 'settings.remote.scope.viewer';
+  if (config.bind === 'lan') return config.allowInsecureControl ? 'settings.remote.scope.operator' : 'settings.remote.scope.operatorLimited';
+  return device.cleartext === true ? 'settings.remote.scope.operatorRepair' : 'settings.remote.scope.operator';
 }
 
 function DevicesTable({ t, status }: { t: Translator; status: RemoteConsoleStatus }) {
@@ -555,7 +558,9 @@ function DevicesTable({ t, status }: { t: Translator; status: RemoteConsoleStatu
     if (await run((b) => b.rename(editing.id, name))) setEditing(null);
   };
 
-  const connectedOf = (d: RemoteDeviceView) => status.connected.find((c) => c.deviceId === d.id)?.count ?? 0;
+  // A yes/no, not the socket count: "2" under Connected read as two devices
+  // beside a status line that counts one (connectedDevices).
+  const connectedOf = (d: RemoteDeviceView) => (status.connected.find((c) => c.deviceId === d.id)?.count ?? 0) > 0;
   // Looked up live: a device revoked elsewhere meanwhile closes the question.
   const confirmOneDevice = confirmOne ? devices.find((d) => d.id === confirmOne) ?? null : null;
 
@@ -594,10 +599,10 @@ function DevicesTable({ t, status }: { t: Translator; status: RemoteConsoleStatu
                       />
                     ) : d.name}
                   </td>
-                  <td>{t(deviceScopeKey(d.scope, status.config))}</td>
+                  <td>{t(deviceScopeKey(d, status.config))}</td>
                   <td>{formatDate(d.createdAt, false)}</td>
                   <td>{formatDate(d.lastSeenAt, true) || t('settings.remote.never')}</td>
-                  <td>{connectedOf(d) || '—'}</td>
+                  <td>{connectedOf(d) ? t('settings.remote.connectedYes') : '—'}</td>
                   <td className="remote-settings__row-actions">
                     {editing?.id === d.id ? (
                       <>

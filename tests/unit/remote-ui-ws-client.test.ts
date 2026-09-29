@@ -279,6 +279,37 @@ describe('ws-client state machine', () => {
     expect(h.last().sent).toEqual([{ t: 'hello', v: PROTOCOL_VERSION }]);
   });
 
+  it.each([
+    [{ t: 'term.exit', s: S1, code: 0 }],
+    [{ t: 'term.error', s: S1, code: 'no-terminal', message: 'x' }],
+    [{ t: 'term.error', s: S1, code: 'gone', message: 'x' }],
+  ])('an attachment the server ended (%j) is not re-sent after a reconnect (#254)', (frame) => {
+    h.client.start();
+    h.last().open();
+    h.last().receive(welcome);
+    h.client.attach(S1);
+    h.last().receive(frame);
+    h.last().drop(1006);
+    h.clock.advance(1000);
+    h.last().open();
+    h.last().receive(welcome);
+    expect(h.last().sent).toEqual([{ t: 'hello', v: PROTOCOL_VERSION }]);
+  });
+
+  it('a retryable attach refusal (rate), or a frame about another surface, keeps the re-attach target', () => {
+    h.client.start();
+    h.last().open();
+    h.last().receive(welcome);
+    h.client.attach(S1);
+    h.last().receive({ t: 'term.error', s: S1, code: 'rate', message: 'x' });
+    h.last().receive({ t: 'term.exit', s: 'surf-99999999-2222-3333-4444-555555555555', code: 0 });
+    h.last().drop(1006);
+    h.clock.advance(1000);
+    h.last().open();
+    h.last().receive(welcome);
+    expect(h.last().sent).toEqual([{ t: 'hello', v: PROTOCOL_VERSION }, { t: 'attach', s: S1 }]);
+  });
+
   it('never resends an action older than RESEND_MAX_AGE_MS — it is rejected as unconfirmed', async () => {
     h.client.start();
     h.last().open();

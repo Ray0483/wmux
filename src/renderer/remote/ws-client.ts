@@ -274,6 +274,14 @@ export function createWsClient(deps: WsClientDeps, now: () => number = Date.now)
     if (!msg) return;
     if (msg.t === 'welcome') onWelcome(msg);
     else if (msg.t === 'ack') onAck(msg);
+    // The server has dropped an attachment it ended (terminal-tap.ts), so a
+    // reconnect must not ask for it again: an exited pane would come back as
+    // "no terminal" over its exit screen, spending an attach token each time.
+    // `rate` and `timeout` stay — asking again is exactly what may work.
+    if (attached !== null && 's' in msg && msg.s === attached
+      && (msg.t === 'term.exit' || (msg.t === 'term.error' && msg.code !== 'rate' && msg.code !== 'timeout'))) {
+      attached = null;
+    }
     // Each listener isolated: one that throws on a frame (a bad `term.reset`
     // reaching xterm's resize, say) must not starve the others of it, nor —
     // on a `revoked` frame — skip the stop below and leave a revoked page

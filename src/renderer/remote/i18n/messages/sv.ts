@@ -49,7 +49,7 @@ export const sv: Readonly<Record<string, string>> = {
   'console.waiting': 'Väntar på datorn…',
   'console.viewerNotice': 'Endast visning – den här anslutningen kan inte skriva eller svara.',
   'console.controlLimited': 'Endast visning här – enheten är parkopplad med kontroll, men datorn stänger av kontroll för okrypterade HTTP-anslutningar.',
-  'console.repairForControl': 'Endast visning här – enheten är parkopplad med kontroll, men parkopplingen har använts över okrypterad HTTP, så kontroll är avstängd. Parkoppla den igen härifrån för att använda kontroll.',
+  'console.repairForControl': 'Endast visning här – enheten är parkopplad med kontroll, men parkopplingen har använts över okrypterad HTTP, så kontroll är avstängd. Skapa en ny kod på datorn (Inställningar → Fjärr → Parkoppla en enhet) och skanna den med den här telefonen för att använda kontroll.',
   'console.needsYouCount_one': '{n} agent behöver dig',
   'console.needsYouCount_other': '{n} agenter behöver dig',
 

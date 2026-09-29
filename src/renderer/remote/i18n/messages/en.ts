@@ -59,7 +59,7 @@ export const en = {
   'console.waiting': 'Waiting for your computer…',
   'console.viewerNotice': 'View only — this connection cannot type or answer.',
   'console.controlLimited': 'View only here — this device is paired with Control, but your computer turns Control off for plain-HTTP connections.',
-  'console.repairForControl': 'View only here — this device is paired with Control, but its pairing was once used over plain HTTP, so Control is off for it. Pair it again from here to use Control.',
+  'console.repairForControl': 'View only here — this device is paired with Control, but its pairing was once used over plain HTTP, so Control is off for it. To use Control, make a new code on your computer (Settings → Remote → Pair a device) and scan it with this phone.',
   'console.needsYouCount_one': '{n} agent needs you',
   'console.needsYouCount_other': '{n} agents need you',
 

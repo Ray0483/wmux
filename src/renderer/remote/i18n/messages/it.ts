@@ -49,7 +49,7 @@ export const it: Readonly<Record<string, string>> = {
   'console.waiting': 'In attesa del computer…',
   'console.viewerNotice': 'Sola lettura: questa connessione non può scrivere né rispondere.',
   'console.controlLimited': 'Qui sola lettura: questo dispositivo è associato con il controllo, ma il computer disattiva il controllo sulle connessioni HTTP non cifrate.',
-  'console.repairForControl': 'Qui sola lettura: questo dispositivo è associato con il controllo, ma la sua associazione è già passata su HTTP non cifrato, quindi il controllo è disattivato. Associalo di nuovo da qui per usare il controllo.',
+  'console.repairForControl': 'Qui sola lettura: questo dispositivo è associato con il controllo, ma la sua associazione è già passata su HTTP non cifrato, quindi il controllo è disattivato. Per usare il controllo, crea un nuovo codice sul computer (Impostazioni → Remoto → Associa un dispositivo) e scansionalo con questo telefono.',
   'console.needsYouCount_one': '{n} agente ti aspetta',
   'console.needsYouCount_other': '{n} agenti ti aspettano',
 

@@ -49,7 +49,7 @@ export const cs: Readonly<Record<string, string>> = {
   'console.waiting': 'Čeká se na počítač…',
   'console.viewerNotice': 'Jen prohlížení — toto připojení nemůže psát ani odpovídat.',
   'console.controlLimited': 'Zde jen prohlížení — zařízení je spárované s ovládáním, ale počítač ovládání u nešifrovaných připojení HTTP vypíná.',
-  'console.repairForControl': 'Zde jen prohlížení — zařízení je spárované s ovládáním, ale jeho párování už prošlo nešifrovaným HTTP, takže je ovládání vypnuté. Chcete-li ovládat, spárujte ho znovu odsud.',
+  'console.repairForControl': 'Zde jen prohlížení — zařízení je spárované s ovládáním, ale jeho párování už prošlo nešifrovaným HTTP, takže je ovládání vypnuté. Chcete-li ovládat, vytvořte v počítači nový kód (Nastavení → Vzdálený přístup → Spárovat zařízení) a naskenujte ho tímto telefonem.',
   'console.needsYouCount_one': '{n} agent na vás čeká',
   'console.needsYouCount_few': '{n} agenti na vás čekají',
   'console.needsYouCount_other': '{n} agentů na vás čeká',

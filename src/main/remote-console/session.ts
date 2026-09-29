@@ -48,29 +48,44 @@ export const SUBMIT_GAP_MS = 40;
 
 type AckMsg = Extract<ServerMessage, { t: 'ack' }>;
 
-/** Executed nonces for one device, shared by its connections (a resend may arrive on a new socket). */
+/**
+ * Executed nonces for one device, shared by its connections (a resend may
+ * arrive on a new socket). Each keeps the ack it was answered with: a resend
+ * whose original ack died with its socket must hear the same answer, and a
+ * bare `ok` drops `submitSkipped` — the phone would read a Send whose Enter
+ * was held back as fully sent.
+ */
 export class NonceLru {
-  private readonly seen = new Map<string, number>();
+  private readonly seen = new Map<string, { at: number; ack: AckMsg | null }>();
 
   constructor(private readonly now: () => number, private readonly size = NONCE_LRU_SIZE, private readonly ttlMs = NONCE_TTL_MS) {}
 
   has(nonce: string): boolean {
-    const at = this.seen.get(nonce);
-    if (at === undefined) return false;
-    if (this.now() - at > this.ttlMs) {
-      this.seen.delete(nonce);
-      return false;
-    }
-    return true;
+    return this.entry(nonce) !== undefined;
   }
 
-  record(nonce: string): void {
+  /** The ack the nonce was executed with; null when unknown or recorded without one. */
+  ack(nonce: string): AckMsg | null {
+    return this.entry(nonce)?.ack ?? null;
+  }
+
+  record(nonce: string, ack: AckMsg | null = null): void {
     this.seen.delete(nonce);
-    this.seen.set(nonce, this.now());
+    this.seen.set(nonce, { at: this.now(), ack });
     while (this.seen.size > this.size) {
       const oldest = this.seen.keys().next().value as string;
       this.seen.delete(oldest);
     }
+  }
+
+  private entry(nonce: string): { at: number; ack: AckMsg | null } | undefined {
+    const e = this.seen.get(nonce);
+    if (e === undefined) return undefined;
+    if (this.now() - e.at > this.ttlMs) {
+      this.seen.delete(nonce);
+      return undefined;
+    }
+    return e;
   }
 }
 
@@ -357,14 +372,15 @@ export class ConsoleSession {
    */
   private async guarded(nonce: string, bucket: TokenBucket, run: () => Promise<AckMsg>): Promise<void> {
     const st = this.d.deviceState;
+    // A duplicate carries the original's ack whole (`submitSkipped` included).
     if (st.nonces.has(nonce)) {
-      this.d.send({ t: 'ack', nonce, ok: true, duplicate: true });
+      this.d.send({ ...(st.nonces.ack(nonce) ?? ok(nonce)), duplicate: true });
       return;
     }
     const inflight = st.inFlight.get(nonce);
     if (inflight) {
       const first = await inflight;
-      this.d.send(first.ok ? { t: 'ack', nonce, ok: true, duplicate: true } : first);
+      this.d.send(first.ok ? { ...first, duplicate: true } : first);
       return;
     }
     if (!bucket.take()) {
@@ -379,7 +395,7 @@ export class ConsoleSession {
     st.inFlight.set(nonce, p);
     try {
       const ack = await p;
-      if (ack.ok) st.nonces.record(nonce);
+      if (ack.ok) st.nonces.record(nonce, ack);
       this.d.send(ack);
     } finally {
       st.inFlight.delete(nonce);
@@ -453,7 +469,11 @@ export class ConsoleSession {
    * submit. That gap is an await like `queryModes`, and the agent can go
    * blocked across it: the text is already typed by then, so the Enter alone
    * is withheld (`submit-skipped`) — confirming would invite a resend that
-   * types the text a second time.
+   * types the text a second time. For the same reason nothing after the
+   * first landed write answers with a refusal: a close, a gone PTY or a
+   * failed write there is `submit-skipped`, which is ok and so RECORDED. The
+   * phone resends an unanswered frame with its nonce after a reconnect, and
+   * an unrecorded `gone` let that resend type the text again.
    */
   private async writeComposer(
     s: string, writes: string[], submit: boolean, blockedUnwaived: () => boolean,
@@ -462,13 +482,12 @@ export class ConsoleSession {
       const trailingSubmit = submit && i > 0 && i === writes.length - 1;
       if (trailingSubmit) {
         await this.d.sleep(SUBMIT_GAP_MS);
-        if (this.closed || !this.d.ops.isLivePty(s)) return 'gone';
-        if (blockedUnwaived()) return 'submit-skipped';
+        if (this.closed || !this.d.ops.isLivePty(s) || blockedUnwaived()) return 'submit-skipped';
       }
       try {
         this.writeHuman(s, writes[i]);
       } catch {
-        return 'write-failed';
+        return i > 0 ? 'submit-skipped' : 'write-failed';
       }
     }
     return null;

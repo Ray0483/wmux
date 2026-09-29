@@ -49,7 +49,7 @@ export const tr: Readonly<Record<string, string>> = {
   'console.waiting': 'Bilgisayarınız bekleniyor…',
   'console.viewerNotice': 'Yalnızca görüntüleme — bu bağlantı yazamaz ve yanıt veremez.',
   'console.controlLimited': 'Burada yalnızca görüntüleme — bu cihaz kontrol erişimiyle eşleştirildi, ancak bilgisayarınız şifrelenmemiş HTTP bağlantılarında kontrolü kapatıyor.',
-  'console.repairForControl': 'Burada yalnızca görüntüleme — bu cihaz kontrol erişimiyle eşleştirildi, ancak eşleştirmesi şifrelenmemiş HTTP üzerinden kullanıldığı için kontrol kapalı. Kontrol için buradan yeniden eşleştirin.',
+  'console.repairForControl': 'Burada yalnızca görüntüleme — bu cihaz kontrol erişimiyle eşleştirildi, ancak eşleştirmesi şifrelenmemiş HTTP üzerinden kullanıldığı için kontrol kapalı. Kontrol için bilgisayarınızda yeni bir kod oluşturun (Ayarlar → Uzaktan → Cihaz eşleştir) ve bu telefonla tarayın.',
   'console.needsYouCount_one': '{n} ajan sizi bekliyor',
   'console.needsYouCount_other': '{n} ajan sizi bekliyor',
 

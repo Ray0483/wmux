@@ -68,7 +68,8 @@ export function emptyListKey(rosterReceived: boolean, status: WsStatus): RemoteM
  * On a SECURE page the LAN bind is not what demoted it — a LAN bind is plain
  * http on a LAN address, never a secure context. There the reason is that
  * this device's pairing once crossed a plain-HTTP LAN (server.ts
- * effectiveScopeFor), and the fix is to pair it again from here.
+ * effectiveScopeFor), and the fix is a new code from the desktop, scanned
+ * with this phone (the phone has no pairing button of its own).
  */
 export function viewerNoticeKey(pairedScope: RemoteScope, effectiveScope: RemoteScope, secureContext = false): RemoteMessageKey | null {
   if (effectiveScope === 'operator') return null;

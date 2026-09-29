@@ -54,7 +54,7 @@ export const de: Readonly<Record<string, string>> = {
   'console.waiting': 'Warte auf Ihren Computer…',
   'console.viewerNotice': 'Nur ansehen – diese Verbindung kann weder tippen noch antworten.',
   'console.controlLimited': 'Hier nur ansehen – dieses Gerät ist mit Steuerung gekoppelt, aber Ihr Computer schaltet die Steuerung bei unverschlüsselten HTTP-Verbindungen ab.',
-  'console.repairForControl': 'Hier nur ansehen – dieses Gerät ist mit Steuerung gekoppelt, aber seine Kopplung wurde schon über unverschlüsseltes HTTP verwendet, daher ist die Steuerung aus. Koppeln Sie es von hier aus erneut, um zu steuern.',
+  'console.repairForControl': 'Hier nur ansehen – dieses Gerät ist mit Steuerung gekoppelt, aber seine Kopplung wurde schon über unverschlüsseltes HTTP verwendet, daher ist die Steuerung aus. Um zu steuern, erstellen Sie auf Ihrem Computer einen neuen Code (Einstellungen → Fernzugriff → Gerät koppeln) und scannen Sie ihn mit diesem Telefon.',
   'console.needsYouCount_one': '{n} Agent wartet auf Sie',
   'console.needsYouCount_other': '{n} Agenten warten auf Sie',
 

@@ -366,15 +366,14 @@ describe('ConsoleRuntime pairing and devices', () => {
     }
   });
 
-  it('five wrong guesses void the offer AND tell Settings, so its QR goes (#254)', async () => {
+  it('wrong guesses from any peer leave the offer and its QR in place (#254)', async () => {
     const { rt, port } = await enabledRuntime();
-    const statuses: (unknown | null)[] = [];
-    rt.onStatus((s) => statuses.push(s.pairing));
     const offer = rt.pairStart({ name: 'Phone', scope: 'viewer' });
     if ('error' in offer) throw new Error(offer.error);
-    for (let i = 0; i < 5; i++) expect((await post(port, '/api/pair', { secret: `wrong-${i}` })).status).toBe(410);
-    expect(rt.getStatus().pairing).toBeNull();
-    expect(statuses.at(-1)).toBeNull();
+    for (let i = 0; i < 6; i++) expect((await post(port, '/api/pair', { secret: `wrong-${i}` })).status).toBe(410);
+    expect(rt.getStatus().pairing).not.toBeNull();
+    const secret = new URL(offer.url).hash.replace('#pair=', '');
+    expect((await post(port, '/api/pair', { secret })).status).toBe(200);
   });
 
   const repair = (port: number, secret: string, headers: Record<string, string>) => {

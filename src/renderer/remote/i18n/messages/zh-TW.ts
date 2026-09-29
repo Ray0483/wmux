@@ -49,7 +49,7 @@ export const zhTW: Readonly<Record<string, string>> = {
   'console.waiting': '正在等候你的電腦…',
   'console.viewerNotice': '僅檢視 — 此連線無法輸入或回答。',
   'console.controlLimited': '此處僅檢視 — 此裝置以控制權限配對，但你的電腦對未加密的 HTTP 連線關閉了控制。',
-  'console.repairForControl': '此處僅檢視 — 此裝置以控制權限配對，但其配對曾經透過未加密的 HTTP 使用，因此控制已關閉。請從這裡重新配對以使用控制。',
+  'console.repairForControl': '此處僅檢視 — 此裝置以控制權限配對，但其配對曾經透過未加密的 HTTP 使用，因此控制已關閉。要使用控制，請在電腦上產生新代碼（設定 → 遠端 → 配對裝置），並用這支手機掃描。',
   'console.needsYouCount_other': '{n} 個代理程式在等你處理',
 
   'card.openToAnswer': '開啟以回答',

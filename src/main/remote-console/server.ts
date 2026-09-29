@@ -16,15 +16,20 @@
  * a bare 403 reaches the page as 1006, which it cannot tell from a network
  * blip, and a third tab sat on "Reconnecting…" forever.
  *
- * The penalty box is keyed by PEER ADDRESS, and behind `tailscale serve` or
- * `ssh -L` every phone arrives from 127.0.0.1 — so there the per-peer limits
- * are effectively global. That is why the box only ever refuses a request that
- * failed on its own merits: a valid cookie is checked first and never boxed
- * (a 32-byte token is not guessable, so the box buys nothing against it), and
- * the global pairing budget is only spent while an offer is live, so junk
- * POSTs with no code on screen cannot lock pairing out for an hour. The
- * per-peer HTTP limiter follows the same rule: a request with a valid device
- * cookie is not counted, or a flood through the proxy would 429 every phone.
+ * The penalty boxes are keyed by PEER ADDRESS, and behind `tailscale serve`
+ * or `ssh -L` every phone arrives from 127.0.0.1 — so there the per-peer
+ * limits are effectively global, and anything one client does to its box it
+ * does to every phone behind the same proxy. Hence three rules. Upgrades and
+ * pairing keep SEPARATE boxes: junk upgrades (which need no offer and no
+ * credential) must not refuse a phone's pairing. A valid credential is checked
+ * before any box and never refused by one — a cookie on the upgrade, the
+ * offer's secret on /api/pair — since 32 random bytes are not guessable and
+ * the boxes buy nothing against them. And the pairing box never boxes a
+ * loopback peer, which is either this desktop or a proxy merging every
+ * client; misses from there are bounded by the global budget instead, which
+ * is only spent by a miss against a live offer. The per-peer HTTP limiter
+ * follows the same rule: a request with a valid device cookie is not counted,
+ * or a flood through the proxy would 429 every phone.
  *
  * Binding is one address, never `0.0.0.0` and never a port walk (I3): the user
  * picked a port and an interface, and silently listening somewhere else would
@@ -45,6 +50,7 @@ import type { RemoteScope, ServerMessage } from '../../shared/remote-console-pro
 import { MAX_DEVICES, type DeviceRecord, type DeviceRegistry } from './devices';
 import {
   buildAllowlists,
+  isLoopbackPeer,
   clearCookieHeader,
   cookieHeader,
   isAllowedHost,
@@ -111,8 +117,6 @@ export interface ServerDeps {
   log(event: string, fields: Record<string, unknown>): void;
   onConnection(client: ConsoleClient): ClientHandlers;
   onPaired(device: DeviceRecord): void;
-  /** A live offer was voided by wrong guesses (or expired under a POST): Settings must drop its QR. */
-  onPairingChanged?(): void;
   onRejectedOrigin(value: string): void;
   onUiNotBuilt(): void;
   /** Heartbeat/timer injection for tests; real timers by default. */
@@ -278,7 +282,8 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
 
   const live = new Map<string, LiveClient>();
   const unauth = new KeyedWindowLimiter(LIMITS.unauth.limit, LIMITS.unauth.windowMs, deps.now);
-  const penalty = new PenaltyBox(deps.now);
+  const upgradePenalty = new PenaltyBox(deps.now);
+  const pairPenalty = new PenaltyBox(deps.now);
   const pairGlobal = new WindowCounter(LIMITS.pairGlobal.limit, LIMITS.pairGlobal.windowMs, deps.now);
   let lists: Allowlists = buildAllowlists(deps.config());
   // The config this listener was STARTED with. A reconfigure assigns the new
@@ -393,13 +398,6 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
 
   async function handlePair(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const peer = peerOf(req);
-    // No live offer: nothing can be guessed, and the request is answered
-    // `expired` below without touching the global budget.
-    if (penalty.isBoxed(peer) || (deps.devices.pairing() !== null && !pairGlobal.hit())) {
-      req.resume();
-      send(res, 429, { error: 'rate' });
-      return;
-    }
     const body = await readJsonBody(req);
     if (!body.ok) {
       send(res, body.status, { error: 'bad-request' }, { Connection: 'close' });
@@ -410,7 +408,10 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
       send(res, 400, { error: 'bad-request' });
       return;
     }
-    const offerLive = deps.devices.pairing() !== null;
+    if (deps.devices.pairing() !== null && !deps.devices.pairingMatches(v.secret)) {
+      pairMiss(peer, res);
+      return;
+    }
     // A browser that is already paired and pairs again (to change its access)
     // replaces its own record — proven by cookie AND page key, since a cookie
     // alone may have been lifted by another server on this host and would
@@ -419,14 +420,9 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
     const prior = keyedDevice(req);
     const r = deps.devices.consumePairing(v.secret, v.name, prior?.id ?? null, bound.bind === 'lan');
     if (!r.ok) {
-      // Only a miss against a LIVE offer is a guess; with none there is
-      // nothing to guess, and boxing 127.0.0.1 for it would lock out the
-      // real phone behind a proxy.
-      if (offerLive) penalty.fail(peer);
-      // Five misses void the offer: Settings must stop showing its QR.
-      if (offerLive && deps.devices.pairing() === null) deps.onPairingChanged?.();
-      // A voided, expired or mistyped code all read the same to the phone:
-      // "make a new one". Telling them apart would only help a guesser.
+      // No live offer: nothing can be guessed, so neither box nor budget is
+      // touched. An expired code and a mistyped one read the same to the
+      // phone ("make a new one"); telling them apart would only help a guesser.
       if (r.reason === 'device-cap') send(res, 400, { error: 'device-cap' });
       else send(res, 410, { error: 'expired' });
       return;
@@ -439,6 +435,22 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
     });
     deps.log('remote-paired', { device: r.device.id, scope: r.device.scope });
     deps.onPaired(r.device);
+  }
+
+  /**
+   * A wrong secret against a LIVE offer. Refused 429 once the peer is boxed or
+   * the global budget is spent — which only ever refuses further misses,
+   * never the correct secret (checked before this). A loopback peer is never
+   * boxed: it is this desktop or a proxy standing in for every phone.
+   */
+  function pairMiss(peer: string, res: ServerResponse): void {
+    const boxable = !isLoopbackPeer(peer);
+    if ((boxable && pairPenalty.isBoxed(peer)) || !pairGlobal.hit()) {
+      send(res, 429, { error: 'rate' });
+      return;
+    }
+    if (boxable) pairPenalty.fail(peer);
+    send(res, 410, { error: 'expired' });
   }
 
   function handleSession(req: IncomingMessage, res: ServerResponse): void {
@@ -577,8 +589,8 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
     // client's junk must not lock every paired phone out.
     if (!cookieDevice(req, null, false)) {
       const peer = peerOf(req);
-      if (penalty.isBoxed(peer)) return { status: 403 };
-      penalty.fail(peer);
+      if (upgradePenalty.isBoxed(peer)) return { status: 403 };
+      upgradePenalty.fail(peer);
       return { status: 401 };
     }
     // A valid cookie without its page key is a cookie some other server on

@@ -49,7 +49,7 @@ export const pl: Readonly<Record<string, string>> = {
   'console.waiting': 'Czekam na komputer…',
   'console.viewerNotice': 'Tylko podgląd — to połączenie nie może pisać ani odpowiadać.',
   'console.controlLimited': 'Tutaj tylko podgląd — urządzenie jest sparowane ze sterowaniem, ale komputer wyłącza sterowanie dla nieszyfrowanych połączeń HTTP.',
-  'console.repairForControl': 'Tutaj tylko podgląd — urządzenie jest sparowane ze sterowaniem, ale jego parowanie było już użyte przez nieszyfrowane HTTP, więc sterowanie jest wyłączone. Aby sterować, sparuj je ponownie stąd.',
+  'console.repairForControl': 'Tutaj tylko podgląd — urządzenie jest sparowane ze sterowaniem, ale jego parowanie było już użyte przez nieszyfrowane HTTP, więc sterowanie jest wyłączone. Aby sterować, utwórz nowy kod na komputerze (Ustawienia → Zdalnie → Sparuj urządzenie) i zeskanuj go tym telefonem.',
   'console.needsYouCount_one': '{n} agent czeka na ciebie',
   'console.needsYouCount_few': '{n} agenty czekają na ciebie',
   'console.needsYouCount_many': '{n} agentów czeka na ciebie',

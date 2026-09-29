@@ -49,7 +49,7 @@ export const fr: Readonly<Record<string, string>> = {
   'console.waiting': 'En attente de votre ordinateur…',
   'console.viewerNotice': 'Lecture seule — cette connexion ne peut ni écrire ni répondre.',
   'console.controlLimited': 'Lecture seule ici — cet appareil est associé avec le contrôle, mais votre ordinateur désactive le contrôle pour les connexions HTTP non chiffrées.',
-  'console.repairForControl': 'Lecture seule ici — cet appareil est associé avec le contrôle, mais son association a déjà transité en HTTP non chiffré, donc le contrôle est coupé. Associez-le à nouveau depuis ici pour utiliser le contrôle.',
+  'console.repairForControl': 'Lecture seule ici — cet appareil est associé avec le contrôle, mais son association a déjà transité en HTTP non chiffré, donc le contrôle est coupé. Pour utiliser le contrôle, créez un nouveau code sur votre ordinateur (Paramètres → Distant → Associer un appareil) et scannez-le avec ce téléphone.',
   'console.needsYouCount_one': '{n} agent vous attend',
   'console.needsYouCount_other': '{n} agents vous attendent',
 

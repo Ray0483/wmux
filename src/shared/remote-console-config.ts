@@ -55,8 +55,26 @@ export type RemoteConfigResult =
   | { ok: false; error: RemoteConfigError };
 
 /**
+ * Whether plain `http:` to this host keeps the pairing secret, cookie and
+ * page key off an open network: this machine (`ssh -L`), or a Tailscale name
+ * or address, whose traffic WireGuard already encrypts. Anything else — a
+ * reverse proxy on the LAN, say — would carry them in the clear, which is
+ * exactly what a LAN bind gates behind "allow control over plain HTTP"; a
+ * Public URL must not be a way around that rule, so it is refused instead.
+ */
+function plainHttpStaysPrivate(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (h === 'localhost' || h === '[::1]' || h.endsWith('.ts.net')) return true;
+  const m = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(h);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  // 127.0.0.0/8, and Tailscale's 100.64.0.0/10.
+  return a === 127 || (a === 100 && b >= 64 && b <= 127);
+}
+
+/**
  * Normalise a public URL to its origin, or `null` when it is not a bare
- * http(s) origin. Path, query, hash and userinfo are refused rather than
+ * https origin (or an http one that stays private: plainHttpStaysPrivate). Path, query, hash and userinfo are refused rather than
  * dropped: the value becomes an Origin allowlist entry and the base of the
  * pairing URL, and silently keeping half of what the user typed would make
  * both quietly differ from what they think they configured.
@@ -72,6 +90,7 @@ export function normalizePublicUrl(raw: string): string | null {
     return null;
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  if (url.protocol === 'http:' && !plainHttpStaysPrivate(url.hostname)) return null;
   if (url.username !== '' || url.password !== '') return null;
   if (url.pathname !== '/' || url.search !== '' || url.hash !== '') return null;
   return url.origin;
@@ -160,6 +179,8 @@ export interface RemoteDeviceView {
   scope: RemoteScope;
   createdAt: number;
   lastSeenAt: number;
+  /** Its credentials once crossed plain HTTP: view-only off a LAN bind until paired again. Absent when clean. */
+  cleartext?: true;
 }
 
 /** What Settings renders. Never a token, a hash or a secret. */

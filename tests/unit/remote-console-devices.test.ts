@@ -69,15 +69,26 @@ describe('DeviceRegistry pairing (#254)', () => {
     expect(ok.ok && ok.device.scope).toBe('operator');
   });
 
-  it('five wrong secrets void the offer', () => {
+  it('wrong secrets never void the offer: any peer can send them, so a cap let a stranger cancel every QR (#254)', () => {
     const { reg } = harness();
     const offer = reg.mintPairing({ scope: 'viewer', name: 'Phone' });
     if ('error' in offer) throw new Error();
-    for (let i = 0; i < 4; i++) expect(reg.consumePairing('wrong' + i, 'x')).toEqual({ ok: false, reason: 'invalid' });
+    for (let i = 0; i < 50; i++) expect(reg.consumePairing('wrong' + i, 'x')).toEqual({ ok: false, reason: 'invalid' });
     expect(reg.pairing()).not.toBeNull();
-    expect(reg.consumePairing('wrong-5', 'x')).toEqual({ ok: false, reason: 'invalid' });
-    expect(reg.pairing()).toBeNull();
-    expect(reg.consumePairing(offer.secret, 'x')).toEqual({ ok: false, reason: 'expired' });
+    expect(reg.consumePairing(offer.secret, 'x').ok).toBe(true);
+  });
+
+  it('pairingMatches answers for the live offer only, with no side effect', () => {
+    const { reg, advance } = harness();
+    expect(reg.pairingMatches('x')).toBe(false);
+    const offer = reg.mintPairing({ scope: 'viewer', name: 'Phone' });
+    if ('error' in offer) throw new Error();
+    expect(reg.pairingMatches('wrong')).toBe(false);
+    expect(reg.pairingMatches(42)).toBe(false);
+    expect(reg.pairingMatches(offer.secret)).toBe(true);
+    expect(reg.pairingMatches(offer.secret)).toBe(true);
+    advance(PAIR_TTL_MS);
+    expect(reg.pairingMatches(offer.secret)).toBe(false);
   });
 
   it('non-string or oversize secrets count as failures, never throw', () => {

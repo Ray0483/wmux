@@ -422,6 +422,29 @@ describe('remote-console server: pairing endpoints', () => {
     expect((await json(r, { secret: offer.secret, name: 'Pixel' })).status).toBe(200);
   });
 
+  it('junk upgrades that box 127.0.0.1 do not refuse pairing through the same proxy (#254)', async () => {
+    const r = await rig();
+    for (let i = 0; i <= LIMITS.penalty.failures; i++) await connect(r, { cookie: 'dev-junk.token' });
+    expect((await connect(r, { cookie: 'dev-junk.token' })).status).toBe(403);
+    const offer = r.devices.mintPairing({ scope: 'operator', name: 'Phone' });
+    if ('error' in offer) throw new Error();
+    expect((await json(r, { secret: offer.secret, name: 'Pixel' })).status).toBe(200);
+  });
+
+  it('wrong secrets from the proxy address neither cancel the offer nor refuse the right one, even past every budget (#254)', async () => {
+    const r = await rig();
+    const offer = r.devices.mintPairing({ scope: 'operator', name: 'Phone' });
+    if ('error' in offer) throw new Error();
+    const statuses: number[] = [];
+    for (let i = 0; i < LIMITS.pairGlobal.limit + 5; i++) statuses.push((await json(r, { secret: 'guess' + i })).status);
+    // Misses are answered 410 until the global budget is spent, then 429 —
+    // but the offer stays live and its QR keeps working.
+    expect(statuses.slice(0, LIMITS.pairGlobal.limit).every((s) => s === 410)).toBe(true);
+    expect(statuses.slice(LIMITS.pairGlobal.limit).every((s) => s === 429)).toBe(true);
+    expect(r.devices.pairing()).not.toBeNull();
+    expect((await json(r, { secret: offer.secret, name: 'Pixel' })).status).toBe(200);
+  });
+
   it('GET on a POST route is 405', async () => {
     const r = await rig();
     expect((await request(r, 'GET', '/api/pair')).status).toBe(405);

@@ -2,7 +2,7 @@
  * Paired devices and the one live pairing offer (#254, spec §8).
  *
  * Pure: file I/O, the clock and the random source are injected by the runtime,
- * so single use, expiry, the failure cap and "the token never reaches disk"
+ * so single use, expiry and "the token never reaches disk"
  * are all testable with a fake clock and a Map for a file.
  *
  * What is stored is a HASH of each device token, never the token (I6). The
@@ -32,7 +32,6 @@ import { DEVICE_NAME_MAX, type RemoteScope } from '../../shared/remote-console-p
 import { capText, stripBidi } from '../../shared/remote-input';
 
 export const PAIR_TTL_MS = 120_000;
-export const PAIR_MAX_FAILURES = 5;
 export const MAX_DEVICES = 10;
 export const IDLE_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 export const TOUCH_PERSIST_MS = 60_000;
@@ -79,7 +78,6 @@ interface Offer {
   scope: RemoteScope;
   name: string;
   expiresAt: number;
-  failures: number;
 }
 
 export type ConsumeResult =
@@ -236,7 +234,7 @@ export class DeviceRegistry {
     if (this.devices.size >= MAX_DEVICES) return { error: 'device-cap' };
     const secret = this.deps.randomBytes(32).toString('base64url');
     const expiresAt = this.deps.now() + PAIR_TTL_MS;
-    this.offer = { hash: this.deps.sha256(secret), scope: o.scope, name: cleanDeviceName(o.name), expiresAt, failures: 0 };
+    this.offer = { hash: this.deps.sha256(secret), scope: o.scope, name: cleanDeviceName(o.name), expiresAt };
     return { secret, expiresAt, scope: o.scope };
   }
 
@@ -250,9 +248,23 @@ export class DeviceRegistry {
   }
 
   /**
-   * Single use: the first success destroys the offer. Five wrong secrets void
-   * it too — 32 random bytes are not guessable, so five misses mean somebody
-   * is trying rather than mistyping, and a fresh QR is one click away.
+   * Whether `secret` is the live offer's, with no side effect. The server
+   * asks this BEFORE any pairing rate limit, so a correct secret is never
+   * refused for a limit other peers' misses tripped (server.ts handlePair).
+   */
+  pairingMatches(secret: unknown): boolean {
+    const offer = this.offer;
+    if (!offer || this.deps.now() >= offer.expiresAt) return false;
+    return typeof secret === 'string' && secret.length > 0 && secret.length <= 128
+      && hashesEqual(this.deps.sha256(secret), offer.hash);
+  }
+
+  /**
+   * Single use: the first success destroys the offer. Wrong secrets do NOT
+   * void it: any peer that can reach the listener can send them, so a miss
+   * cap let a stranger cancel every QR the user made the moment it appeared.
+   * 32 random bytes cannot be guessed inside a 120 s offer; the server's
+   * per-peer box and global budget only bound the traffic.
    */
   consumePairing(secret: unknown, name: unknown, replaces?: string | null, cleartext = false): ConsumeResult {
     const offer = this.offer;
@@ -262,8 +274,6 @@ export class DeviceRegistry {
     }
     if (typeof secret !== 'string' || secret.length === 0 || secret.length > 128
       || !hashesEqual(this.deps.sha256(secret), offer.hash)) {
-      offer.failures++;
-      if (offer.failures >= PAIR_MAX_FAILURES) this.offer = null;
       return { ok: false, reason: 'invalid' };
     }
     this.offer = null;
@@ -342,7 +352,9 @@ export class DeviceRegistry {
   }
 
   list(): RemoteDeviceView[] {
-    return [...this.devices.values()].map(({ id, name, scope, createdAt, lastSeenAt }) => ({ id, name, scope, createdAt, lastSeenAt }));
+    return [...this.devices.values()].map(({ id, name, scope, createdAt, lastSeenAt, cleartext }) => ({
+      id, name, scope, createdAt, lastSeenAt, ...(cleartext === true ? { cleartext: true as const } : {}),
+    }));
   }
 
   rename(id: string, name: unknown): void {

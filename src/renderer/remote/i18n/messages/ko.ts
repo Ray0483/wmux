@@ -49,7 +49,7 @@ export const ko: Readonly<Record<string, string>> = {
   'console.waiting': '컴퓨터를 기다리는 중…',
   'console.viewerNotice': '보기 전용 — 이 연결은 입력하거나 응답할 수 없습니다.',
   'console.controlLimited': '여기서는 보기 전용 — 이 기기는 제어 권한으로 페어링되었지만, 컴퓨터가 암호화되지 않은 HTTP 연결에서는 제어를 끕니다.',
-  'console.repairForControl': '여기서는 보기 전용 — 이 기기는 제어 권한으로 페어링되었지만, 페어링 정보가 암호화되지 않은 HTTP로 사용된 적이 있어 제어가 꺼져 있습니다. 제어하려면 여기서 다시 페어링하세요.',
+  'console.repairForControl': '여기서는 보기 전용 — 이 기기는 제어 권한으로 페어링되었지만, 페어링 정보가 암호화되지 않은 HTTP로 사용된 적이 있어 제어가 꺼져 있습니다. 제어하려면 컴퓨터에서 새 코드를 만들고(설정 → 원격 → 기기 페어링) 이 휴대폰으로 스캔하세요.',
   'console.needsYouCount_other': '에이전트 {n}개가 확인을 기다립니다',
 
   'card.openToAnswer': '열어서 응답',

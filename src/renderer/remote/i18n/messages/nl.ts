@@ -49,7 +49,7 @@ export const nl: Readonly<Record<string, string>> = {
   'console.waiting': 'Wachten op je computer…',
   'console.viewerNotice': 'Alleen bekijken — deze verbinding kan niet typen of antwoorden.',
   'console.controlLimited': 'Hier alleen bekijken — dit apparaat is gekoppeld met besturing, maar je computer zet besturing uit voor onversleutelde HTTP-verbindingen.',
-  'console.repairForControl': 'Hier alleen bekijken — dit apparaat is gekoppeld met besturing, maar de koppeling is al eens via onversleuteld HTTP gebruikt, dus besturing staat uit. Koppel het hier opnieuw om te besturen.',
+  'console.repairForControl': 'Hier alleen bekijken — dit apparaat is gekoppeld met besturing, maar de koppeling is al eens via onversleuteld HTTP gebruikt, dus besturing staat uit. Maak om te besturen een nieuwe code op je computer (Instellingen → Op afstand → Apparaat koppelen) en scan die met deze telefoon.',
   'console.needsYouCount_one': '{n} agent wacht op jou',
   'console.needsYouCount_other': '{n} agents wachten op jou',
 

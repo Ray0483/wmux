@@ -49,7 +49,7 @@ export const es: Readonly<Record<string, string>> = {
   'console.waiting': 'Esperando a tu ordenador…',
   'console.viewerNotice': 'Solo lectura: esta conexión no puede escribir ni responder.',
   'console.controlLimited': 'Aquí solo lectura: este dispositivo está vinculado con control, pero tu ordenador desactiva el control en conexiones HTTP sin cifrar.',
-  'console.repairForControl': 'Aquí solo lectura: este dispositivo está vinculado con control, pero su vínculo ya se usó por HTTP sin cifrar, así que el control está desactivado. Vuelve a vincularlo desde aquí para usar el control.',
+  'console.repairForControl': 'Aquí solo lectura: este dispositivo está vinculado con control, pero su vínculo ya se usó por HTTP sin cifrar, así que el control está desactivado. Para usar el control, crea un código nuevo en tu ordenador (Ajustes → Remoto → Vincular un dispositivo) y escanéalo con este teléfono.',
   'console.needsYouCount_one': '{n} agente te necesita',
   'console.needsYouCount_other': '{n} agentes te necesitan',
 
