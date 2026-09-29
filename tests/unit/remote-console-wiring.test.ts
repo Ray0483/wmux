@@ -177,13 +177,20 @@ describe('wmux remote status (human form)', () => {
     expect(formatRemoteStatus({ enabled: true, running: false, port: 9790, lastError: 'port-busy' })).toContain('already in use');
     expect(formatRemoteStatus({ enabled: true, running: false, port: 9790, lastError: 'zzz' })).toContain('zzz');
   });
+
+  it('ui-not-built reads as a broken install, never as a developer command (#254)', () => {
+    const out = formatRemoteStatus({ enabled: true, running: true, port: 9790, lastError: 'ui-not-built' });
+    expect(out).toContain('missing from this build of wmux');
+    expect(out).not.toContain('vite');
+  });
 });
 
 // ─── behaviour ─────────────────────────────────────────────────────────────
 
 const SID_A = 'surf-aaaaaaaa-0000-4000-8000-000000000001';
 const SID_B = 'surf-aaaaaaaa-0000-4000-8000-000000000002';
-const fakeWc = (destroyed = false) => ({ id: Math.random(), isDestroyed: () => destroyed, send: vi.fn(), once: vi.fn() }) as any;
+let fakeWcSeq = 0;
+const fakeWc = (destroyed = false) => ({ id: ++fakeWcSeq, isDestroyed: () => destroyed, send: vi.fn(), once: vi.fn() }) as any;
 const fakeWindow = (wc: any) => ({ webContents: wc, isDestroyed: () => false }) as any;
 
 describe('bindings made BEFORE the console listens reach it (#254)', () => {

@@ -484,7 +484,7 @@ function failSubcommand(command: CommandName, sub: string | undefined): never {
 const REMOTE_ERROR_WORDS: Record<string, string> = {
   'port-busy': 'the port is already in use',
   'bind-failed': 'could not listen on the configured address',
-  'ui-not-built': 'the phone UI is not built (run `npx vite build`)',
+  'ui-not-built': 'the phone page is missing from this build of wmux (reinstall or update)',
   'lan-address-gone': 'the configured network address is no longer on this machine',
 };
 
