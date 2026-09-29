@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
-import { registerIpcHandlers, agentManager, ptyManager, setupAgentPtyForwarding, reapOrphanedPtys, sshDetector, agentIdentity } from './ipc-handlers';
+import { registerIpcHandlers, agentManager, ptyManager, setupAgentPtyForwarding, reapOrphanedPtys, sshDetector, agentIdentity, replayRemoteBindings } from './ipc-handlers';
 import { sequenceFrom, splitSequencedReport } from './ssh-detect';
 import { handleDetectionV2 } from './detection-rpc';
 import { isPtyCrashGuardInstalled } from './pty-manager';
@@ -855,7 +855,20 @@ function startRemoteConsole(): void {
 
   let pending: RemoteConsoleStatus | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let wasRunning = false;
   runtime.onStatus((status) => {
+    // The taps are installed when the server starts listening and reset when it
+    // stops, so every pane that bound before that — i.e. every pane open when
+    // the user flips the switch — would otherwise be unknown to the runtime.
+    // Replay on each not-running → running edge; once now and once on the next
+    // macrotask, because this contract does not say whether the status is
+    // emitted before or after the taps go in, and a replay is idempotent.
+    const running = status?.running === true;
+    if (running && !wasRunning) {
+      replayRemoteBindings();
+      setImmediate(replayRemoteBindings);
+    }
+    wasRunning = running;
     pending = status;
     if (timer) return;
     timer = setTimeout(() => {
@@ -873,7 +886,9 @@ function startRemoteConsole(): void {
 
   // Fire and forget: a console that cannot bind reports it in its status
   // (`port-busy`, `bind-failed`, …); it must never hold up or break startup.
-  runtime.start().catch((err: unknown) => {
+  // Replay after it settles too — the status edge above is the general case,
+  // this one does not depend on how the runtime orders its emits.
+  runtime.start().then(replayRemoteBindings, (err: unknown) => {
     logDiagnostic('remote-console-start-failed', { message: err instanceof Error ? err.message : String(err) });
   });
 }

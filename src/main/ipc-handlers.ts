@@ -41,6 +41,7 @@ import { loadSettings, saveSetting } from './settings-store';
 import { readConsent, updateConsent } from './agent-integration';
 import { handleAgentStateV2 } from './agent-state-rpc';
 import { remoteTaps } from './remote-console/taps';
+import { logDiagnostic } from './crash-diagnostics';
 import { getRemoteConsole } from './remote-console';
 import type { RemoteConsoleRuntime } from './remote-console/contract';
 import type { RemoteModesResult, RemoteSnapshotResult } from '../shared/remote-console-config';
@@ -82,6 +83,48 @@ const agentManager = new AgentManager(ptyManager);
 const insertionQueue = new SurfaceInsertionQueue();
 const surfaceOwners = new Map<SurfaceId, number>();
 const observedWebContents = new Set<number>();
+
+/**
+ * surfaceId → the webContents its PTY_DATA goes to, kept HERE and not only in
+ * the Remote Console runtime (#254).
+ *
+ * The taps are no-ops until the console starts listening, and a forwarder binds
+ * exactly once — when its PTY is created. So every pane that existed before the
+ * user switched the console on (or before an async start() finished, or across
+ * a reconfigure, whose stop resets the taps) announced its binding to a no-op
+ * and was never announced again: the runtime had no webContents to ask for a
+ * snapshot, and every one of those panes answered `no-terminal` on the phone.
+ * main is the only side that knows the binding for the whole process lifetime,
+ * so it keeps it and `replayRemoteBindings()` hands it over whenever the
+ * console comes up. A Map set per PTY create is the whole cost with it off.
+ */
+const remoteBindings = new Map<string, Electron.WebContents>();
+
+function bindRemoteSurface(id: string, wc: Electron.WebContents): void {
+  remoteBindings.set(id, wc);
+  remoteTaps.bindSurface(id, wc);
+}
+
+function unbindRemoteSurface(id: string): void {
+  remoteBindings.delete(id);
+  remoteTaps.unbindSurface(id);
+}
+
+/**
+ * Re-announce every live binding to the (possibly just installed) taps.
+ * Idempotent — `bindSurface` is last-wins — so calling it more often than
+ * needed costs a loop and nothing else. A dead PTY or a destroyed window is
+ * dropped rather than replayed: it could only ever answer `no-terminal`.
+ */
+export function replayRemoteBindings(): void {
+  for (const [id, wc] of remoteBindings) {
+    if (wc.isDestroyed() || !ptyManager.has(id as SurfaceId)) {
+      remoteBindings.delete(id);
+      continue;
+    }
+    remoteTaps.bindSurface(id, wc);
+  }
+}
 
 function ownSurface(surfaceId: SurfaceId, webContents: Electron.WebContents): void {
   surfaceOwners.set(surfaceId, webContents.id);
@@ -569,7 +612,7 @@ export function registerIpcHandlers(windowManager: WindowManager, cdpProxyInstan
       // The webContents this surface's PTY_DATA goes to — where the console
       // must ask for a snapshot, or the snapshot and the stream disagree about
       // which bytes came first (#254). Last-wins across forwarders.
-      if (window) remoteTaps.bindSurface(id, window.webContents);
+      if (window) bindRemoteSurface(id, window.webContents);
       const unsubData = ptyManager.onData(id, (data) => batcher.push(data));
       const unsubExit = ptyManager.onExit(id, (code) => {
         // Trailing output must land before the exit notification, or the
@@ -579,7 +622,7 @@ export function registerIpcHandlers(windowManager: WindowManager, cdpProxyInstan
         // After the flush, for the same reason: a phone must see the last
         // bytes before it sees the exit.
         remoteTaps.exit(id, code);
-        remoteTaps.unbindSurface(id);
+        unbindRemoteSurface(id);
         if (window && !window.isDestroyed()) {
           window.webContents.send(IPC_CHANNELS.PTY_EXIT, id, code);
         }
@@ -1495,20 +1538,34 @@ export function registerIpcHandlers(windowManager: WindowManager, cdpProxyInstan
  * answers `{error:'unavailable'}` when the runtime did not load rather than
  * throwing into the renderer.
  */
-function registerRemoteConsoleHandlers(): void {
+export function registerRemoteConsoleHandlers(): void {
   type Handler = (rt: RemoteConsoleRuntime, ...args: unknown[]) => unknown;
   const handle = (channel: string, fn: Handler): void => {
-    ipcMain.handle(channel, (event, ...args: unknown[]) => {
+    ipcMain.handle(channel, async (event, ...args: unknown[]) => {
       if (!BrowserWindow.fromWebContents(event.sender)) return { error: 'forbidden' };
       const rt = getRemoteConsole();
       if (!rt) return { error: 'unavailable' };
-      return fn(rt, ...args);
+      // A runtime bug answers `{error}` like every other refusal here, rather
+      // than surfacing in Settings as an unhandled rejection carrying whatever
+      // the thrown message happened to say. The message goes to main.log only.
+      try {
+        return await fn(rt, ...args);
+      } catch (err) {
+        logDiagnostic('remote-console-ipc-failed', { channel, message: err instanceof Error ? err.message : String(err) });
+        return { error: 'failed' };
+      }
     });
   };
   const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
   handle(IPC_CHANNELS.REMOTE_CONSOLE_GET_STATE, rt => rt.getStatus());
-  handle(IPC_CHANNELS.REMOTE_CONSOLE_SET_CONFIG, (rt, raw) => rt.setConfig(raw));
+  // setConfig restarts the server (and so re-installs the taps) — replay the
+  // bindings once it has, like startup does (see replayRemoteBindings).
+  handle(IPC_CHANNELS.REMOTE_CONSOLE_SET_CONFIG, async (rt, raw) => {
+    const result = await rt.setConfig(raw);
+    replayRemoteBindings();
+    return result;
+  });
   handle(IPC_CHANNELS.REMOTE_CONSOLE_PAIR_START, (rt, o) => {
     const opts = (o ?? {}) as { name?: unknown; scope?: unknown };
     if (opts.scope !== 'viewer' && opts.scope !== 'operator') return { error: 'bad-scope' };
@@ -1520,8 +1577,13 @@ function registerRemoteConsoleHandlers(): void {
   handle(IPC_CHANNELS.REMOTE_CONSOLE_RENAME, (rt, id, name) => rt.rename(str(id), str(name)));
 
   // The renderer's answer to a snapshot/modes request. The runtime matches it
-  // on `reqId` and ignores anything stale or unknown, so this only relays.
-  ipcMain.on(IPC_CHANNELS.REMOTE_RENDERER_REPLY, (_event, reqId: string, result: RemoteSnapshotResult | RemoteModesResult) => {
+  // on `reqId` and ignores anything stale or unknown. The same window gate as
+  // the invokes: a snapshot reply IS what the phone renders as the pane's
+  // screen, so only one of wmux's own windows may supply one — the runtime's
+  // `handleRendererReply` takes no sender and cannot check this itself.
+  ipcMain.on(IPC_CHANNELS.REMOTE_RENDERER_REPLY, (event, reqId: unknown, result: RemoteSnapshotResult | RemoteModesResult) => {
+    if (!BrowserWindow.fromWebContents(event.sender)) return;
+    if (typeof reqId !== 'string') return;
     getRemoteConsole()?.handleRendererReply(reqId, result);
   });
 }
@@ -1538,13 +1600,13 @@ export function setupAgentPtyForwarding(surfaceId: string, window: BrowserWindow
     // phone most wants to watch, and they never pass through PTY_CREATE.
     remoteTaps.deliver(surfaceId, data);
   });
-  remoteTaps.bindSurface(surfaceId, window.webContents);
+  bindRemoteSurface(surfaceId, window.webContents);
   const unsubData = ptyManager.onData(surfaceId as SurfaceId, (data) => batcher.push(data));
   const unsubExit = ptyManager.onExit(surfaceId as SurfaceId, (code) => {
     batcher.flush();
     batcher.dispose();
     remoteTaps.exit(surfaceId, code);
-    remoteTaps.unbindSurface(surfaceId);
+    unbindRemoteSurface(surfaceId);
     if (window && !window.isDestroyed()) {
       window.webContents.send(IPC_CHANNELS.PTY_EXIT, surfaceId, code);
     }

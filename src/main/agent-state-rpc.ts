@@ -29,6 +29,7 @@ import {
 } from './agent-state';
 import { agentIdentity } from './agent-identity';
 import type { DeliverAnswerReason } from './remote-console/contract';
+import { CHOICE_ID_RE } from '../shared/remote-console-protocol';
 
 type Respond = (result: any) => void;
 type RespondError = (code: number, message: string) => void;
@@ -96,6 +97,15 @@ export async function deliverAnswer(
   surfaceId: string,
   choiceId: string,
 ): Promise<{ ok: true } | { ok: false; reason: DeliverAnswerReason }> {
+  // The console always NAMES its choice. `answerAgent` reads an empty (or
+  // all-blank) id as an UNNAMED answer and resolves it to the declared default
+  // or the only choice — right for `wmux answer-agent` with no --choice, never
+  // for a remote tap: an empty id reaching here is a bug upstream, and it must
+  // not turn into "press the default" on somebody's permission prompt (I4).
+  // Same shape the wire validator enforces, so nothing legitimate is refused.
+  if (typeof choiceId !== 'string' || !CHOICE_ID_RE.test(choiceId)) {
+    return { ok: false, reason: 'unknown-choice' };
+  }
   const outcome = await runAnswer(surfaceId as SurfaceId, choiceId);
   return outcome.ok ? { ok: true } : { ok: false, reason: outcome.reason };
 }

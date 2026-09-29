@@ -72,9 +72,40 @@ describe('deliverAnswer (#254)', () => {
     expect(await deliverAnswer(SID, 'allow')).toEqual({ ok: false, reason: 'write-failed' });
   });
 
+  it.each(['', '   ', 'has space', 'x'.repeat(33)])(
+    'refuses an unnamed or malformed choice id %j — never the default (I4)',
+    async (choiceId) => {
+      // One choice, flagged default: exactly what answerAgent resolves an
+      // UNNAMED answer to. The console must never reach that branch.
+      block([{ id: 'allow', label: 'Allow', key: '1', isDefault: true }]);
+      expect(await deliverAnswer(SID, choiceId)).toEqual({ ok: false, reason: 'unknown-choice' });
+      expect(written).toEqual([]);
+      // Nothing consumed: the real button still works afterwards.
+      expect(await deliverAnswer(SID, 'allow')).toEqual({ ok: true });
+    },
+  );
+
+  it('consumes the choices in the SAME tick as the call, before any await', () => {
+    block();
+    void deliverAnswer(SID, 'allow');
+    expect(getAgentState(SID)?.choices).toEqual([]);
+  });
+
   it('maps a rejecting writer to write-failed', async () => {
     setAnswerWriter(async () => { throw new Error('gone'); });
     block();
     expect(await deliverAnswer(SID, 'allow')).toEqual({ ok: false, reason: 'write-failed' });
+  });
+});
+
+describe('deliverAnswer with no writer wired (#254)', () => {
+  it('is write-failed, and still consumed the choices', async () => {
+    vi.resetModules();
+    const rpc = await import('../../src/main/agent-state-rpc');
+    const state = await import('../../src/main/agent-state');
+    state.resetAgentState();
+    state.reportAgent(SID, { awaitingHuman: true, choices: CHOICES as any });
+    expect(await rpc.deliverAnswer(SID, 'allow')).toEqual({ ok: false, reason: 'write-failed' });
+    expect(state.getAgentState(SID)?.state).toBe('blocked');
   });
 });
