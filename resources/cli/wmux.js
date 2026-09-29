@@ -8,6 +8,7 @@ exports.RAW_V1_VERBS = void 0;
 exports.timeoutMessage = timeoutMessage;
 exports.browserRequest = browserRequest;
 exports.subcommandError = subcommandError;
+exports.parseFlagArgs = parseFlagArgs;
 exports.emptyPromptNote = emptyPromptNote;
 exports.promptTruncationNote = promptTruncationNote;
 exports.rawV1Error = rawV1Error;
@@ -483,28 +484,57 @@ async function cmdBrowser(args) {
         failSubcommand('browser', rest[1]);
     print(await sendV2(req.method, req.params, req.timeoutMs));
 }
-function agentSpawn(args) {
-    const params = {};
-    // Valueless flags must be stripped before the pairwise --flag value loop.
-    const rest = args.slice(2).filter((a) => {
-        if (a === '--replace-tab') {
-            params.replaceTab = true;
-            return false;
+function parseFlagArgs(tokens, flags) {
+    const takesValue = new Set(flags.value);
+    const standalone = new Set(flags.bool ?? []);
+    const values = {};
+    const bools = new Set();
+    for (let i = 0; i < tokens.length; i++) {
+        const tok = tokens[i];
+        if (standalone.has(tok)) {
+            bools.add(tok);
+            continue;
         }
-        return true;
-    });
-    for (let i = 0; i < rest.length; i += 2) {
-        if (rest[i] === '--cmd')
-            params.cmd = rest[i + 1];
-        if (rest[i] === '--label')
-            params.label = rest[i + 1];
-        if (rest[i] === '--cwd')
-            params.cwd = rest[i + 1];
-        if (rest[i] === '--pane')
-            params.paneId = rest[i + 1];
-        if (rest[i] === '--workspace')
-            params.workspaceId = rest[i + 1];
+        if (!takesValue.has(tok)) {
+            throw new Error(`Unexpected argument '${tok}'. A flag value containing spaces or quotes must reach wmux`
+                + ' as ONE argument — check how it was quoted.');
+        }
+        const value = tokens[i + 1];
+        // The next token being one of OUR flags means this one's value is missing;
+        // taking it as the value would silently swallow the flag after it.
+        if (value === undefined || takesValue.has(value) || standalone.has(value)) {
+            throw new Error(`Flag '${tok}' needs a value.`);
+        }
+        if (tok in values)
+            throw new Error(`Flag '${tok}' was given more than once.`);
+        values[tok] = value;
+        i++;
     }
+    return { values, bools };
+}
+/** parseFlagArgs, with a refusal reported the way every other argv error is. */
+function flagsOrFail(command, tokens, flags) {
+    try {
+        return parseFlagArgs(tokens, flags);
+    }
+    catch (err) {
+        return fail(command, COMMAND_SPECS[command], err.message);
+    }
+}
+function agentSpawn(args) {
+    const { values, bools } = flagsOrFail('agent', args.slice(2), {
+        value: ['--cmd', '--label', '--cwd', '--pane', '--workspace'],
+        bool: ['--replace-tab'],
+    });
+    const params = {
+        cmd: values['--cmd'],
+        label: values['--label'],
+        cwd: values['--cwd'],
+        paneId: values['--pane'],
+        workspaceId: values['--workspace'],
+    };
+    if (bools.has('--replace-tab'))
+        params.replaceTab = true;
     if (!params.cmd) {
         console.error('--cmd is required');
         process.exit(1);
@@ -514,20 +544,30 @@ function agentSpawn(args) {
     return sendV2('agent.spawn', params);
 }
 function agentSpawnBatch(args) {
-    const jsonIdx = args.indexOf('--json');
-    if (jsonIdx === -1) {
-        console.error('Usage: wmux agent spawn-batch --json \'[...]\'');
-        process.exit(1);
-    }
-    const parsed = JSON.parse(args[jsonIdx + 1]);
-    const strategy = args.find((a, i) => args[i - 1] === '--strategy') || 'distribute';
     // `--workspace`, so a batch can target a workspace that is not the focused
     // one — `agent spawn` has had the flag all along and this did not, which made
     // the batch half of #242 unreachable from the CLI even after main learned to
     // honour it. An orchestrator building panes in one workspace while the user
     // works in another is the case both exist for.
-    const workspaceId = args.find((a, i) => args[i - 1] === '--workspace');
-    return sendV2('agent.spawn_batch', { agents: parsed, strategy, workspaceId });
+    const { values } = flagsOrFail('agent', args.slice(2), {
+        value: ['--json', '--strategy', '--workspace'],
+    });
+    const json = values['--json'];
+    if (json === undefined) {
+        console.error('Usage: wmux agent spawn-batch --json \'[...]\'');
+        process.exit(1);
+    }
+    let parsed;
+    try {
+        parsed = JSON.parse(json);
+    }
+    catch (err) {
+        // The same PowerShell 5.1 quote-eating as #247 arrives here as JSON with
+        // its quotes gone; say so rather than dumping a SyntaxError stack.
+        return fail('agent', COMMAND_SPECS.agent, `--json is not valid JSON (${err.message}).`);
+    }
+    const strategy = values['--strategy'] || 'distribute';
+    return sendV2('agent.spawn_batch', { agents: parsed, strategy, workspaceId: values['--workspace'] });
 }
 const AGENT_CMDS = {
     spawn: agentSpawn,
@@ -633,19 +673,17 @@ async function cmdLocales(args) {
 async function cmdLayout(args) {
     if (args[1] !== 'grid')
         failSubcommand('layout', args[1]);
-    const params = {};
-    for (let i = 2; i < args.length; i += 2) {
-        if (args[i] === '--count')
-            params.count = parseInt(args[i + 1], 10);
-        if (args[i] === '--type')
-            params.type = args[i + 1];
-        if (args[i] === '--anchor-surface')
-            params.anchorSurfaceId = args[i + 1];
-        if (args[i] === '--anchor-pane')
-            params.anchorPaneId = args[i + 1];
-        if (args[i] === '--workspace')
-            params.workspaceId = args[i + 1];
-    }
+    // Scanned, not paired (#247) — see parseFlagArgs.
+    const { values } = flagsOrFail('layout', args.slice(2), {
+        value: ['--count', '--type', '--anchor-surface', '--anchor-pane', '--workspace'],
+    });
+    const params = {
+        count: values['--count'] === undefined ? undefined : parseInt(values['--count'], 10),
+        type: values['--type'],
+        anchorSurfaceId: values['--anchor-surface'],
+        anchorPaneId: values['--anchor-pane'],
+        workspaceId: values['--workspace'],
+    };
     if (!params.count || params.count < 1) {
         console.error('--count <N> is required and must be >= 1');
         process.exit(1);

@@ -37,6 +37,14 @@ export interface SpawnTargetLookups {
    * first window's store knows nothing about a pane in the second.
    */
   workspaceForPane(paneId: string): Promise<string | null>;
+  /**
+   * Which workspace holds this SURFACE, across every window, or null (#246).
+   * Asked about the caller's own terminal — the `caller` every CLI call carries
+   * as `$WMUX_SURFACE_ID` — so it has the same every-window rule. A miss is not
+   * an error here: it is a stale id or a shell wmux did not start, and the
+   * resolution simply moves on to the active workspace.
+   */
+  workspaceForSurface(surfaceId: string): Promise<string | null>;
   /** The first window's active workspace, or null. */
   activeWorkspaceId(): Promise<string | null>;
   /** Pane loads for one NAMED workspace, across every window. */
@@ -62,12 +70,31 @@ export class SpawnTargetError extends Error {
  * Shared by `agent.spawn` and `agent.spawn_batch` so the two cannot disagree
  * about what `--workspace` means — they already had, which is how the batch
  * half of #242 went unnoticed.
+ *
+ * Order: the named workspace, then the CALLER's workspace, then the active one.
+ * The caller step is #246. Every CLI call carries `caller: $WMUX_SURFACE_ID`,
+ * and `layout.grid`, `pane.list` and friends already scope themselves to it
+ * (#143, `resolveCallerTarget` in v2-bridge.ts) — but this path never read it,
+ * so an agent spawned from a background workspace was filed in whichever one
+ * the user happened to have focused, and a hand-rolled spawn loop scattered its
+ * agents across every workspace the user clicked while it ran. "The workspace I
+ * am typing in" is what a bare `wmux agent spawn` means; the focused one is only
+ * the right answer when there is no caller to ask about.
+ *
+ * A caller that does not resolve (stale id, a shell wmux did not start) falls
+ * through to the active workspace SILENTLY — the rule resolveCallerTarget
+ * applies, and the pre-#246 behaviour rather than an error nobody can act on.
  */
 export async function resolveSpawnWorkspace(
   requested: string | undefined,
   lookups: SpawnTargetLookups,
+  caller?: unknown,
 ): Promise<string> {
-  const workspaceId = requested || (await lookups.activeWorkspaceId());
+  let workspaceId = requested || null;
+  if (!workspaceId && typeof caller === 'string' && caller) {
+    workspaceId = await lookups.workspaceForSurface(caller);
+  }
+  workspaceId ||= await lookups.activeWorkspaceId();
   if (!workspaceId) throw new SpawnTargetError(-32000, 'No active workspace');
   return workspaceId;
 }
@@ -105,12 +132,13 @@ export async function resolveSpawnPaneLoads(
  *    the pane filed somewhere that does not contain it, and guessing which of
  *    the two they meant is how the original bug stayed invisible.
  *
- * With a pane named, the ACTIVE workspace is never consulted at all — so a
+ * With a pane named, neither the caller (#246) nor the ACTIVE workspace is
+ * consulted at all — so a
  * fully-specified spawn now works when there is no active workspace, where it
  * used to fail -32000 for a reason that had nothing to do with the request.
  */
 export async function resolveSpawnTarget(
-  params: { paneId?: string; workspaceId?: string },
+  params: { paneId?: string; workspaceId?: string; caller?: unknown },
   lookups: SpawnTargetLookups,
 ): Promise<ResolvedSpawnTarget> {
   if (params.paneId) {
@@ -127,7 +155,7 @@ export async function resolveSpawnTarget(
     return { paneId: params.paneId, workspaceId: owner };
   }
 
-  const workspaceId = await resolveSpawnWorkspace(params.workspaceId, lookups);
+  const workspaceId = await resolveSpawnWorkspace(params.workspaceId, lookups, params.caller);
   const loads = await resolveSpawnPaneLoads(workspaceId, lookups);
   const paneId = distributeAgents(1, loads)[0];
   // distributeAgents cannot return an empty assignment for a non-empty pane

@@ -320,6 +320,19 @@ const spawnTargetLookups: SpawnTargetLookups = {
     }
     return null;
   },
+  // The caller's own workspace (#246), through the same `__wmux_locateSurface`
+  // resolveCallerTarget uses for layout/pane verbs, so "the caller's workspace"
+  // cannot mean two different things depending on which verb asked.
+  async workspaceForSurface(surfaceId: string): Promise<string | null> {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed()) continue;
+      const found = await win.webContents
+        .executeJavaScript(`window.__wmux_locateSurface?.(${JSON.stringify(surfaceId)})?.workspaceId ?? null`)
+        .catch(() => null);
+      if (found) return found as string;
+    }
+    return null;
+  },
   async activeWorkspaceId(): Promise<string | null> {
     const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
     if (!win) return null;
@@ -1822,15 +1835,16 @@ app.whenReady().then(() => {
       case 'agent.spawn_batch': {
         (async () => {
           try {
-            const { agents: agentParams, strategy = 'distribute', workspaceId: wsId } = request.params;
+            const { agents: agentParams, strategy = 'distribute', workspaceId: wsId, caller } = request.params;
             // The batch half of #242: the panes must come from the workspace
             // this batch is being filed under, not from whichever one happens
             // to be active. `--workspace` used to be honoured for the record
-            // and ignored for the panes.
+            // and ignored for the panes. With no --workspace, the CALLER's
+            // workspace comes before the active one (#246), for the loads too.
             let workspaceId: string;
             let paneLoads;
             try {
-              workspaceId = await resolveSpawnWorkspace(wsId, spawnTargetLookups);
+              workspaceId = await resolveSpawnWorkspace(wsId, spawnTargetLookups, caller);
               paneLoads = await resolveSpawnPaneLoads(workspaceId, spawnTargetLookups);
             } catch (err) {
               if (err instanceof SpawnTargetError) { respondError(err.code, err.message); return; }

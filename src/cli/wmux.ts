@@ -491,37 +491,120 @@ async function cmdBrowser(args: string[]): Promise<void> {
   print(await sendV2(req.method, req.params, req.timeoutMs));
 }
 
-function agentSpawn(args: string[]): Promise<any> {
-  const params: any = {};
-  // Valueless flags must be stripped before the pairwise --flag value loop.
-  const rest = args.slice(2).filter((a) => {
-    if (a === '--replace-tab') { params.replaceTab = true; return false; }
-    return true;
-  });
-  for (let i = 0; i < rest.length; i += 2) {
-    if (rest[i] === '--cmd') params.cmd = rest[i + 1];
-    if (rest[i] === '--label') params.label = rest[i + 1];
-    if (rest[i] === '--cwd') params.cwd = rest[i + 1];
-    if (rest[i] === '--pane') params.paneId = rest[i + 1];
-    if (rest[i] === '--workspace') params.workspaceId = rest[i + 1];
+/**
+ * Scan a flag list: every known flag wherever it appears, the token after a
+ * value flag as its value, and ANYTHING else an error (issue #247).
+ *
+ * `agent spawn`, `agent spawn-batch` and `layout grid` used to walk argv
+ * pairwise (`i += 2`), which is only correct if every token is exactly where
+ * it was expected. Windows PowerShell 5.1 does not escape embedded `"` when it
+ * builds a native command line, so `--cmd 'powershell -Command "Start-Sleep
+ * 30"'` reached node as several tokens. One extra token shifted the pairing by
+ * one, every later flag was read as a value and every value as a flag name
+ * nobody matched — `--label` and `--workspace` were dropped, the agent spawned
+ * with a truncated command in the wrong place, and the exit code was 0.
+ * `checkFlags` could not see it either: it only judges tokens that start with
+ * `--`, and the stray pieces were bare words.
+ *
+ * A mangled argv is not something the CLI can repair — it cannot know where
+ * the caller's quotes were — so the honest outcome is to refuse and say which
+ * token did not belong. A flag given twice is refused for the same reason: it
+ * is how a split value that happened to contain a flag name looks.
+ *
+ * Kept in this file rather than a module of its own: the CLI ships file by
+ * file (`resources/cli/`), and every relative import is one more file the
+ * release has to remember.
+ */
+export interface ParsedFlags {
+  values: Record<string, string>;
+  bools: Set<string>;
+}
+
+export function parseFlagArgs(
+  tokens: readonly string[],
+  flags: { value: readonly string[]; bool?: readonly string[] },
+): ParsedFlags {
+  const takesValue = new Set(flags.value);
+  const standalone = new Set(flags.bool ?? []);
+  const values: Record<string, string> = {};
+  const bools = new Set<string>();
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (standalone.has(tok)) {
+      bools.add(tok);
+      continue;
+    }
+    if (!takesValue.has(tok)) {
+      throw new Error(
+        `Unexpected argument '${tok}'. A flag value containing spaces or quotes must reach wmux`
+        + ' as ONE argument — check how it was quoted.',
+      );
+    }
+    const value = tokens[i + 1];
+    // The next token being one of OUR flags means this one's value is missing;
+    // taking it as the value would silently swallow the flag after it.
+    if (value === undefined || takesValue.has(value) || standalone.has(value)) {
+      throw new Error(`Flag '${tok}' needs a value.`);
+    }
+    if (tok in values) throw new Error(`Flag '${tok}' was given more than once.`);
+    values[tok] = value;
+    i++;
   }
+  return { values, bools };
+}
+
+/** parseFlagArgs, with a refusal reported the way every other argv error is. */
+function flagsOrFail(
+  command: CommandName,
+  tokens: readonly string[],
+  flags: { value: readonly string[]; bool?: readonly string[] },
+): ParsedFlags {
+  try {
+    return parseFlagArgs(tokens, flags);
+  } catch (err: any) {
+    return fail(command, COMMAND_SPECS[command], err.message);
+  }
+}
+
+function agentSpawn(args: string[]): Promise<any> {
+  const { values, bools } = flagsOrFail('agent', args.slice(2), {
+    value: ['--cmd', '--label', '--cwd', '--pane', '--workspace'],
+    bool: ['--replace-tab'],
+  });
+  const params: any = {
+    cmd: values['--cmd'],
+    label: values['--label'],
+    cwd: values['--cwd'],
+    paneId: values['--pane'],
+    workspaceId: values['--workspace'],
+  };
+  if (bools.has('--replace-tab')) params.replaceTab = true;
   if (!params.cmd) { console.error('--cmd is required'); process.exit(1); }
   if (!params.label) params.label = params.cmd.split(/\s+/)[0];
   return sendV2('agent.spawn', params);
 }
 
 function agentSpawnBatch(args: string[]): Promise<any> {
-  const jsonIdx = args.indexOf('--json');
-  if (jsonIdx === -1) { console.error('Usage: wmux agent spawn-batch --json \'[...]\''); process.exit(1); }
-  const parsed = JSON.parse(args[jsonIdx + 1]);
-  const strategy = args.find((a, i) => args[i - 1] === '--strategy') || 'distribute';
   // `--workspace`, so a batch can target a workspace that is not the focused
   // one — `agent spawn` has had the flag all along and this did not, which made
   // the batch half of #242 unreachable from the CLI even after main learned to
   // honour it. An orchestrator building panes in one workspace while the user
   // works in another is the case both exist for.
-  const workspaceId = args.find((a, i) => args[i - 1] === '--workspace');
-  return sendV2('agent.spawn_batch', { agents: parsed, strategy, workspaceId });
+  const { values } = flagsOrFail('agent', args.slice(2), {
+    value: ['--json', '--strategy', '--workspace'],
+  });
+  const json = values['--json'];
+  if (json === undefined) { console.error('Usage: wmux agent spawn-batch --json \'[...]\''); process.exit(1); }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch (err: any) {
+    // The same PowerShell 5.1 quote-eating as #247 arrives here as JSON with
+    // its quotes gone; say so rather than dumping a SyntaxError stack.
+    return fail('agent', COMMAND_SPECS.agent, `--json is not valid JSON (${err.message}).`);
+  }
+  const strategy = values['--strategy'] || 'distribute';
+  return sendV2('agent.spawn_batch', { agents: parsed, strategy, workspaceId: values['--workspace'] });
 }
 
 const AGENT_CMDS: Record<string, (args: string[]) => Promise<any>> = {
@@ -618,14 +701,17 @@ async function cmdLocales(args: string[]): Promise<void> {
 
 async function cmdLayout(args: string[]): Promise<void> {
   if (args[1] !== 'grid') failSubcommand('layout', args[1]);
-  const params: any = {};
-  for (let i = 2; i < args.length; i += 2) {
-    if (args[i] === '--count') params.count = parseInt(args[i + 1], 10);
-    if (args[i] === '--type') params.type = args[i + 1];
-    if (args[i] === '--anchor-surface') params.anchorSurfaceId = args[i + 1];
-    if (args[i] === '--anchor-pane') params.anchorPaneId = args[i + 1];
-    if (args[i] === '--workspace') params.workspaceId = args[i + 1];
-  }
+  // Scanned, not paired (#247) — see parseFlagArgs.
+  const { values } = flagsOrFail('layout', args.slice(2), {
+    value: ['--count', '--type', '--anchor-surface', '--anchor-pane', '--workspace'],
+  });
+  const params: any = {
+    count: values['--count'] === undefined ? undefined : parseInt(values['--count'], 10),
+    type: values['--type'],
+    anchorSurfaceId: values['--anchor-surface'],
+    anchorPaneId: values['--anchor-pane'],
+    workspaceId: values['--workspace'],
+  };
   if (!params.count || params.count < 1) { console.error('--count <N> is required and must be >= 1'); process.exit(1); }
   // If no explicit anchor, fall back to the current shell's surface so the command "just works" from inside a pane.
   if (!params.anchorSurfaceId && !params.anchorPaneId && process.env.WMUX_SURFACE_ID) {

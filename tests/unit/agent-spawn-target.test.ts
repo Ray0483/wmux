@@ -26,9 +26,17 @@ const PANES_OF: Record<string, { paneId: string; tabCount: number }[]> = {
   [WS_PERSONAL]: [{ paneId: PANE_PERSONAL, tabCount: 1 }],
 };
 
+// #246: the calling terminal. The caller sits in ADMIN while PERSONAL is the
+// active (focused) workspace — the reporter's background-workspace spawn loop.
+const CALLER_IN_ADMIN = 'surf-caller-in-admin';
+const SURFACE_OWNER_OF: Record<string, string> = {
+  [CALLER_IN_ADMIN]: WS_ADMIN,
+};
+
 function lookups(over: Partial<SpawnTargetLookups> = {}): SpawnTargetLookups {
   return {
     workspaceForPane: async (paneId) => OWNER_OF[paneId] ?? null,
+    workspaceForSurface: async (surfaceId) => SURFACE_OWNER_OF[surfaceId] ?? null,
     activeWorkspaceId: async () => WS_PERSONAL,
     paneLoads: async (workspaceId) => PANES_OF[workspaceId] ?? [],
     ...over,
@@ -154,6 +162,52 @@ describe('resolveSpawnTarget', () => {
     });
   });
 
+  describe("the caller's workspace (#246)", () => {
+    it('lands in the CALLER workspace, not the focused one', async () => {
+      const target = await resolveSpawnTarget({ caller: CALLER_IN_ADMIN }, lookups());
+      expect(target).toEqual({ paneId: PANE_ADMIN, workspaceId: WS_ADMIN });
+    });
+
+    it('does not ask for the active workspace when the caller resolves', async () => {
+      const activeWorkspaceId = vi.fn(async () => WS_PERSONAL);
+      await resolveSpawnTarget({ caller: CALLER_IN_ADMIN }, lookups({ activeWorkspaceId }));
+      expect(activeWorkspaceId).not.toHaveBeenCalled();
+    });
+
+    it('falls through to the active workspace for an unresolvable caller', async () => {
+      const target = await resolveSpawnTarget({ caller: 'surf-stale' }, lookups());
+      expect(target).toEqual({ paneId: PANE_PERSONAL, workspaceId: WS_PERSONAL });
+    });
+
+    it('ignores a non-string caller', async () => {
+      const workspaceForSurface = vi.fn(async () => WS_ADMIN);
+      const target = await resolveSpawnTarget(
+        { caller: 42 },
+        lookups({ workspaceForSurface }),
+      );
+      expect(workspaceForSurface).not.toHaveBeenCalled();
+      expect(target.workspaceId).toBe(WS_PERSONAL);
+    });
+
+    it('an explicit workspace still wins over the caller', async () => {
+      const workspaceForSurface = vi.fn(async () => WS_ADMIN);
+      const target = await resolveSpawnTarget(
+        { caller: CALLER_IN_ADMIN, workspaceId: WS_PERSONAL },
+        lookups({ workspaceForSurface }),
+      );
+      expect(target).toEqual({ paneId: PANE_PERSONAL, workspaceId: WS_PERSONAL });
+      expect(workspaceForSurface).not.toHaveBeenCalled();
+    });
+
+    it('an explicit pane still wins over the caller', async () => {
+      const target = await resolveSpawnTarget(
+        { caller: CALLER_IN_ADMIN, paneId: PANE_PERSONAL },
+        lookups(),
+      );
+      expect(target).toEqual({ paneId: PANE_PERSONAL, workspaceId: WS_PERSONAL });
+    });
+  });
+
   describe('an empty-string pane id is absent, not unknown', () => {
     it('falls through to distribution', async () => {
       const target = await resolveSpawnTarget({ paneId: '' }, lookups());
@@ -169,6 +223,18 @@ describe('the batch path shares the workspace decision', () => {
 
   it('falls back to the active workspace', async () => {
     expect(await resolveSpawnWorkspace(undefined, lookups())).toBe(WS_PERSONAL);
+  });
+
+  it("uses the caller's workspace before the active one (#246)", async () => {
+    expect(await resolveSpawnWorkspace(undefined, lookups(), CALLER_IN_ADMIN)).toBe(WS_ADMIN);
+  });
+
+  it('an explicit workspace beats the caller in a batch too', async () => {
+    expect(await resolveSpawnWorkspace(WS_PERSONAL, lookups(), CALLER_IN_ADMIN)).toBe(WS_PERSONAL);
+  });
+
+  it('an unresolvable caller falls back to the active workspace', async () => {
+    expect(await resolveSpawnWorkspace(undefined, lookups(), 'surf-stale')).toBe(WS_PERSONAL);
   });
 
   it('is -32000 with neither', async () => {

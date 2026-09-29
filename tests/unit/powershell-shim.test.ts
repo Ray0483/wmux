@@ -152,3 +152,75 @@ describe.skipIf(!powershell)('a shim invoked from PowerShell (issue #154)', () =
       .toEqual(['notify', 'Build & deploy finished']);
   });
 });
+
+/**
+ * Issue #247: embedded double quotes. Before 7.3 (and under
+ * `$PSNativeCommandArgumentPassing = 'Legacy'`) PowerShell does not escape a `"`
+ * inside an argument when it builds node's command line, so a --cmd value with
+ * quotes in it reached the CLI split into several argv entries with the quotes
+ * gone. Every round trip below except the last failed on Windows PowerShell 5.1
+ * with the pre-#247 shim — the first one is the report's own command.
+ *
+ * Every installed host is exercised, not just the first, because the two sides
+ * of the fix run on different hosts: 5.1 takes the hand-built `--%` path, 7.3+
+ * takes `@args`, and a forced 'Legacy' on 7.x takes `--%` again.
+ */
+const installedHosts = process.platform === 'win32'
+  ? POWERSHELL_HOSTS.filter((host) => {
+    try {
+      execFileSync(host, ['-NoProfile', '-Command', 'exit 0'], { stdio: 'ignore', timeout: 20000 });
+      return true;
+    } catch {
+      return false;
+    }
+  })
+  : [];
+
+const ROUND_TRIPS: string[][] = [
+  ['agent', 'spawn', '--cmd', 'powershell -NoProfile -Command "Start-Sleep 30"', '--label', 'C', '--workspace', 'X'],
+  ['"a b"', 'a"b'],
+  // Backslashes are literal except before a quote, including the closing one.
+  ['trailing\\', 'with space\\', 'C:\\Program Files\\x\\', 'q\\\\"x y'],
+  ['', 'x', ''],
+  ['{"cmd":"claude --x \\"y\\"","label":"L"}'],
+  // Not quote cases, but the `--%` path expands %VAR% and must not reach these.
+  ['%PATH%', '100%', '%WMUX_PS_ARGLINE%', 'document.title.length>0', 'a|b', "it's"],
+];
+
+describe.skipIf(installedHosts.length === 0)('embedded quotes survive the shim (issue #247)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wmux-shim-247-'));
+  const echo = path.join(dir, 'echo.js');
+  fs.writeFileSync(echo, 'console.log(JSON.stringify(process.argv.slice(2)));\n');
+  fs.copyFileSync(path.join(SHIM_DIR, 'wmux.ps1'), path.join(dir, 'wmux.ps1'));
+  const env = { ...process.env, WMUX_CLI: echo, PSExecutionPolicyPreference: 'Bypass' };
+
+  function run(host: string, script: string): string {
+    return execFileSync(
+      host,
+      ['-NoProfile', '-NonInteractive', '-Command', `$env:PATH = '${dir};' + $env:PATH; ${script}`],
+      { encoding: 'utf-8', timeout: 30000, cwd: dir, env },
+    );
+  }
+  const psQuote = (args: string[]) => args.map((a) => `'${a.replace(/'/g, "''")}'`).join(' ');
+
+  for (const host of installedHosts) {
+    for (const args of ROUND_TRIPS) {
+      it(`${host}: ${JSON.stringify(args)}`, () => {
+        expect(JSON.parse(run(host, `wmux ${psQuote(args)}`))).toEqual(args);
+      });
+    }
+  }
+
+  it.skipIf(!installedHosts.includes('pwsh.exe'))('pwsh with Legacy argument passing forced', () => {
+    for (const args of ROUND_TRIPS) {
+      const out = run('pwsh.exe', `$PSNativeCommandArgumentPassing = 'Legacy'; wmux ${psQuote(args)}`);
+      expect(JSON.parse(out)).toEqual(args);
+    }
+  });
+
+  it('still feeds the pipeline, so `$x = wmux ...` captures the reply', () => {
+    for (const host of installedHosts) {
+      expect(run(host, `$x = wmux 'a b'; "captured=" + $x`).trim()).toBe('captured=["a b"]');
+    }
+  });
+});
