@@ -147,14 +147,14 @@ export function AttachScreen({ client, s, entry, status, operator, maxText, font
         </button>
       </header>
 
-      <TermView client={client} s={s} mode={mode} fontScale={fontScale} dark={dark} t={t} onLink={setLink} />
+      <TermView client={client} s={s} mode={mode} fontScale={fontScale} dark={dark} t={t} operator={operator} onLink={setLink} />
 
       <div className="rc-attach__stack">
         {operator && blocked && entry && !entry.answerPending && (
           <ChoiceRow choices={entry.choices} onAnswer={(id) => onAnswer(s, id, entry.promptId)} />
         )}
         {blocked && entry?.answerPending && <p className="rc-attach__pending">{t.t('card.answerPending')}</p>}
-        {operator && <KeyBar armed={arm?.key ?? null} t={t} onKey={sendKey} />}
+        {operator && <KeyBar armed={arm?.key ?? null} armedFor={arm?.force.at(-1) ?? null} t={t} onKey={sendKey} />}
         {operator && <Composer key={s} client={client} s={s} blocked={blocked} prompt={entry?.promptId ?? null} maxText={maxText} t={t} />}
       </div>
 

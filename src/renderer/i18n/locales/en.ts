@@ -934,7 +934,7 @@ export const en = {
   'settings.remote.rename': 'Rename',
   'settings.remote.revoke': 'Revoke',
   'settings.remote.revokeAll': 'Revoke all',
-  'settings.remote.revokeAllConfirm': 'Revoke all {count} devices? Every paired phone is signed out at once.',
+  'settings.remote.revokeAllConfirm': 'Revoke every paired device ({count})? Each one is signed out at once.',
   'settings.remote.revokeAllYes': 'Yes, revoke all',
   'settings.remote.configError.badPort': 'The port must be a whole number from 1024 to 65535.',
   'settings.remote.configError.badPublicUrl': 'The Public URL must be a bare http(s) address with no path, for example https://my-pc.tailnet.ts.net',

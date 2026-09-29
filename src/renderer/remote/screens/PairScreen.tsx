@@ -36,10 +36,26 @@ export function NoticeScreen({ title, body, action }: Readonly<NoticeProps>) {
   );
 }
 
+/** Why a pairing attempt failed, as the message key the screen shows. */
+export type PairFailure = 'pair.failed' | 'pair.rate' | 'pair.deviceCap';
+
+/**
+ * Word a refused `POST /api/pair` (410 is handled before this, as "expired").
+ * "Make a new code" is the right advice only for a bad or used code: after a
+ * 429 the same code still works once the limit lifts, and at the device cap
+ * the computer refuses to make a new code at all until a device is revoked.
+ */
+export function pairFailureKey(status: number | null, body: unknown): PairFailure {
+  const error = typeof body === 'object' && body !== null ? (body as { error?: unknown }).error : undefined;
+  if (status === 429 || error === 'rate') return 'pair.rate';
+  if (error === 'device-cap') return 'pair.deviceCap';
+  return 'pair.failed';
+}
+
 interface PairProps {
   t: RemoteT;
   busy: boolean;
-  failed: boolean;
+  failed: PairFailure | null;
   onPair(name: string): void;
 }
 
@@ -75,7 +91,7 @@ export function PairScreen({ t, busy, failed, onPair }: Readonly<PairProps>) {
             onChange={(e) => setName(e.target.value)}
           />
         </label>
-        {failed && <p className="rc-full__error" role="alert">{t.t('pair.failed')}</p>}
+        {failed && <p className="rc-full__error" role="alert">{t.t(failed)}</p>}
         <button type="submit" className="rc-btn rc-btn--primary rc-full__action" disabled={busy}>
           {busy ? t.t('pair.pairing') : t.t('pair.confirm')}
         </button>

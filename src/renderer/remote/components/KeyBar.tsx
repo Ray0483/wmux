@@ -11,7 +11,7 @@
  */
 
 import { useState } from 'react';
-import type { RemoteKey } from '../../../shared/remote-console-protocol';
+import type { ConfirmKind, RemoteKey } from '../../../shared/remote-console-protocol';
 import type { RemoteMessageKey } from '../i18n/messages/en';
 import type { RemoteT } from '../i18n';
 
@@ -48,8 +48,22 @@ function keyName(def: KeyDef, t: RemoteT): string {
   return def.aria ? t.t(def.aria) : def.label;
 }
 
+/**
+ * What the second tap of an armed key DOES, in words. "Tap again to send"
+ * hid the part that matters: on a working agent Esc and ^C interrupt the run,
+ * and on a blocked one Enter, y and n answer its question. The composer says
+ * so in a sheet; a key has only this line, so it says so here.
+ */
+export function armedLabelKey(reason: ConfirmKind | null): RemoteMessageKey {
+  if (reason === 'interrupt') return 'keys.armedInterrupt';
+  if (reason === 'blocked') return 'keys.armedAnswer';
+  return 'keys.armed';
+}
+
 interface Props {
   armed: RemoteKey | null;
+  /** The confirm the armed tap is waiting on (the last one it asked). */
+  armedFor: ConfirmKind | null;
   t: RemoteT;
   onKey(key: RemoteKey): void;
 }
@@ -70,9 +84,9 @@ function KeyButton({ def, armed, armedLabel, t, onKey }: Readonly<{ def: KeyDef;
   );
 }
 
-export function KeyBar({ armed, t, onKey }: Readonly<Props>) {
+export function KeyBar({ armed, armedFor, t, onKey }: Readonly<Props>) {
   const [more, setMore] = useState(false);
-  const armedLabel = t.t('keys.armed');
+  const armedLabel = t.t(armedLabelKey(armedFor));
   const armedDef = armed ? [...PRIMARY, ...EXTRA].find((d) => d.key === armed) : undefined;
   return (
     <div className="rc-keybar">

@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { MAX_TEXT, type RemoteRosterEntry, type RemoteScope, type ServerMessage } from '../../shared/remote-console-protocol';
 import { ackMessageKey, createT, matchLanguage, type RemoteT } from './i18n';
 import { createBrowserWsClient, isUnconfirmed, newNonce, type WelcomeMessage, type WsClient, type WsStatus } from './ws-client';
-import { NoticeScreen, PairScreen } from './screens/PairScreen';
+import { NoticeScreen, PairScreen, pairFailureKey, type PairFailure } from './screens/PairScreen';
 import { ConsoleScreen } from './screens/ConsoleScreen';
 import { AttachScreen } from './screens/AttachScreen';
 import { PrefsScreen, alertState, loadPrefs, savePrefs, type RemotePrefs } from './screens/PrefsScreen';
@@ -35,7 +35,7 @@ interface SessionInfo {
 
 type Phase =
   | { kind: 'loading' }
-  | { kind: 'pair'; secret: string; busy: boolean; failed: boolean }
+  | { kind: 'pair'; secret: string; busy: boolean; failed: PairFailure | null }
   | { kind: 'expired' }
   | { kind: 'unpaired' }
   | { kind: 'revoked' }
@@ -95,13 +95,14 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
   const t: RemoteT = useMemo(() => createT(lang), [lang]);
 
   const [phase, setPhase] = useState<Phase>(
-    pairSecret ? { kind: 'pair', secret: pairSecret, busy: false, failed: false } : { kind: 'loading' },
+    pairSecret ? { kind: 'pair', secret: pairSecret, busy: false, failed: null } : { kind: 'loading' },
   );
   const [view, setView] = useState<View>({ screen: 'list' });
   const [client, setClient] = useState<WsClient | null>(null);
   const [status, setStatus] = useState<WsStatus>('idle');
   const [welcome, setWelcome] = useState<WelcomeMessage | null>(null);
   const [roster, setRoster] = useState<RemoteRosterEntry[]>([]);
+  const [rosterReceived, setRosterReceived] = useState(false);
   const [rosterAt, setRosterAt] = useState(() => Date.now());
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [dark, setDark] = useState(() => resolveDark(prefs.theme));
@@ -137,7 +138,7 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
   // ── A pairing link pasted into this already-open tab (main.tsx scrubbed it).
   useEffect(() => laterSecrets?.subscribe((secret) => {
     setView({ screen: 'list' });
-    setPhase({ kind: 'pair', secret, busy: false, failed: false });
+    setPhase({ kind: 'pair', secret, busy: false, failed: null });
   }), [laterSecrets]);
 
   // ── Not paired any more: drafts (maybe a password typed for a sudo prompt)
@@ -160,7 +161,8 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
 
   const pair = async (name: string) => {
     if (phase.kind !== 'pair') return;
-    setPhase({ ...phase, busy: true, failed: false });
+    setPhase({ ...phase, busy: true, failed: null });
+    let failure: PairFailure = 'pair.failed';
     try {
       const res = await postJson('/api/pair', { secret: phase.secret, name });
       if (res.ok) {
@@ -171,8 +173,10 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
         setPhase({ kind: 'expired' });
         return;
       }
-    } catch { /* fall through to failed */ }
-    setPhase({ ...phase, busy: false, failed: true });
+      const body: unknown = await res.json().catch(() => null);
+      failure = pairFailureKey(res.status, body);
+    } catch { /* no answer: the generic failure */ }
+    setPhase({ ...phase, busy: false, failed: failure });
   };
 
   // ── Frames that feed React state: the roster, notifications, errors.
@@ -184,6 +188,7 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
     switch (msg.t) {
       case 'agents':
         setRoster(msg.list);
+        setRosterReceived(true);
         setRosterAt(Date.now());
         break;
       case 'notify':
@@ -349,6 +354,7 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
       <ConsoleScreen
         t={t}
         roster={roster}
+        rosterReceived={rosterReceived}
         rosterAt={rosterAt}
         status={status}
         host={host}

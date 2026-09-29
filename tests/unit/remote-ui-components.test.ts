@@ -42,6 +42,7 @@ const entry = (over: Partial<RemoteRosterEntry> = {}): RemoteRosterEntry => ({
   done: false,
   blockedReason: 'permission: Bash',
   choices: [{ id: 'y', label: 'Yes' }],
+  promptId: 5,
   answerPending: false,
   dwellMs: 0,
   ...over,
@@ -50,7 +51,7 @@ const entry = (over: Partial<RemoteRosterEntry> = {}): RemoteRosterEntry => ({
 describe('PairScreen (#254)', () => {
   it('starts with an EMPTY name so the name typed on the desktop wins, and pairs with it empty', () => {
     const onPair = vi.fn();
-    const el = render(createElement(PairScreen, { t, busy: false, failed: false, onPair }));
+    const el = render(createElement(PairScreen, { t, busy: false, failed: null, onPair }));
     const input = el.querySelector('input')!;
     expect(input.value).toBe('');
     expect(input.placeholder).toBe(t.t('pair.namePlaceholder'));
@@ -69,6 +70,14 @@ describe('AgentCard (#254)', () => {
     expect(el.textContent).not.toContain(t.t('card.openToAnswer'));
   });
 
+  it('a choice tap names the prompt it answers (#254)', () => {
+    const onAnswer = vi.fn();
+    const el = render(createElement(AgentCard, { entry: entry({ promptId: 42 }), sinceRoster: 0, operator: true, t, onOpen: vi.fn(), onAnswer }));
+    const yes = [...el.querySelectorAll('button')].find((b) => b.textContent === 'Yes')!;
+    act(() => { yes.click(); });
+    expect(onAnswer).toHaveBeenCalledWith('surf-00000000-0000-4000-8000-000000000001', 'y', 42);
+  });
+
   it('an operator with no declared choices is still told to open it', () => {
     const el = render(createElement(AgentCard, { entry: entry({ choices: [] }), sinceRoster: 0, operator: true, t, onOpen: vi.fn(), onAnswer: vi.fn() }));
     expect(el.textContent).toContain(t.t('card.openToAnswer'));
@@ -77,16 +86,24 @@ describe('AgentCard (#254)', () => {
 
 describe('KeyBar (#254)', () => {
   it('an armed key says so in visible text, not only in colour', () => {
-    const idle = render(createElement(KeyBar, { armed: null, t, onKey: vi.fn() }));
+    const idle = render(createElement(KeyBar, { armed: null, armedFor: null, t, onKey: vi.fn() }));
     expect(idle.querySelector('.rc-keybar__armed')).toBeNull();
-    act(() => root!.render(createElement(KeyBar, { armed: 'enter', t, onKey: vi.fn() })));
+    act(() => root!.render(createElement(KeyBar, { armed: 'enter', armedFor: null, t, onKey: vi.fn() })));
     const pill = idle.querySelector('.rc-keybar__armed');
     expect(pill?.textContent).toContain(t.t('keys.armed'));
     expect(pill?.textContent).toContain(t.t('keys.enter'));
   });
 
+  it('an armed key says what the second tap does: interrupt, or answer the question (#254)', () => {
+    const el = render(createElement(KeyBar, { armed: 'esc', armedFor: 'interrupt', t, onKey: vi.fn() }));
+    expect(el.querySelector('.rc-keybar__armed')?.textContent).toContain(t.t('keys.armedInterrupt'));
+    act(() => root!.render(createElement(KeyBar, { armed: 'enter', armedFor: 'blocked', t, onKey: vi.fn() })));
+    expect(el.querySelector('.rc-keybar__armed')?.textContent).toContain(t.t('keys.armedAnswer'));
+    expect(el.querySelector('.rc-keybar__armed')?.textContent).not.toContain(t.t('keys.armed'));
+  });
+
   it('names keys in the page language', () => {
-    const el = render(createElement(KeyBar, { armed: null, t: fr, onKey: vi.fn() }));
+    const el = render(createElement(KeyBar, { armed: null, armedFor: null, t: fr, onKey: vi.fn() }));
     const labels = [...el.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'));
     expect(labels).toContain(fr.t('keys.up'));
     expect(labels).toContain(fr.t('keys.enter'));

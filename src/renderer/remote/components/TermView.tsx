@@ -61,7 +61,18 @@ interface Props {
   fontScale: number;
   dark: boolean;
   t: RemoteT;
+  /** Whether the key bar (and so PgUp / PgDn) is on screen at all. */
+  operator: boolean;
   onLink(url: string): void;
+}
+
+/**
+ * What the full-screen-app hint says. A view-only device has no key bar, so
+ * naming keys it cannot press would be a false promise; an operator's PgUp /
+ * PgDn live in the key bar's extra row, behind ⋯.
+ */
+export function altHintKey(operator: boolean): 'attach.altHint' | 'attach.altHintViewer' {
+  return operator ? 'attach.altHint' : 'attach.altHintViewer';
 }
 
 function errorKey(code: TermError) {
@@ -70,7 +81,7 @@ function errorKey(code: TermError) {
   return 'attach.errNoTerminal' as const;
 }
 
-export function TermView({ client, s, mode, fontScale, dark, t, onLink }: Readonly<Props>) {
+export function TermView({ client, s, mode, fontScale, dark, t, operator, onLink }: Readonly<Props>) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -277,7 +288,7 @@ export function TermView({ client, s, mode, fontScale, dark, t, onLink }: Readon
       </div>
       {overlay && <div className="rc-term__overlay" role="status">{overlay}</div>}
       {status === 'lag' && <div className="rc-term__pill rc-term__pill--lag" role="status">{t.t('attach.lag')}</div>}
-      {alt && status === 'live' && <div className="rc-term__hint">{t.t('attach.altHint')}</div>}
+      {alt && status === 'live' && <div className="rc-term__hint">{t.t(altHintKey(operator))}</div>}
       {!atBottom && !alt && (
         <button type="button" className="rc-term__pill rc-term__jump" onClick={() => termRef.current?.scrollToBottom()}>
           {t.t('attach.jumpBottom')} ↓

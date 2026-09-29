@@ -39,9 +39,21 @@ export function connKey(status: WsStatus): RemoteMessageKey {
   return 'conn.connecting';
 }
 
+/**
+ * What an EMPTY list says. "No agents are running" is an answer, and it is
+ * only one once this socket has actually delivered a roster: before the first
+ * `agents` frame, or while the socket is down, the list is empty because the
+ * data is missing, and saying "none" there reads as the computer's answer.
+ */
+export function emptyListKey(rosterReceived: boolean, status: WsStatus): RemoteMessageKey {
+  return rosterReceived && status === 'ready' ? 'console.empty' : 'console.waiting';
+}
+
 interface Props {
   t: RemoteT;
   roster: readonly RemoteRosterEntry[];
+  /** Whether an `agents` frame has arrived on this page yet. */
+  rosterReceived: boolean;
   rosterAt: number;
   status: WsStatus;
   host: string;
@@ -52,7 +64,7 @@ interface Props {
   onPrefs(): void;
 }
 
-export function ConsoleScreen({ t, roster, rosterAt, status, host, operator, onOpen, onAnswer, onSeen, onPrefs }: Readonly<Props>) {
+export function ConsoleScreen({ t, roster, rosterReceived, rosterAt, status, host, operator, onOpen, onAnswer, onSeen, onPrefs }: Readonly<Props>) {
   // Ages tick without a new roster frame; 15 s is finer than any age shows.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -80,7 +92,7 @@ export function ConsoleScreen({ t, roster, rosterAt, status, host, operator, onO
       {!operator && <p className="rc-banner">{t.t('console.viewerNotice')}</p>}
 
       <div className="rc-console__list">
-        {roster.length === 0 && <p className="rc-empty">{t.t('console.empty')}</p>}
+        {roster.length === 0 && <p className="rc-empty">{t.t(emptyListKey(rosterReceived, status))}</p>}
         {SECTIONS.map(({ id, key }) => {
           const list = buckets.get(id);
           if (!list || list.length === 0) return null;
