@@ -80,10 +80,20 @@ export interface RuntimeTimings {
   coalesceMs: number;
   /** Desktop modes query; a timeout reads as `bracketedPaste:false`. */
   modesTimeoutMs: number;
+  /**
+   * One roster poll. A backstop behind the per-window deadline in index.ts:
+   * while a poll is pending every later tick only queues behind it, so a poll
+   * that never settles would freeze every phone's roster and alerts.
+   */
+  rosterTimeoutMs: number;
   expireEveryMs: number;
 }
 
-const DEFAULT_TIMINGS: RuntimeTimings = { pumpMs: 2000, coalesceMs: 150, modesTimeoutMs: 2000, expireEveryMs: 60 * 60_000 };
+const DEFAULT_TIMINGS: RuntimeTimings = {
+  pumpMs: 2000, coalesceMs: 150, modesTimeoutMs: 2000, rosterTimeoutMs: 3000, expireEveryMs: 60 * 60_000,
+};
+
+const ROSTER_TIMEOUT = Symbol('roster-timeout');
 
 type Timer = ReturnType<typeof setTimeout>;
 
@@ -667,12 +677,28 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     }
   }
 
+  /** `listRoster()`, or ROSTER_TIMEOUT when it has not answered within `rosterTimeoutMs`. */
+  private listRosterBounded(): Promise<unknown[][] | typeof ROSTER_TIMEOUT> {
+    let timer: Timer | null = null;
+    const deadline = new Promise<typeof ROSTER_TIMEOUT>((resolve) => {
+      timer = unrefTimeout(() => resolve(ROSTER_TIMEOUT), this.timings.rosterTimeoutMs);
+    });
+    return Promise.race([this.ops.listRoster(), deadline]).finally(() => {
+      if (timer) clearTimeout(timer);
+    });
+  }
+
   private async pumpStep(): Promise<void> {
-    let raw: unknown[][];
+    let raw: unknown[][] | typeof ROSTER_TIMEOUT;
     try {
-      raw = await this.ops.listRoster();
+      raw = await this.listRosterBounded();
     } catch (err) {
       this.ops.log('remote-roster-failed', { message: errMessage(err) });
+      return;
+    }
+    if (raw === ROSTER_TIMEOUT) {
+      // Given up on, so `pumping` clears and the next tick polls afresh.
+      this.ops.log('remote-roster-timeout', { ms: this.timings.rosterTimeoutMs });
       return;
     }
     if (!this.pumpTimer) return;

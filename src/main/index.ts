@@ -14,6 +14,7 @@ import {
   QUIT_TEARDOWN_BUDGET_MS,
   reconcileOrphanSessions,
   teardownAgentBrowser,
+  withDeadline,
 } from './agent-browser-runtime';
 import { handleBridgeV2 } from './v2-bridge';
 import { distributeAgents, PaneLoadInfo } from './agent-manager';
@@ -799,6 +800,14 @@ function lanIpv4Addresses(): string[] {
 }
 
 /**
+ * How long one window gets to answer the roster poll. A hung or still-loading
+ * renderer leaves `executeJavaScript` pending, and one pending window would
+ * hold the whole `Promise.all` — so it counts as having no agents, the way a
+ * rejecting one already does, and the other windows' agents still reach the phone.
+ */
+const REMOTE_ROSTER_WINDOW_MS = 1500;
+
+/**
  * `__wmux_remoteRoster()` in EVERY window, one array per window (#143: window ≠
  * workspace — an agent in window 2 is no less an agent). A window that rejects,
  * or predates the global, contributes an empty list rather than failing the
@@ -807,10 +816,14 @@ function lanIpv4Addresses(): string[] {
 function listRemoteRosters(): Promise<unknown[][]> {
   const windows = BrowserWindow.getAllWindows().filter(w => !w.isDestroyed());
   return Promise.all(windows.map(win =>
-    win.webContents
-      .executeJavaScript('window.__wmux_remoteRoster ? window.__wmux_remoteRoster() : []')
-      .then((list: unknown) => (Array.isArray(list) ? list : []))
-      .catch(() => [] as unknown[]),
+    withDeadline(
+      win.webContents
+        .executeJavaScript('window.__wmux_remoteRoster ? window.__wmux_remoteRoster() : []')
+        .then((list: unknown) => (Array.isArray(list) ? list : []))
+        .catch(() => [] as unknown[]),
+      REMOTE_ROSTER_WINDOW_MS,
+      [] as unknown[],
+    ),
   ));
 }
 

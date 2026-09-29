@@ -375,6 +375,31 @@ describe('ConsoleRuntime sessions, roster, terminal', () => {
     expect(rt.getStatus().connected[0].deviceId).toBe(cookie.split('.')[0]);
   });
 
+  it('a roster poll that never settles is given up on, so the pump keeps polling (#254)', async () => {
+    let calls = 0;
+    const roster = [[{
+      surfaceId: S, workspaceId: 'ws-1', workspaceTitle: 'Work', label: 'claude', kind: null,
+      state: 'working', stateSource: 'declared', blockedReason: null, choices: [], answerPending: false, dwellMs: 0,
+    }]];
+    const ops = fakeOps({
+      // The first poll is a hung window: executeJavaScript that never answers.
+      listRoster: vi.fn(() => (++calls === 1 ? new Promise<unknown[][]>(() => undefined) : Promise.resolve(roster))) as never,
+    });
+    const port = await freePort();
+    writeConfig({ enabled: true, port });
+    const rt = make(ops, { rosterTimeoutMs: 60 });
+    await rt.start();
+    const phone = await openPhone(port, await pairViaHttp(rt, port));
+    phone.ws.send(JSON.stringify({ t: 'hello', v: 1 }));
+    await phone.next('welcome');
+    // The hello answer is the (still empty) roster; the pumped one follows.
+    let agents = await phone.next('agents');
+    if ((agents.list as unknown[]).length === 0) agents = await phone.next('agents');
+    expect(agents).toMatchObject({ list: [{ s: S, state: 'working' }] });
+    expect(calls).toBeGreaterThanOrEqual(2);
+    expect(ops.log).toHaveBeenCalledWith('remote-roster-timeout', { ms: 60 });
+  });
+
   it('agents are sent only on change; a working → idle edge marks Done', async () => {
     let state = 'working';
     const ops = fakeOps({
