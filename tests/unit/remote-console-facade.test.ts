@@ -15,6 +15,7 @@ function fakeOps(): ConsoleOps & { log: ReturnType<typeof vi.fn> } {
     isLivePty: () => false,
     isBlocked: () => false,
     runDepth: () => 0,
+    promptId: () => null,
     isAnsweringInput: () => false,
     noteHumanInput: () => undefined,
     write: () => undefined,

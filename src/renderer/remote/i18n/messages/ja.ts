@@ -16,6 +16,8 @@ export const ja: Readonly<Record<string, string>> = {
   'pair.confirm': 'ペアリング',
   'pair.pairing': 'ペアリング中…',
   'pair.failed': 'ペアリングに失敗しました。コンピューターで新しいコードを作成して、もう一度お試しください。',
+  'pair.rate': '試行回数が多すぎます。少し待ってから、もう一度「ペアリング」をタップしてください。',
+  'pair.deviceCap': 'ペアリング済みの端末が多すぎます。コンピューターの 設定 → リモート で 1 台を取り消してから、新しいコードを作成してください。',
 
   'expired.title': 'コードの有効期限切れ',
   'expired.body': 'このコードは期限切れです。コンピューターで新しいコードを作成してください。',
@@ -40,6 +42,7 @@ export const ja: Readonly<Record<string, string>> = {
   'console.other': 'その他',
   'console.markAllSeen': 'すべて既読にする',
   'console.empty': '現在実行中のエージェントはありません。',
+  'console.waiting': 'コンピューターを待っています…',
   'console.viewerNotice': '閲覧のみ — この接続では入力も回答もできません。',
   'console.needsYouCount_other': '{n} 件のエージェントが対応を待っています',
 
@@ -50,7 +53,8 @@ export const ja: Readonly<Record<string, string>> = {
   'attach.fit': '幅に合わせる',
   'attach.pan': '読みやすく',
   'attach.jumpBottom': '最下部へ',
-  'attach.altHint': '全画面アプリ: PgUp / PgDn でスクロールします。',
+  'attach.altHint': '全画面アプリ: ⋯ の中の PgUp / PgDn でスクロールします。',
+  'attach.altHintViewer': '全画面アプリ: この端末からはスクロールできません。',
   'attach.loading': '画面を読み込み中…',
   'attach.exited': 'プロセスが終了しました ({code})',
   'attach.lag': '追いついています…',
@@ -61,6 +65,8 @@ export const ja: Readonly<Record<string, string>> = {
 
   'keys.more': 'その他のキー',
   'keys.armed': 'もう一度タップで送信',
+  'keys.armedInterrupt': 'もう一度タップでエージェントを中断',
+  'keys.armedAnswer': 'もう一度タップで質問に回答',
   'keys.up': '上',
   'keys.down': '下',
   'keys.left': '左',
@@ -97,6 +103,7 @@ export const ja: Readonly<Record<string, string>> = {
   'ack.notBlocked': 'この質問にはすでに回答済みです。',
   'ack.noChoices': '回答する内容がありません。',
   'ack.unknownChoice': 'その選択肢はもう提示されていません。',
+  'ack.stale': '質問が変わりました。確認してから回答してください。',
   'ack.tooLong': '長すぎて送信できません (最大 {max} 文字)。',
   'ack.badKey': 'そのキーはサポートされていません。',
   'ack.writeFailed': '送信できませんでした。',
@@ -127,5 +134,5 @@ export const ja: Readonly<Record<string, string>> = {
   'prefs.forgetTitle': 'このデバイスを削除しますか?',
   'prefs.forgetBody': '再接続するには、コンピューターで新しいコードが必要です。',
   'prefs.forgetFailed': 'コンピューターに接続できなかったため、このデバイスはまだペアリングされています。もう一度試すか、コンピューターの wmux で削除してください。',
-  'prefs.limits': 'このページを閉じていると何も届きません。また、iOS では振動できません。',
+  'prefs.limits': '通知が届くのは、このページが開いていて画面に表示されている間だけです。スマートフォンがロック中やタブがバックグラウンドのときは届かないことがあり、iOS では振動できません。',
 };

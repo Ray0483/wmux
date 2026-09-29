@@ -26,6 +26,8 @@ export const en = {
   'pair.confirm': 'Pair',
   'pair.pairing': 'Pairing…',
   'pair.failed': 'Pairing failed. Make a new code on your computer and try again.',
+  'pair.rate': 'Too many attempts. Wait a moment, then tap Pair again.',
+  'pair.deviceCap': 'Too many devices are paired. On your computer, revoke one in Settings → Remote, then make a new code.',
 
   'expired.title': 'Code expired',
   'expired.body': 'This code expired — make a new one on your computer.',
@@ -50,6 +52,7 @@ export const en = {
   'console.other': 'Other',
   'console.markAllSeen': 'Mark all seen',
   'console.empty': 'No agents are running right now.',
+  'console.waiting': 'Waiting for your computer…',
   'console.viewerNotice': 'View only — this connection cannot type or answer.',
   'console.needsYouCount_one': '{n} agent needs you',
   'console.needsYouCount_other': '{n} agents need you',
@@ -61,7 +64,8 @@ export const en = {
   'attach.fit': 'Fit width',
   'attach.pan': 'Readable',
   'attach.jumpBottom': 'Jump to bottom',
-  'attach.altHint': 'Full-screen app: use PgUp / PgDn to scroll it.',
+  'attach.altHint': 'Full-screen app: scroll it with PgUp / PgDn under ⋯.',
+  'attach.altHintViewer': 'Full-screen app: it cannot be scrolled from this device.',
   'attach.loading': 'Loading screen…',
   'attach.exited': 'Process exited ({code})',
   'attach.lag': 'Catching up…',
@@ -72,6 +76,8 @@ export const en = {
 
   'keys.more': 'More keys',
   'keys.armed': 'Tap again to send',
+  'keys.armedInterrupt': 'Tap again to interrupt the agent',
+  'keys.armedAnswer': 'Tap again to answer the question',
   'keys.up': 'Up',
   'keys.down': 'Down',
   'keys.left': 'Left',
@@ -108,6 +114,7 @@ export const en = {
   'ack.notBlocked': 'The question was already answered.',
   'ack.noChoices': 'There is nothing to answer.',
   'ack.unknownChoice': 'That choice is no longer offered.',
+  'ack.stale': 'The question changed. Check it before answering.',
   'ack.tooLong': 'Too long to send ({max} characters at most).',
   'ack.badKey': 'That key is not supported.',
   'ack.writeFailed': 'Could not send.',
@@ -138,7 +145,7 @@ export const en = {
   'prefs.forgetTitle': 'Forget this device?',
   'prefs.forgetBody': 'You will need a new code from your computer to reconnect.',
   'prefs.forgetFailed': 'Could not reach your computer, so this device is still paired. Try again, or remove it in wmux on your computer.',
-  'prefs.limits': 'With this page closed nothing arrives, and iOS cannot vibrate.',
+  'prefs.limits': 'Alerts arrive only while this page is open and on screen. A locked phone or a tab in the background may get nothing, and iOS cannot vibrate.',
 } as const;
 
 export type RemoteMessageKey = keyof typeof en;

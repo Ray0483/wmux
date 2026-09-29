@@ -121,6 +121,25 @@ export interface AgentStateRecord {
    * because it is the chattiest — the opposite of the intended answer.
    */
   blockedSince: number | null;
+  /**
+   * Which question the pane is asking (#254). Bumped on every new blocked
+   * episode and whenever the reason or the declared answers change while
+   * blocked, so an answer can name the prompt it was chosen for. Agents reuse
+   * ids like `yes`/`no` across prompts: without this, a late or resent tap on
+   * "Run tests?" answers "Drop the prod table?" if that is what is asked now.
+   * Unique across surfaces (one counter), never 0.
+   */
+  promptId: number;
+  /** What the current prompt's answers were declared as, to tell a re-declaration from a new question. */
+  choicesSig: string;
+}
+
+let promptCounter = 0;
+
+/** A fresh prompt identity for `record`. */
+function bumpPrompt(record: AgentStateRecord): void {
+  promptCounter += 1;
+  record.promptId = promptCounter;
 }
 
 /** Metadata with no explicit TTL is trusted this long before it stops being shown. */
@@ -149,6 +168,8 @@ function blank(surfaceId: SurfaceId): AgentStateRecord {
     lastHookAt: 0,
     updatedAt: Date.now(),
     blockedSince: null,
+    promptId: 0,
+    choicesSig: '',
   };
 }
 
@@ -332,8 +353,10 @@ const MAX_CHOICES = 12;
  * same call, via applyChoices below.
  */
 function applyBlocked(record: AgentStateRecord, params: ReportAgentParams): void {
+  const prevReason = record.blockedReason;
   if (params.awaitingHuman === undefined) {
     if (params.reason !== undefined) record.blockedReason = params.reason;
+    if (record.awaitingHuman && record.blockedReason !== prevReason) bumpPrompt(record);
     return;
   }
 
@@ -345,11 +368,15 @@ function applyBlocked(record: AgentStateRecord, params: ReportAgentParams): void
 
   if (wasAwaiting !== record.awaitingHuman) {
     record.choices = [];
+    record.choicesSig = '';
     record.answeredAt = null;
     // Stamped on the EDGE, not on every blocked report, so re-declaring the
     // same question (a reworded reason, a fresh set of choices) does not
     // restart the clock the sidebar orders its queue by.
     record.blockedSince = record.awaitingHuman ? Date.now() : null;
+    if (record.awaitingHuman) bumpPrompt(record);
+  } else if (record.awaitingHuman && record.blockedReason !== prevReason) {
+    bumpPrompt(record);
   }
 }
 
@@ -357,6 +384,14 @@ function applyBlocked(record: AgentStateRecord, params: ReportAgentParams): void
 function applyChoices(record: AgentStateRecord, params: ReportAgentParams): void {
   if (params.choices === undefined) return;
   record.choices = record.awaitingHuman ? sanitizeChoices(params.choices) : [];
+  // Compared against what was DECLARED, not against `choices`: answering
+  // consumes those, and a retry re-declaring the same answers is the same
+  // question, not a new one.
+  const sig = JSON.stringify(record.choices);
+  if (record.awaitingHuman && record.choices.length > 0 && sig !== record.choicesSig) {
+    record.choicesSig = sig;
+    bumpPrompt(record);
+  }
   // Re-declaring the answers means this is a live question again, so the
   // buttons come back — which is also how a user retries an answer the agent
   // evidently did not act on.
@@ -447,7 +482,8 @@ export type AnswerFailure =
   | 'unknown-surface'   // nothing has ever reported for this pane
   | 'not-blocked'       // the pane is not asking anything right now
   | 'no-choices'        // blocked, but the agent declared no answers
-  | 'unknown-choice';   // the named choice is not on offer
+  | 'unknown-choice'    // the named choice is not on offer
+  | 'stale';            // the caller named a prompt the pane is no longer asking
 
 export type AnswerResult =
   | { ok: true; choice: AgentChoice | null; key?: string; text?: string }
@@ -490,11 +526,14 @@ export type AnswerResult =
  */
 export function answerAgent(
   surfaceId: SurfaceId,
-  params: { choiceId?: string | null },
+  params: { choiceId?: string | null; promptId?: number },
 ): AnswerResult {
   const record = records.get(surfaceId);
   if (!record) return { ok: false, reason: 'unknown-surface' };
   if (!record.awaitingHuman) return { ok: false, reason: 'not-blocked' };
+  // A caller that names the prompt it answered (the Remote Console does) is
+  // refused when the pane has moved on to another question with the same ids.
+  if (params.promptId !== undefined && params.promptId !== record.promptId) return { ok: false, reason: 'stale' };
   if (record.choices.length === 0) return { ok: false, reason: 'no-choices' };
 
   const choice = pickChoice(record.choices, params.choiceId?.trim());
@@ -729,6 +768,17 @@ function snapshot(record: AgentStateRecord, now = Date.now()): AgentStateSnapsho
     // cannot accidentally render "waiting 4m" for a pane that resumed.
     blockedSince: resolveState(record, now) === 'blocked' ? record.blockedSince : null,
   };
+}
+
+/**
+ * The identity of the question a pane is asking right now, or null when it is
+ * not blocked (#254). Kept off `AgentStateSnapshot` on purpose: only the
+ * Remote Console needs it, and the snapshot is what every renderer receives.
+ */
+export function currentPromptId(surfaceId: SurfaceId): number | null {
+  const record = records.get(surfaceId);
+  if (!record || resolveState(record, Date.now()) !== 'blocked') return null;
+  return record.promptId;
 }
 
 export function getAgentState(surfaceId: SurfaceId): AgentStateSnapshot | undefined {

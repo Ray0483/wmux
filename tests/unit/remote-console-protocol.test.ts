@@ -42,10 +42,12 @@ describe('validateClientMessage', () => {
     ['ping', { t: 'ping' }],
     ['send', { t: 'send', s: S, nonce: N, text: 'hi', submit: true }],
     ['send with force', { t: 'send', s: S, nonce: N, text: '', submit: false, force: ['blocked'] }],
+    ['send with force and prompt', { t: 'send', s: S, nonce: N, text: '', submit: false, force: ['blocked'], prompt: 3 }],
+    ['key with prompt', { t: 'key', s: S, nonce: N, key: 'enter', force: ['blocked'], prompt: 1 }],
     ['key with two waivers', { t: 'key', s: S, nonce: N, key: 'esc', force: ['interrupt', 'blocked'] }],
     ['send over MAX_TEXT (answered too-long by the session)', { t: 'send', s: S, nonce: N, text: 'x'.repeat(MAX_TEXT + 1), submit: true }],
     ['every remote key', { t: 'key', s: S, nonce: N, key: 'shift-tab' }],
-    ['answer', { t: 'answer', s: S, nonce: N, choiceId: 'yes_1-a' }],
+    ['answer', { t: 'answer', s: S, nonce: N, choiceId: 'yes_1-a', prompt: 42 }],
   ];
   for (const [name, msg] of accept) {
     it(`accepts ${name}`, () => {
@@ -86,9 +88,13 @@ describe('validateClientMessage', () => {
     ['send with a non-string text', { t: 'send', s: S, nonce: N, text: 1, submit: true }],
     ['a key not in the table', { t: 'key', s: S, nonce: N, key: 'f5' }],
     ['a raw byte as key', { t: 'key', s: S, nonce: N, key: '\x1b' }],
-    ['a bad choice id', { t: 'answer', s: S, nonce: N, choiceId: 'a b' }],
-    ['a 33-char choice id', { t: 'answer', s: S, nonce: N, choiceId: 'a'.repeat(33) }],
-    ['answer carrying a payload', { t: 'answer', s: S, nonce: N, choiceId: 'y', text: 'y\r' }],
+    ['a bad choice id', { t: 'answer', s: S, nonce: N, choiceId: 'a b', prompt: 1 }],
+    ['a 33-char choice id', { t: 'answer', s: S, nonce: N, choiceId: 'a'.repeat(33), prompt: 1 }],
+    ['answer carrying a payload', { t: 'answer', s: S, nonce: N, choiceId: 'y', prompt: 1, text: 'y\r' }],
+    ['answer with no prompt id', { t: 'answer', s: S, nonce: N, choiceId: 'y' }],
+    ['answer with a zero prompt id', { t: 'answer', s: S, nonce: N, choiceId: 'y', prompt: 0 }],
+    ['answer with a fractional prompt id', { t: 'answer', s: S, nonce: N, choiceId: 'y', prompt: 1.5 }],
+    ['key with a string prompt id', { t: 'key', s: S, nonce: N, key: 'enter', prompt: '1' }],
   ];
   for (const [name, msg] of reject) {
     it(`rejects ${name}`, () => {

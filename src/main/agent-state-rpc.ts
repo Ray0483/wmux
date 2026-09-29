@@ -54,6 +54,7 @@ const ANSWER_ERRORS: Record<AnswerFailure, string> = {
   'not-blocked': 'that pane is not waiting on you right now',
   'no-choices': 'the agent is blocked but declared no answers — switch to the pane',
   'unknown-choice': 'no such choice (call pane.agent_state to list them)',
+  'stale': 'the pane is asking a different question now',
 };
 
 type AnswerOutcome =
@@ -74,8 +75,8 @@ type AnswerOutcome =
  * name is the obvious case — would otherwise escape past the catch and take
  * down the caller instead of coming back as a failure.
  */
-async function runAnswer(surfaceId: SurfaceId, choiceId: string | null): Promise<AnswerOutcome> {
-  const result = answerAgent(surfaceId, { choiceId });
+async function runAnswer(surfaceId: SurfaceId, choiceId: string | null, promptId?: number): Promise<AnswerOutcome> {
+  const result = answerAgent(surfaceId, promptId === undefined ? { choiceId } : { choiceId, promptId });
   if (!result.ok) return { ok: false, reason: result.reason, message: ANSWER_ERRORS[result.reason] };
   const writer = writeAnswer;
   if (!writer) return { ok: false, reason: 'write-failed', message: 'no answer writer wired' };
@@ -96,6 +97,7 @@ async function runAnswer(surfaceId: SurfaceId, choiceId: string | null): Promise
 export async function deliverAnswer(
   surfaceId: string,
   choiceId: string,
+  promptId?: number,
 ): Promise<{ ok: true } | { ok: false; reason: DeliverAnswerReason }> {
   // The console always NAMES its choice. `answerAgent` reads an empty (or
   // all-blank) id as an UNNAMED answer and resolves it to the declared default
@@ -106,7 +108,10 @@ export async function deliverAnswer(
   if (typeof choiceId !== 'string' || !CHOICE_ID_RE.test(choiceId)) {
     return { ok: false, reason: 'unknown-choice' };
   }
-  const outcome = await runAnswer(surfaceId as SurfaceId, choiceId);
+  // The prompt the phone saw. Anything but a positive integer cannot name a
+  // live prompt, so it is stale rather than an answer that skips the check.
+  if (promptId !== undefined && !(Number.isSafeInteger(promptId) && promptId > 0)) return { ok: false, reason: 'stale' };
+  const outcome = await runAnswer(surfaceId as SurfaceId, choiceId, promptId);
   return outcome.ok ? { ok: true } : { ok: false, reason: outcome.reason };
 }
 

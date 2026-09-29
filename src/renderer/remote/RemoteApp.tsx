@@ -233,11 +233,19 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
     document.title = blockedCount > 0 ? `(${blockedCount}) wmux` : 'wmux';
   }, [blockedCount]);
 
-  const answer = useCallback((s: string, choiceId: string) => {
+  const answer = useCallback((s: string, choiceId: string, prompt: number | null) => {
     const gate = answerGate.current;
+    // No prompt id: the computer does not hold this pane as blocked, so there
+    // is no question for the tap to answer.
+    if (prompt === null) {
+      showError(t.t('ack.notBlocked'));
+      return;
+    }
     // A double tap: the first answer is already on its way.
     if (!client || !gate.begin(s)) return;
-    client.request({ t: 'answer', s, nonce: newNonce(), choiceId }).then(
+    // `prompt` ties the tap to the question it was chosen for: a late or
+    // resent answer reaching a pane now asking something else is refused.
+    client.request({ t: 'answer', s, nonce: newNonce(), choiceId, prompt }).then(
       (ack) => {
         gate.settle(s, ack.ok, Date.now());
         if (!ack.ok && gate.shouldReport(s, ack.code, Date.now())) showError(t.t(ackMessageKey(ack.code), { max: MAX_TEXT }));

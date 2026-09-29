@@ -14,8 +14,8 @@
  * third), so offering them would be offering a way to get disconnected.
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import type { RemoteKey, RemoteRosterEntry } from '../../../shared/remote-console-protocol';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ClientMessage, RemoteKey, RemoteRosterEntry } from '../../../shared/remote-console-protocol';
 import { ackMessageKey, stateWordKey, type RemoteT } from '../i18n';
 import { armFromConfirm, tapKey, type KeyArm } from '../composer-state';
 import { loadFitMode, saveFitMode, type FitMode } from '../fit';
@@ -64,13 +64,16 @@ interface Props {
   dark: boolean;
   t: RemoteT;
   onBack(): void;
-  onAnswer(s: string, choiceId: string): void;
+  onAnswer(s: string, choiceId: string, prompt: number | null): void;
   onError(text: string): void;
 }
 
 export function AttachScreen({ client, s, entry, status, operator, maxText, fontScale, dark, t, onBack, onAnswer, onError }: Readonly<Props>) {
   const [mode, setMode] = useState<FitMode>(() => loadFitMode(safeStorage(), s));
   const [arm, setArm] = useState<KeyArm | null>(null);
+  // The prompt an arm is about. A blocked waiver answers ONE question: the
+  // second tap names it, and a pane that moved on in between is asked again.
+  const armPrompt = useRef<number | null>(null);
   const [link, setLink] = useState<string | null>(null);
   const vv = useVisualViewport();
 
@@ -93,20 +96,26 @@ export function AttachScreen({ client, s, entry, status, operator, maxText, font
     const now = Date.now();
     const r = tapKey(arm, key, agentState, now, newNonce);
     if (r.action === 'arm') {
+      armPrompt.current = entry?.promptId ?? null;
       setArm(r.arm);
       return;
     }
     setArm(null);
+    const prompt = armPrompt.current ?? entry?.promptId ?? null;
     // Exactly the listed fields: an empty `force` is noise, and the validator refuses one.
-    const frame = r.force.length > 0
-      ? { t: 'key' as const, s, nonce: r.nonce, key, force: r.force }
-      : { t: 'key' as const, s, nonce: r.nonce, key };
+    const frame: Extract<ClientMessage, { t: 'key' }> = r.force.length > 0
+      ? { t: 'key', s, nonce: r.nonce, key, force: r.force }
+      : { t: 'key', s, nonce: r.nonce, key };
+    if (r.force.includes('blocked') && prompt !== null) frame.prompt = prompt;
     client.request(frame).then(
       (ack) => {
         if (ack.ok) return;
         // The server knew better than the roster (declared blocked, or a live
         // run depth): arm with the nonce it refused, so the next tap is it.
-        if (ack.code === 'confirm' && ack.confirm) setArm(armFromConfirm(key, ack.nonce, Date.now(), ack.confirm, r.force));
+        if (ack.code === 'confirm' && ack.confirm) {
+          armPrompt.current = ack.prompt ?? entry?.promptId ?? null;
+          setArm(armFromConfirm(key, ack.nonce, Date.now(), ack.confirm, r.force));
+        }
         else onError(t.t(ackMessageKey(ack.code), { max: maxText }));
       },
       (err: unknown) => {
@@ -114,7 +123,7 @@ export function AttachScreen({ client, s, entry, status, operator, maxText, font
         if (isUnconfirmed(err)) onError(t.t('ack.unconfirmed'));
       },
     );
-  }, [arm, agentState, client, s, onError, t, maxText]);
+  }, [arm, agentState, entry, client, s, onError, t, maxText]);
 
   const toggleMode = () => {
     const next: FitMode = mode === 'fit' ? 'pan' : 'fit';
@@ -142,11 +151,11 @@ export function AttachScreen({ client, s, entry, status, operator, maxText, font
 
       <div className="rc-attach__stack">
         {operator && blocked && entry && !entry.answerPending && (
-          <ChoiceRow choices={entry.choices} onAnswer={(id) => onAnswer(s, id)} />
+          <ChoiceRow choices={entry.choices} onAnswer={(id) => onAnswer(s, id, entry.promptId)} />
         )}
         {blocked && entry?.answerPending && <p className="rc-attach__pending">{t.t('card.answerPending')}</p>}
         {operator && <KeyBar armed={arm?.key ?? null} t={t} onKey={sendKey} />}
-        {operator && <Composer key={s} client={client} s={s} blocked={blocked} maxText={maxText} t={t} />}
+        {operator && <Composer key={s} client={client} s={s} blocked={blocked} prompt={entry?.promptId ?? null} maxText={maxText} t={t} />}
       </div>
 
       {link && (

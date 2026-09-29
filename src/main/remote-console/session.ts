@@ -95,7 +95,7 @@ export function createDeviceSessionState(now: () => number): DeviceSessionState 
 }
 
 export type SessionOps = Pick<ConsoleOps,
-  'isLivePty' | 'isBlocked' | 'runDepth' | 'isAnsweringInput' | 'noteHumanInput' | 'write' | 'deliverAnswer' | 'log'>;
+  'isLivePty' | 'isBlocked' | 'promptId' | 'runDepth' | 'isAnsweringInput' | 'noteHumanInput' | 'write' | 'deliverAnswer' | 'log'>;
 
 export interface SessionDeps {
   ops: SessionOps;
@@ -122,6 +122,7 @@ const ANSWER_CODES: Readonly<Record<DeliverAnswerReason, AckCode>> = {
   'unknown-choice': 'unknown-choice',
   'unknown-surface': 'gone',
   'write-failed': 'write-failed',
+  'stale': 'stale',
 };
 
 const ok = (nonce: string): AckMsg => ({ t: 'ack', nonce, ok: true });
@@ -130,6 +131,14 @@ const confirm = (nonce: string, kind: ConfirmKind): AckMsg => ({ t: 'ack', nonce
 
 /** Did the user accept THIS confirm? A waiver answers one question, never all of them. */
 const waives = (m: { force?: ConfirmKind[] }, kind: ConfirmKind): boolean => m.force?.includes(kind) === true;
+
+/**
+ * The `blocked` waiver, which is about ONE prompt: it holds only while the
+ * pane is still asking the question the phone named. A resend that reaches a
+ * pane now asking something else (same ids, new question) is asked again.
+ */
+const waivesBlocked = (m: { force?: ConfirmKind[]; prompt?: number }, livePrompt: number | null): boolean =>
+  waives(m, 'blocked') && m.prompt !== undefined && m.prompt === livePrompt;
 
 /**
  * Several lines into a terminal not in paste mode. Every line break then goes
@@ -308,18 +317,30 @@ export class ConsoleSession {
     this.d.ops.write(s, bytes);
   }
 
-  private async handleSend(m: Extract<ClientMessage, { t: 'send' }>): Promise<void> {
-    const wasBlocked = this.d.ops.isBlocked(m.s);
-    await this.guarded(m.nonce, this.d.deviceState.send, () => this.runSend(m, wasBlocked));
+  /** A `blocked` confirm, naming the prompt it is about so the waiver can name it back. */
+  private confirmBlocked(nonce: string, s: string): AckMsg {
+    const prompt = this.d.ops.promptId(s);
+    return prompt === null ? confirm(nonce, 'blocked') : { ...confirm(nonce, 'blocked'), prompt };
   }
 
-  private async runSend(m: Extract<ClientMessage, { t: 'send' }>, wasBlocked: boolean): Promise<AckMsg> {
+  /** Blocked now, and not on the prompt this message waived. Read BEFORE any noteHumanInput. */
+  private blockedUnwaived(m: { s: string; force?: ConfirmKind[]; prompt?: number }): boolean {
+    return this.d.ops.isBlocked(m.s) && !waivesBlocked(m, this.d.ops.promptId(m.s));
+  }
+
+  private async handleSend(m: Extract<ClientMessage, { t: 'send' }>): Promise<void> {
+    const wasBlocked = this.d.ops.isBlocked(m.s);
+    const prompt = this.d.ops.promptId(m.s);
+    await this.guarded(m.nonce, this.d.deviceState.send, () => this.runSend(m, wasBlocked, prompt));
+  }
+
+  private async runSend(m: Extract<ClientMessage, { t: 'send' }>, wasBlocked: boolean, prompt: number | null): Promise<AckMsg> {
     if (m.text.length > MAX_TEXT) return refuse(m.nonce, 'too-long');
     if (!this.d.deviceState.sendBytes.take(Buffer.byteLength(m.text, 'utf8'))) return refuse(m.nonce, 'rate');
     const clean = sanitizeComposerText(m.text);
     if (clean === '' && !m.submit) return ok(m.nonce);
     if (!this.d.ops.isLivePty(m.s)) return refuse(m.nonce, 'gone');
-    if (wasBlocked && !waives(m, 'blocked')) return confirm(m.nonce, 'blocked');
+    if (wasBlocked && !waivesBlocked(m, prompt)) return this.confirmBlocked(m.nonce, m.s);
 
     const modes = await this.d.queryModes(m.s);
     // That await is up to 2 s, and two things can change across it. The
@@ -329,7 +350,7 @@ export class ConsoleSession {
     // prompt the phone never saw. Both are read BEFORE any noteHumanInput, so
     // this re-check still asks the question `wasBlocked` asks (I4).
     if (this.closed) return refuse(m.nonce, 'gone');
-    if (!waives(m, 'blocked') && this.d.ops.isBlocked(m.s)) return confirm(m.nonce, 'blocked');
+    if (this.blockedUnwaived(m)) return this.confirmBlocked(m.nonce, m.s);
     const bracketed = 'bracketedPaste' in modes && modes.bracketedPaste === true;
     const refusal = multilineRefusal(m, clean, bracketed);
     if (refusal) return refusal;
@@ -339,7 +360,7 @@ export class ConsoleSession {
 
   private async deliverComposer(m: Extract<ClientMessage, { t: 'send' }>, clean: string, bracketed: boolean): Promise<AckMsg> {
     const writes = buildComposerWrites(clean, { bracketed, submit: m.submit });
-    const outcome = await this.writeComposer(m.s, writes, m.submit, !waives(m, 'blocked'));
+    const outcome = await this.writeComposer(m.s, writes, m.submit, () => this.blockedUnwaived(m));
     if (outcome !== null && outcome !== 'submit-skipped') return refuse(m.nonce, outcome);
     const skipped = outcome === 'submit-skipped';
     const sent = skipped ? writes.slice(0, -1) : writes;
@@ -356,14 +377,14 @@ export class ConsoleSession {
    * types the text a second time.
    */
   private async writeComposer(
-    s: string, writes: string[], submit: boolean, guardBlocked: boolean,
+    s: string, writes: string[], submit: boolean, blockedUnwaived: () => boolean,
   ): Promise<AckCode | 'submit-skipped' | null> {
     for (let i = 0; i < writes.length; i++) {
       const trailingSubmit = submit && i > 0 && i === writes.length - 1;
       if (trailingSubmit) {
         await this.d.sleep(SUBMIT_GAP_MS);
         if (this.closed || !this.d.ops.isLivePty(s)) return 'gone';
-        if (guardBlocked && this.d.ops.isBlocked(s)) return 'submit-skipped';
+        if (blockedUnwaived()) return 'submit-skipped';
       }
       try {
         this.writeHuman(s, writes[i]);
@@ -376,16 +397,17 @@ export class ConsoleSession {
 
   private async handleKey(m: Extract<ClientMessage, { t: 'key' }>): Promise<void> {
     const wasBlocked = this.d.ops.isBlocked(m.s);
-    await this.guarded(m.nonce, this.d.deviceState.key, async () => this.runKey(m, wasBlocked));
+    const prompt = this.d.ops.promptId(m.s);
+    await this.guarded(m.nonce, this.d.deviceState.key, async () => this.runKey(m, wasBlocked, prompt));
   }
 
-  private runKey(m: Extract<ClientMessage, { t: 'key' }>, wasBlocked: boolean): AckMsg {
+  private runKey(m: Extract<ClientMessage, { t: 'key' }>, wasBlocked: boolean, prompt: number | null): AckMsg {
     const bytes = (REMOTE_KEY_BYTES as Readonly<Record<string, string>>)[m.key];
     if (bytes === undefined) return refuse(m.nonce, 'bad-key');
     if (!this.d.ops.isLivePty(m.s)) return refuse(m.nonce, 'gone');
     // Arrow keys are not answering input, so a menu can still be navigated
     // from the phone without a confirm; Enter, y and n are.
-    if (wasBlocked && !waives(m, 'blocked') && this.d.ops.isAnsweringInput(bytes)) return confirm(m.nonce, 'blocked');
+    if (wasBlocked && !waivesBlocked(m, prompt) && this.d.ops.isAnsweringInput(bytes)) return this.confirmBlocked(m.nonce, m.s);
     // A bare ESC or ^C ends an agent's run (and clears blocked) — one stray
     // tap on a phone must not cancel twenty minutes of work.
     if ((m.key === 'esc' || m.key === 'ctrl-c') && !waives(m, 'interrupt') && this.d.ops.runDepth(m.s) > 0) return confirm(m.nonce, 'interrupt');
@@ -401,7 +423,7 @@ export class ConsoleSession {
   /** Answers go through the back-channel only; never `noteHumanInput` (the agent must confirm, #128). */
   private async handleAnswer(m: Extract<ClientMessage, { t: 'answer' }>): Promise<void> {
     await this.guarded(m.nonce, this.d.deviceState.answer, async () => {
-      const r = await this.d.ops.deliverAnswer(m.s, m.choiceId);
+      const r = await this.d.ops.deliverAnswer(m.s, m.choiceId, m.prompt);
       if (!r.ok) return refuse(m.nonce, ANSWER_CODES[r.reason] ?? 'write-failed');
       this.d.ops.log('remote-answer', { device: this.d.device.id, surface: m.s });
       return ok(m.nonce);

@@ -16,6 +16,8 @@ export const zh: Readonly<Record<string, string>> = {
   'pair.confirm': '配对',
   'pair.pairing': '正在配对…',
   'pair.failed': '配对失败。请在电脑上生成新的代码后重试。',
+  'pair.rate': '尝试次数过多。请稍候，然后再次点按“配对”。',
+  'pair.deviceCap': '已配对的设备过多。请在电脑的 设置 → 远程 中撤销一台设备，然后生成新代码。',
 
   'expired.title': '代码已过期',
   'expired.body': '此代码已过期，请在电脑上生成新的代码。',
@@ -40,6 +42,7 @@ export const zh: Readonly<Record<string, string>> = {
   'console.other': '其他',
   'console.markAllSeen': '全部标为已读',
   'console.empty': '当前没有正在运行的代理。',
+  'console.waiting': '正在等待你的电脑…',
   'console.viewerNotice': '仅查看 — 此连接无法输入或回答。',
   'console.needsYouCount_other': '{n} 个代理在等你处理',
 
@@ -50,7 +53,8 @@ export const zh: Readonly<Record<string, string>> = {
   'attach.fit': '适应宽度',
   'attach.pan': '易读',
   'attach.jumpBottom': '跳到底部',
-  'attach.altHint': '全屏应用：使用 PgUp / PgDn 滚动。',
+  'attach.altHint': '全屏应用：使用 ⋯ 中的 PgUp / PgDn 滚动。',
+  'attach.altHintViewer': '全屏应用：无法在此设备上滚动。',
   'attach.loading': '正在加载屏幕…',
   'attach.exited': '进程已退出（{code}）',
   'attach.lag': '正在追赶…',
@@ -61,6 +65,8 @@ export const zh: Readonly<Record<string, string>> = {
 
   'keys.more': '更多按键',
   'keys.armed': '再次点按以发送',
+  'keys.armedInterrupt': '再次点按以中断智能体',
+  'keys.armedAnswer': '再次点按以回答问题',
   'keys.up': '上',
   'keys.down': '下',
   'keys.left': '左',
@@ -97,6 +103,7 @@ export const zh: Readonly<Record<string, string>> = {
   'ack.notBlocked': '该问题已经回答过了。',
   'ack.noChoices': '没有需要回答的内容。',
   'ack.unknownChoice': '该选项已不再提供。',
+  'ack.stale': '问题已变更。请先查看再回答。',
   'ack.tooLong': '内容过长，无法发送（最多 {max} 个字符）。',
   'ack.badKey': '不支持该按键。',
   'ack.writeFailed': '发送失败。',
@@ -127,5 +134,5 @@ export const zh: Readonly<Record<string, string>> = {
   'prefs.forgetTitle': '忘记此设备？',
   'prefs.forgetBody': '重新连接需要从电脑获取新的代码。',
   'prefs.forgetFailed': '无法连接到你的电脑，因此此设备仍处于配对状态。请重试，或在电脑上的 wmux 中移除它。',
-  'prefs.limits': '关闭此页面后不会收到任何消息，且 iOS 无法振动。',
+  'prefs.limits': '只有在此页面打开并显示在屏幕上时才会收到提醒。手机锁屏或标签页在后台时可能收不到任何提醒，且 iOS 无法振动。',
 };

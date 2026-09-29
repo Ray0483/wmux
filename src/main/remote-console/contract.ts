@@ -22,7 +22,7 @@ import type {
 } from '../../shared/remote-console-config';
 import type { RemoteScope } from '../../shared/remote-console-protocol';
 
-export type DeliverAnswerReason = 'not-blocked' | 'no-choices' | 'unknown-choice' | 'unknown-surface' | 'write-failed';
+export type DeliverAnswerReason = 'not-blocked' | 'no-choices' | 'unknown-choice' | 'unknown-surface' | 'write-failed' | 'stale';
 
 export interface ConsoleOps {
   /** `__wmux_remoteRoster()` on every window; one array per window, merged by the runtime (#143). */
@@ -35,8 +35,14 @@ export interface ConsoleOps {
   /** Must run immediately before each `write` with the identical bytes (I4). */
   noteHumanInput(id: string, bytes: string): void;
   write(id: string, bytes: string): void;
-  /** The `pane.answer_agent` path: blocked-only, declared payload only, never clears blocked. */
-  deliverAnswer(id: string, choiceId: string): Promise<{ ok: true } | { ok: false; reason: DeliverAnswerReason }>;
+  /**
+   * Which question a pane is asking now, or null when it is not blocked. An
+   * answer, or a blocked waiver, names the one the phone saw, and a mismatch
+   * is refused rather than landing on a different question.
+   */
+  promptId(id: string): number | null;
+  /** The `pane.answer_agent` path: blocked-only, declared payload only, never clears blocked; `stale` when `promptId` is not the live prompt. */
+  deliverAnswer(id: string, choiceId: string, promptId: number): Promise<{ ok: true } | { ok: false; reason: DeliverAnswerReason }>;
   notifyDesktop(notice: RemoteDesktopNotice): void;
   lanAddresses(): string[];
   hostname(): string;

@@ -7,7 +7,7 @@ vi.mock('electron', () => ({
 }));
 
 import { deliverAnswer, setAnswerWriter } from '../../src/main/agent-state-rpc';
-import { reportAgent, resetAgentState, getAgentState } from '../../src/main/agent-state';
+import { reportAgent, resetAgentState, getAgentState, currentPromptId } from '../../src/main/agent-state';
 import type { SurfaceId } from '../../src/shared/types';
 
 const SID = 'surf-1' as SurfaceId;
@@ -32,6 +32,15 @@ describe('deliverAnswer (#254)', () => {
     resetAgentState();
     written = [];
     setAnswerWriter((surfaceId, payload) => { written.push({ surfaceId, payload }); });
+  });
+
+  it('a prompt id the pane is no longer asking is stale and writes nothing (#254)', async () => {
+    block();
+    const p = currentPromptId(SID)!;
+    expect(await deliverAnswer(SID, 'allow', p + 1)).toEqual({ ok: false, reason: 'stale' });
+    expect(await deliverAnswer(SID, 'allow', 0)).toEqual({ ok: false, reason: 'stale' });
+    expect(written).toEqual([]);
+    expect(await deliverAnswer(SID, 'allow', p)).toEqual({ ok: true });
   });
 
   it('writes the declared payload and answers only { ok: true }', async () => {

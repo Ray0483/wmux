@@ -152,8 +152,10 @@ const clean = (s: string): string => capText(stripBidi(s), LABEL_MAX);
 /**
  * The wire entry. Explicit fields only; choices keep `{id,label,isDefault}`
  * and drop any id the protocol would refuse to carry back in an `answer`.
+ * `promptId` is main's own (agent-state), never the renderer's: it is what an
+ * answer is checked against, so it comes from the side that checks it.
  */
-export function toWire(src: RemoteRosterSource, done: boolean): RemoteRosterEntry {
+export function toWire(src: RemoteRosterSource, done: boolean, promptId: number | null = null): RemoteRosterEntry {
   const choices: RemoteRosterEntry['choices'] = [];
   for (const c of src.choices) {
     if (!CHOICE_ID_RE.test(c.id)) continue;
@@ -170,15 +172,20 @@ export function toWire(src: RemoteRosterSource, done: boolean): RemoteRosterEntr
     done,
     blockedReason: src.blockedReason === null ? null : clean(src.blockedReason),
     choices,
+    promptId,
     answerPending: src.answerPending,
     dwellMs: Math.round(src.dwellMs),
   };
 }
 
 /** The sorted wire list for one device. */
-export function buildWireRoster(list: readonly RemoteRosterSource[], tracker: DoneTracker): RemoteRosterEntry[] {
+export function buildWireRoster(
+  list: readonly RemoteRosterSource[],
+  tracker: DoneTracker,
+  promptOf: (surfaceId: string) => number | null = () => null,
+): RemoteRosterEntry[] {
   const sortable = list.map((src) => ({ src, doneAt: src.state === 'working' ? null : tracker.doneAt(src.surfaceId) }));
-  return sortRoster(sortable).map((e) => toWire(e.src, e.doneAt !== null));
+  return sortRoster(sortable).map((e) => toWire(e.src, e.doneAt !== null, promptOf(e.src.surfaceId)));
 }
 
 /**

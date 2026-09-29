@@ -16,6 +16,8 @@ export const zhTW: Readonly<Record<string, string>> = {
   'pair.confirm': '配對',
   'pair.pairing': '正在配對…',
   'pair.failed': '配對失敗。請在電腦上產生新的代碼後再試一次。',
+  'pair.rate': '嘗試次數過多。請稍候，然後再點一下「配對」。',
+  'pair.deviceCap': '已配對的裝置過多。請在電腦的 設定 → 遠端 中撤銷一台裝置，然後產生新代碼。',
 
   'expired.title': '代碼已過期',
   'expired.body': '此代碼已過期，請在電腦上產生新的代碼。',
@@ -40,6 +42,7 @@ export const zhTW: Readonly<Record<string, string>> = {
   'console.other': '其他',
   'console.markAllSeen': '全部標為已讀',
   'console.empty': '目前沒有正在執行的代理程式。',
+  'console.waiting': '正在等候你的電腦…',
   'console.viewerNotice': '僅檢視 — 此連線無法輸入或回答。',
   'console.needsYouCount_other': '{n} 個代理程式在等你處理',
 
@@ -50,7 +53,8 @@ export const zhTW: Readonly<Record<string, string>> = {
   'attach.fit': '符合寬度',
   'attach.pan': '易讀',
   'attach.jumpBottom': '跳到底部',
-  'attach.altHint': '全螢幕應用程式：使用 PgUp / PgDn 捲動。',
+  'attach.altHint': '全螢幕應用程式：使用 ⋯ 中的 PgUp / PgDn 捲動。',
+  'attach.altHintViewer': '全螢幕應用程式：無法從此裝置捲動。',
   'attach.loading': '正在載入畫面…',
   'attach.exited': '程序已結束（{code}）',
   'attach.lag': '正在追上進度…',
@@ -61,6 +65,8 @@ export const zhTW: Readonly<Record<string, string>> = {
 
   'keys.more': '更多按鍵',
   'keys.armed': '再點一下即可送出',
+  'keys.armedInterrupt': '再點一下即可中斷代理程式',
+  'keys.armedAnswer': '再點一下即可回答問題',
   'keys.up': '上',
   'keys.down': '下',
   'keys.left': '左',
@@ -97,6 +103,7 @@ export const zhTW: Readonly<Record<string, string>> = {
   'ack.notBlocked': '此問題已經回答過了。',
   'ack.noChoices': '沒有需要回答的內容。',
   'ack.unknownChoice': '該選項已不再提供。',
+  'ack.stale': '問題已變更。請先查看再回答。',
   'ack.tooLong': '內容過長，無法送出（最多 {max} 個字元）。',
   'ack.badKey': '不支援此按鍵。',
   'ack.writeFailed': '無法送出。',
@@ -127,5 +134,5 @@ export const zhTW: Readonly<Record<string, string>> = {
   'prefs.forgetTitle': '要忘記此裝置嗎？',
   'prefs.forgetBody': '重新連線需要從電腦取得新的代碼。',
   'prefs.forgetFailed': '無法連線到你的電腦，因此此裝置仍處於配對狀態。請再試一次，或在電腦上的 wmux 中移除它。',
-  'prefs.limits': '關閉此頁面後不會收到任何訊息，且 iOS 無法震動。',
+  'prefs.limits': '只有在此頁面開啟並顯示於螢幕上時才會收到提醒。手機鎖定或分頁在背景時可能收不到任何提醒，且 iOS 無法震動。',
 };

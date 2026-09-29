@@ -80,10 +80,19 @@ describe('toWire', () => {
     expect(wire.s).toBe(sid(1));
     expect(Object.keys(wire).sort()).toEqual([
       'answerPending', 'blockedReason', 'choices', 'done', 'dwellMs', 'kind', 'label',
-      's', 'state', 'stateSource', 'workspaceId', 'workspaceTitle',
+      'promptId', 's', 'state', 'stateSource', 'workspaceId', 'workspaceTitle',
     ]);
     const json = JSON.stringify(wire);
     for (const bad of ['"key"', '"text"', 'cwd', 'metadata', 'surfaceId']) expect(json).not.toContain(bad);
+  });
+
+  it('promptId comes from main (the side that checks answers), null by default (#254)', () => {
+    const t = new DoneTracker();
+    const list = [src(1, { state: 'blocked', choices: [{ id: 'y', label: 'Yes' }] }), src(2, { state: 'idle' })];
+    const wire = buildWireRoster(list, t, (s) => (s === sid(1) ? 41 : null));
+    expect(wire.find((e) => e.s === sid(1))!.promptId).toBe(41);
+    expect(wire.find((e) => e.s === sid(2))!.promptId).toBeNull();
+    expect(toWire(src(3), false).promptId).toBeNull();
   });
 
   it('strips bidi, caps at 200, drops choice ids the protocol would refuse', () => {

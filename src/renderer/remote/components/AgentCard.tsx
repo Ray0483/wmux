@@ -19,7 +19,7 @@ interface Props {
   operator: boolean;
   t: RemoteT;
   onOpen(s: string): void;
-  onAnswer(s: string, choiceId: string): void;
+  onAnswer(s: string, choiceId: string, prompt: number | null): void;
 }
 
 function blockedLine(entry: RemoteRosterEntry, operator: boolean, t: RemoteT): string | null {
@@ -56,7 +56,7 @@ export function AgentCard({ entry, sinceRoster, operator, t, onOpen, onAnswer }:
         )}
         {hint && <span className="rc-card__hint">{hint}</span>}
       </button>
-      {showChoices && <ChoiceRow choices={entry.choices} onAnswer={(id) => onAnswer(entry.s, id)} />}
+      {showChoices && <ChoiceRow choices={entry.choices} onAnswer={(id) => onAnswer(entry.s, id, entry.promptId)} />}
     </article>
   );
 }

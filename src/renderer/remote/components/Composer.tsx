@@ -41,15 +41,23 @@ interface Props {
   client: WsClient;
   s: string;
   blocked: boolean;
+  /** The roster's `promptId` for this pane: what a blocked waiver names. */
+  prompt: number | null;
   maxText: number;
   t: RemoteT;
 }
 
-export function Composer({ client, s, blocked, maxText, t }: Readonly<Props>) {
+export function Composer({ client, s, blocked, prompt, maxText, t }: Readonly<Props>) {
   const [state, dispatch] = useReducer(composerReducer, s, (id: string) => initialComposer(loadDraft(safeStorage(), id)));
   const stateRef = useRef<ComposerState>(state);
   stateRef.current = state;
   const boxRef = useRef<HTMLTextAreaElement>(null);
+  const promptRef = useRef(prompt);
+  promptRef.current = prompt;
+  // The prompt the blocked confirm on screen is about. The waiver is resent
+  // after a reconnect as-is, so it must name the question the user saw, not
+  // whatever the pane asks by the time the frame lands.
+  const confirmPrompt = useRef<number | null>(null);
 
   useEffect(() => { saveDraft(safeStorage(), s, state.draft); }, [s, state.draft]);
 
@@ -66,8 +74,11 @@ export function Composer({ client, s, blocked, maxText, t }: Readonly<Props>) {
     // Exactly the listed fields: the validator rejects an unknown one, and an
     // empty `force` list (which it also rejects) is noise.
     if (frame.force.length > 0) msg.force = [...frame.force];
+    const waived = confirmPrompt.current ?? promptRef.current;
+    if (frame.force.includes('blocked') && waived !== null) msg.prompt = waived;
     client.request(msg).then(
       (ack) => {
+        if (ack.code === 'confirm' && ack.confirm === 'blocked') confirmPrompt.current = ack.prompt ?? promptRef.current;
         // Also when this composer is already unmounted — see clearSentDraft.
         if (ack.ok) clearSentDraft(safeStorage(), s, frame.text);
         dispatch({ type: 'ack', nonce: ack.nonce, ok: ack.ok, code: ack.code, confirm: ack.confirm, submitSkipped: ack.submitSkipped });
@@ -86,7 +97,11 @@ export function Composer({ client, s, blocked, maxText, t }: Readonly<Props>) {
     if (willSend && next.frame) transmit(next.frame);
   }, [transmit]);
 
-  const submit = () => act({ type: 'submit', nonce: newNonce(), blocked });
+  const submit = () => {
+    // Blocked: the sheet opens now, about the prompt on screen now.
+    confirmPrompt.current = blocked ? promptRef.current : null;
+    act({ type: 'submit', nonce: newNonce(), blocked });
+  };
 
   const label = composerLabel(state, blocked);
   const labelText = {

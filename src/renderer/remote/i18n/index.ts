@@ -178,6 +178,7 @@ const ACK_KEYS: Readonly<Record<AckCode, RemoteMessageKey>> = {
   'not-blocked': 'ack.notBlocked',
   'no-choices': 'ack.noChoices',
   'unknown-choice': 'ack.unknownChoice',
+  stale: 'ack.stale',
   'too-long': 'ack.tooLong',
   'bad-key': 'ack.badKey',
   'write-failed': 'ack.writeFailed',

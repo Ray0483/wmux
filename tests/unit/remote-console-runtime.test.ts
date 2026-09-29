@@ -51,6 +51,7 @@ function fakeOps(over: Partial<ConsoleOps> = {}): FakeOps {
     isLivePty: () => true,
     isBlocked: () => false,
     runDepth: () => 0,
+    promptId: () => null,
     isAnsweringInput: () => false,
     noteHumanInput: vi.fn(),
     write: vi.fn(),

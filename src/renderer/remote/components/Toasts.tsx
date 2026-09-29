@@ -27,7 +27,7 @@ interface Props {
   operator: boolean;
   t: RemoteT;
   onOpen(s: string): void;
-  onAnswer(s: string, choiceId: string): void;
+  onAnswer(s: string, choiceId: string, prompt: number | null): void;
   onDismiss(id: number): void;
 }
 
@@ -37,7 +37,7 @@ function AgentToast({ toast, entry, operator, t, onOpen, onAnswer, onDismiss }: 
   operator: boolean;
   t: RemoteT;
   onOpen(s: string): void;
-  onAnswer(s: string, choiceId: string): void;
+  onAnswer(s: string, choiceId: string, prompt: number | null): void;
   onDismiss(id: number): void;
 }>) {
   const stillBlocked = toast.kind === 'blocked' && entry?.state === 'blocked' && !entry.answerPending;
@@ -51,7 +51,7 @@ function AgentToast({ toast, entry, operator, t, onOpen, onAnswer, onDismiss }: 
       {operator && stillBlocked && entry && (
         <ChoiceRow
           choices={entry.choices}
-          onAnswer={(id) => { onDismiss(toast.id); onAnswer(toast.s, id); }}
+          onAnswer={(id) => { onDismiss(toast.id); onAnswer(toast.s, id, entry.promptId); }}
         />
       )}
     </div>

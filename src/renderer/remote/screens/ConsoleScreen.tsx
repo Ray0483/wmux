@@ -47,7 +47,7 @@ interface Props {
   host: string;
   operator: boolean;
   onOpen(s: string): void;
-  onAnswer(s: string, choiceId: string): void;
+  onAnswer(s: string, choiceId: string, prompt: number | null): void;
   onSeen(s: string): void;
   onPrefs(): void;
 }

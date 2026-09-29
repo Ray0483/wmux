@@ -46,9 +46,10 @@ export type ClientMessage =
   | { t: 'detach' }
   | { t: 'seen'; s: string }
   | { t: 'ping' }
-  | { t: 'send'; s: string; nonce: string; text: string; submit: boolean; force?: ConfirmKind[] }
-  | { t: 'key'; s: string; nonce: string; key: RemoteKey; force?: ConfirmKind[] }
-  | { t: 'answer'; s: string; nonce: string; choiceId: string };
+  | { t: 'send'; s: string; nonce: string; text: string; submit: boolean; force?: ConfirmKind[]; prompt?: number }
+  | { t: 'key'; s: string; nonce: string; key: RemoteKey; force?: ConfirmKind[]; prompt?: number }
+  /** `prompt`: the roster's `promptId` for the question the user answered. */
+  | { t: 'answer'; s: string; nonce: string; choiceId: string; prompt: number };
 
 export type ClientMessageType = ClientMessage['t'];
 
@@ -77,6 +78,10 @@ export const SCOPE_OF: Readonly<Record<ClientMessageType, RemoteScope>> = {
  * several lines into a terminal that is not in paste mode", or a multiline
  * Insert types CRs into the prompt it was meant to leave alone. The server
  * bypasses exactly the listed checks and asks any other one afresh.
+ *
+ * A `blocked` waiver is about ONE question, so it travels with `prompt` (the
+ * roster's `promptId`, or the one a `confirm` ack named): a waiver for a
+ * prompt the pane has moved on from is not a waiver, and is asked again.
  */
 export const CONFIRM_KINDS = ['blocked', 'interrupt', 'multiline'] as const;
 export type ConfirmKind = (typeof CONFIRM_KINDS)[number];
@@ -84,6 +89,8 @@ export type ConfirmKind = (typeof CONFIRM_KINDS)[number];
 export type AckCode =
   | 'forbidden' | 'rate' | 'gone' | 'confirm'
   | 'not-blocked' | 'no-choices' | 'unknown-choice'
+  /** The pane is asking a different question than the one this answer was chosen for. */
+  | 'stale'
   | 'too-long' | 'bad-key' | 'write-failed'
   /** Several lines, no Enter, and a terminal not in paste mode: every line break would BE an Enter. */
   | 'multiline-insert';
@@ -108,6 +115,8 @@ export interface RemoteRosterEntry {
   done: boolean;
   blockedReason: string | null;
   choices: { id: string; label: string; isDefault?: boolean }[];
+  /** Which question `choices` belong to; null when not declared blocked. Sent back in `answer`. */
+  promptId: number | null;
   answerPending: boolean;
   dwellMs: number;
 }
@@ -131,6 +140,8 @@ export type ServerMessage =
   | { t: 'term.error'; s: string; code: 'no-terminal' | 'timeout' | 'gone'; message: string }
   | {
       t: 'ack'; nonce: string; ok: boolean; code?: AckCode; confirm?: ConfirmKind; duplicate?: boolean;
+      /** With `confirm: 'blocked'`: the prompt the confirm is about, to send back with the waiver. */
+      prompt?: number;
       /**
        * `ok`, with the text typed but the trailing Enter withheld: the agent
        * went blocked in the gap before it. Not a refusal — the text DID land,
@@ -167,9 +178,9 @@ const ALLOWED_FIELDS: Readonly<Record<ClientMessageType, readonly string[]>> = {
   detach: ['t'],
   seen: ['t', 's'],
   ping: ['t'],
-  send: ['t', 's', 'nonce', 'text', 'submit', 'force'],
-  key: ['t', 's', 'nonce', 'key', 'force'],
-  answer: ['t', 's', 'nonce', 'choiceId'],
+  send: ['t', 's', 'nonce', 'text', 'submit', 'force', 'prompt'],
+  key: ['t', 's', 'nonce', 'key', 'force', 'prompt'],
+  answer: ['t', 's', 'nonce', 'choiceId', 'prompt'],
 };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -179,6 +190,8 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 const isSurface = (v: unknown): v is string => typeof v === 'string' && SURFACE_ID_RE.test(v);
 const isNonce = (v: unknown): v is string => typeof v === 'string' && NONCE_RE.test(v);
 const CONFIRM_KIND_SET: ReadonlySet<string> = new Set(CONFIRM_KINDS);
+const isPrompt = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v > 0;
+const isOptionalPrompt = (v: unknown): boolean => v === undefined || isPrompt(v);
 /** Absent, or a non-empty list of distinct known confirm kinds. */
 const isOptionalForce = (v: unknown): boolean => {
   if (v === undefined) return true;
@@ -209,13 +222,13 @@ function fieldsValid(o: Record<string, unknown>, t: ClientMessageType): boolean 
       // No MAX_TEXT check here on purpose: an over-long text is answered with
       // `ack{too-long}` so the composer can say so, not dropped as bad-frame.
       return isSurface(o.s) && isNonce(o.nonce) && typeof o.text === 'string'
-        && typeof o.submit === 'boolean' && isOptionalForce(o.force);
+        && typeof o.submit === 'boolean' && isOptionalForce(o.force) && isOptionalPrompt(o.prompt);
     case 'key':
       return isSurface(o.s) && isNonce(o.nonce) && typeof o.key === 'string'
-        && REMOTE_KEY_SET.has(o.key) && isOptionalForce(o.force);
+        && REMOTE_KEY_SET.has(o.key) && isOptionalForce(o.force) && isOptionalPrompt(o.prompt);
     case 'answer':
       return isSurface(o.s) && isNonce(o.nonce) && typeof o.choiceId === 'string'
-        && CHOICE_ID_RE.test(o.choiceId);
+        && CHOICE_ID_RE.test(o.choiceId) && isPrompt(o.prompt);
   }
 }
 

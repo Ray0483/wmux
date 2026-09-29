@@ -16,6 +16,8 @@ export const ko: Readonly<Record<string, string>> = {
   'pair.confirm': '페어링',
   'pair.pairing': '페어링 중…',
   'pair.failed': '페어링에 실패했습니다. 컴퓨터에서 새 코드를 만들고 다시 시도하세요.',
+  'pair.rate': '시도가 너무 많습니다. 잠시 기다린 뒤 다시 페어링을 탭하세요.',
+  'pair.deviceCap': '페어링된 기기가 너무 많습니다. 컴퓨터의 설정 → 원격에서 하나를 해제한 뒤 새 코드를 만드세요.',
 
   'expired.title': '코드 만료',
   'expired.body': '이 코드는 만료되었습니다. 컴퓨터에서 새 코드를 만드세요.',
@@ -40,6 +42,7 @@ export const ko: Readonly<Record<string, string>> = {
   'console.other': '기타',
   'console.markAllSeen': '모두 확인함으로 표시',
   'console.empty': '지금 실행 중인 에이전트가 없습니다.',
+  'console.waiting': '컴퓨터를 기다리는 중…',
   'console.viewerNotice': '보기 전용 — 이 연결은 입력하거나 응답할 수 없습니다.',
   'console.needsYouCount_other': '에이전트 {n}개가 확인을 기다립니다',
 
@@ -50,7 +53,8 @@ export const ko: Readonly<Record<string, string>> = {
   'attach.fit': '너비 맞춤',
   'attach.pan': '읽기 쉽게',
   'attach.jumpBottom': '맨 아래로',
-  'attach.altHint': '전체 화면 앱: PgUp / PgDn으로 스크롤하세요.',
+  'attach.altHint': '전체 화면 앱: ⋯ 안의 PgUp / PgDn으로 스크롤하세요.',
+  'attach.altHintViewer': '전체 화면 앱: 이 기기에서는 스크롤할 수 없습니다.',
   'attach.loading': '화면 불러오는 중…',
   'attach.exited': '프로세스가 종료됨 ({code})',
   'attach.lag': '따라잡는 중…',
@@ -61,6 +65,8 @@ export const ko: Readonly<Record<string, string>> = {
 
   'keys.more': '키 더 보기',
   'keys.armed': '한 번 더 탭하면 보냅니다',
+  'keys.armedInterrupt': '한 번 더 탭하면 에이전트를 중단합니다',
+  'keys.armedAnswer': '한 번 더 탭하면 질문에 답합니다',
   'keys.up': '위',
   'keys.down': '아래',
   'keys.left': '왼쪽',
@@ -97,6 +103,7 @@ export const ko: Readonly<Record<string, string>> = {
   'ack.notBlocked': '이미 응답한 질문입니다.',
   'ack.noChoices': '응답할 내용이 없습니다.',
   'ack.unknownChoice': '더 이상 제공되지 않는 선택지입니다.',
+  'ack.stale': '질문이 바뀌었습니다. 확인한 뒤 답하세요.',
   'ack.tooLong': '너무 길어서 보낼 수 없습니다 (최대 {max}자).',
   'ack.badKey': '지원되지 않는 키입니다.',
   'ack.writeFailed': '보내지 못했습니다.',
@@ -127,5 +134,5 @@ export const ko: Readonly<Record<string, string>> = {
   'prefs.forgetTitle': '이 기기를 삭제할까요?',
   'prefs.forgetBody': '다시 연결하려면 컴퓨터에서 새 코드가 필요합니다.',
   'prefs.forgetFailed': '컴퓨터에 연결할 수 없어 이 기기는 아직 페어링되어 있습니다. 다시 시도하거나 컴퓨터의 wmux에서 제거하세요.',
-  'prefs.limits': '이 페이지를 닫으면 아무것도 도착하지 않으며, iOS는 진동할 수 없습니다.',
+  'prefs.limits': '알림은 이 페이지가 열려 있고 화면에 보이는 동안에만 도착합니다. 휴대폰이 잠겨 있거나 탭이 백그라운드에 있으면 아무것도 오지 않을 수 있으며, iOS는 진동할 수 없습니다.',
 };

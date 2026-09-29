@@ -13,7 +13,7 @@ interface Harness {
   sent: ServerMessage[];
   calls: string[];
   closed: { code: number; reason: string }[];
-  state: { blocked: boolean; live: boolean; runDepth: number; bracketed: boolean | 'none' };
+  state: { blocked: boolean; live: boolean; runDepth: number; bracketed: boolean | 'none'; prompt: number };
   ops: SessionOps & { deliverAnswer: ReturnType<typeof vi.fn>; log: ReturnType<typeof vi.fn> };
   deps: SessionDeps;
   advance: (ms: number) => void;
@@ -26,11 +26,12 @@ function harness(opts: { scope?: RemoteScope; effective?: RemoteScope; hello?: b
   const sent: ServerMessage[] = [];
   const calls: string[] = [];
   const closed: { code: number; reason: string }[] = [];
-  const state = { blocked: false, live: true, runDepth: 0, bracketed: true as boolean | 'none' };
+  const state = { blocked: false, live: true, runDepth: 0, bracketed: true as boolean | 'none', prompt: 7 };
   const ops = {
     isLivePty: () => state.live,
     isBlocked: () => state.blocked,
     runDepth: () => state.runDepth,
+    promptId: () => (state.blocked ? state.prompt : null),
     isAnsweringInput: (b: string) => b === '\r' || b === 'y' || b === 'n' || /^[\x20-\x7e]/.test(b),
     noteHumanInput: (_s: string, b: string) => {
       calls.push(`note:${JSON.stringify(b)}`);
@@ -140,7 +141,7 @@ describe('session: scope', () => {
   it('a viewer can never cause a write, a noteHumanInput or an answer', async () => {
     const h = await greeted({ scope: 'viewer' });
     await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'rm -rf /', submit: true, force: ['blocked', 'multiline'] });
-    await h.frame({ t: 'key', s: S, nonce: nonce(), key: 'enter', force: ['blocked'] });
+    await h.frame({ t: 'key', s: S, nonce: nonce(), key: 'enter', force: ['blocked'], prompt: 7 });
     expect(h.calls).toEqual([]);
     expect(h.ops.deliverAnswer).not.toHaveBeenCalled();
     expect(h.acks().every((a) => a.code === 'forbidden' && !a.ok)).toBe(true);
@@ -148,7 +149,7 @@ describe('session: scope', () => {
 
   it('an operator device on an insecure LAN bind is effectively a viewer', async () => {
     const h = await greeted({ scope: 'operator', effective: 'viewer' });
-    await h.frame({ t: 'answer', s: S, nonce: nonce(), choiceId: 'y' });
+    await h.frame({ t: 'answer', s: S, nonce: nonce(), choiceId: 'y', prompt: 7 });
     expect(h.ops.deliverAnswer).not.toHaveBeenCalled();
     expect(h.acks()[0].code).toBe('forbidden');
   });
@@ -177,14 +178,14 @@ describe('session: send (rule 4)', () => {
     h.state.blocked = true;
     await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'y', submit: true });
     expect(h.calls).toEqual([]);
-    expect(h.acks()).toEqual([{ t: 'ack', nonce: expect.any(String), ok: false, code: 'confirm', confirm: 'blocked' }]);
+    expect(h.acks()).toEqual([{ t: 'ack', nonce: expect.any(String), ok: false, code: 'confirm', confirm: 'blocked', prompt: 7 }]);
     expect(h.state.blocked).toBe(true);
   });
 
   it('force inserts into a blocked pane', async () => {
     const h = await greeted();
     h.state.blocked = true;
-    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'note', submit: false, force: ['blocked'] });
+    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'note', submit: false, force: ['blocked'], prompt: 7 });
     expect(h.calls.filter((c) => c.startsWith('write'))).toHaveLength(1);
     expect(h.acks()[0].ok).toBe(true);
   });
@@ -222,7 +223,7 @@ describe('session: send (rule 4)', () => {
     const h = await greeted();
     h.state.blocked = true;
     h.state.bracketed = false;
-    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'a\nb', submit: false, force: ['blocked'] });
+    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'a\nb', submit: false, force: ['blocked'], prompt: 7 });
     expect(h.calls).toEqual([]);
     expect(h.acks()[0]).toMatchObject({ ok: false, code: 'multiline-insert' });
     expect(h.state.blocked).toBe(true);
@@ -300,7 +301,7 @@ describe('session: send (rule 4)', () => {
     expect(h.calls).toEqual([]);
     expect(h.acks()[0]).toMatchObject({ ok: false, code: 'confirm', confirm: 'blocked' });
     // force still goes through.
-    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'yes', submit: true, force: ['blocked'] });
+    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'yes', submit: true, force: ['blocked'], prompt: 7 });
     expect(h.calls.filter((c) => c.startsWith('write'))).toHaveLength(2);
   });
 
@@ -420,8 +421,8 @@ describe('session: answer (rule 6)', () => {
   it('goes through deliverAnswer and NEVER calls noteHumanInput', async () => {
     const h = await greeted();
     h.state.blocked = true;
-    await h.frame({ t: 'answer', s: S, nonce: nonce(), choiceId: 'yes_1' });
-    expect(h.ops.deliverAnswer).toHaveBeenCalledWith(S, 'yes_1');
+    await h.frame({ t: 'answer', s: S, nonce: nonce(), choiceId: 'yes_1', prompt: 7 });
+    expect(h.ops.deliverAnswer).toHaveBeenCalledWith(S, 'yes_1', 7);
     expect(h.calls).toEqual([]);
     expect(h.acks()[0].ok).toBe(true);
   });
@@ -432,18 +433,62 @@ describe('session: answer (rule 6)', () => {
     ['unknown-choice', 'unknown-choice'],
     ['unknown-surface', 'gone'],
     ['write-failed', 'write-failed'],
+    ['stale', 'stale'],
   ])('reason %s → ack %s', async (reason, code) => {
     const h = await greeted();
     h.ops.deliverAnswer.mockResolvedValueOnce({ ok: false, reason });
-    await h.frame({ t: 'answer', s: S, nonce: nonce(), choiceId: 'y' });
+    await h.frame({ t: 'answer', s: S, nonce: nonce(), choiceId: 'y', prompt: 7 });
     expect(h.acks()[0]).toMatchObject({ ok: false, code });
   });
 
   it('a throwing deliverAnswer is write-failed, not an unhandled rejection', async () => {
     const h = await greeted();
     h.ops.deliverAnswer.mockRejectedValueOnce(new Error('boom'));
-    await h.frame({ t: 'answer', s: S, nonce: nonce(), choiceId: 'y' });
+    await h.frame({ t: 'answer', s: S, nonce: nonce(), choiceId: 'y', prompt: 7 });
     expect(h.acks()[0].code).toBe('write-failed');
+  });
+
+  it('an answer with no prompt id is a bad frame: it cannot say which question it answers', async () => {
+    const h = await greeted();
+    h.state.blocked = true;
+    await h.frame({ t: 'answer', s: S, nonce: nonce(), choiceId: 'y' });
+    expect(h.ops.deliverAnswer).not.toHaveBeenCalled();
+    expect(h.sent[0]).toMatchObject({ t: 'error', code: 'bad-frame' });
+  });
+});
+
+describe('session: a blocked waiver is about ONE prompt (#254)', () => {
+  it('a confirm names the prompt it is about', async () => {
+    const h = await greeted();
+    h.state.blocked = true;
+    await h.frame({ t: 'key', s: S, nonce: nonce(), key: 'enter' });
+    expect(h.acks()[0]).toMatchObject({ ok: false, code: 'confirm', confirm: 'blocked', prompt: 7 });
+  });
+
+  it('a key waiver for a prompt the pane moved on from is asked again, not typed', async () => {
+    const h = await greeted();
+    h.state.blocked = true;
+    h.state.prompt = 8;
+    await h.frame({ t: 'key', s: S, nonce: nonce(), key: 'enter', force: ['blocked'], prompt: 7 });
+    expect(h.acks()[0]).toMatchObject({ ok: false, code: 'confirm', confirm: 'blocked', prompt: 8 });
+    expect(h.calls).toEqual([]);
+  });
+
+  it('a key waiver with no prompt at all is asked again', async () => {
+    const h = await greeted();
+    h.state.blocked = true;
+    await h.frame({ t: 'key', s: S, nonce: nonce(), key: 'y', force: ['blocked'] });
+    expect(h.acks()[0]).toMatchObject({ code: 'confirm', confirm: 'blocked' });
+    expect(h.calls).toEqual([]);
+  });
+
+  it('an Insert waiver for a stale prompt is asked again', async () => {
+    const h = await greeted();
+    h.state.blocked = true;
+    h.state.prompt = 9;
+    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'note', submit: false, force: ['blocked'], prompt: 7 });
+    expect(h.acks()[0]).toMatchObject({ code: 'confirm', confirm: 'blocked', prompt: 9 });
+    expect(h.calls).toEqual([]);
   });
 });
 

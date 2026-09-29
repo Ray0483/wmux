@@ -14,6 +14,8 @@ import {
   getAgentState,
   clearAgentState,
   resetAgentState,
+  currentPromptId,
+  noteHumanInput,
 } from '../../src/main/agent-state';
 import type { SurfaceId } from '../../src/shared/types';
 
@@ -235,5 +237,58 @@ describe('choice lifecycle', () => {
     const payload = sendMock.mock.calls.at(-1)![1];
     expect(payload.state).toBe('blocked');
     expect(payload.choices.map((c: { id: string }) => c.id)).toEqual(['allow', 'deny']);
+  });
+});
+
+// #254: an answer names the question it was chosen for. Agents reuse ids like
+// yes/no across prompts, so without an identity a late or resent tap on one
+// question answers the next.
+describe('prompt identity (#254)', () => {
+  it('is null unless blocked, and a new blocked episode is a new prompt', () => {
+    expect(currentPromptId(SID)).toBeNull();
+    block([ALLOW, DENY]);
+    const first = currentPromptId(SID);
+    expect(first).toBeGreaterThan(0);
+    reportAgent(SID, { awaitingHuman: false });
+    expect(currentPromptId(SID)).toBeNull();
+    block([ALLOW, DENY]);
+    expect(currentPromptId(SID)).not.toBe(first);
+  });
+
+  it('a reworded reason or different answers while blocked is a new prompt; re-declaring the same is not', () => {
+    block([ALLOW, DENY]);
+    const p1 = currentPromptId(SID);
+    reportAgent(SID, { awaitingHuman: true, reason: 'permission: Bash', choices: [ALLOW, DENY] as never });
+    expect(currentPromptId(SID)).toBe(p1);
+    reportAgent(SID, { reason: 'Drop the prod table?' });
+    const p2 = currentPromptId(SID);
+    expect(p2).not.toBe(p1);
+    reportAgent(SID, { choices: [ALLOW] as never });
+    expect(currentPromptId(SID)).not.toBe(p2);
+  });
+
+  it('a retry after answering (same answers re-declared) keeps the prompt', () => {
+    block([ALLOW, DENY]);
+    const p = currentPromptId(SID)!;
+    expect(answerAgent(SID, { choiceId: 'allow', promptId: p }).ok).toBe(true);
+    reportAgent(SID, { choices: [ALLOW, DENY] as never });
+    expect(currentPromptId(SID)).toBe(p);
+  });
+
+  it('an answer naming a prompt the pane moved on from is refused as stale, and consumes nothing', () => {
+    block([ALLOW, DENY]);
+    const runTests = currentPromptId(SID)!;
+    // Answered on the desktop, then the agent asks something else with the same ids.
+    noteHumanInput(SID, '1');
+    block([ALLOW, DENY]);
+    expect(answerAgent(SID, { choiceId: 'allow', promptId: runTests })).toEqual({ ok: false, reason: 'stale' });
+    expect(getAgentState(SID)!.choices.map(c => c.id)).toEqual(['allow', 'deny']);
+    expect(answerAgent(SID, { choiceId: 'allow', promptId: currentPromptId(SID)! }).ok).toBe(true);
+  });
+
+  it('prompt ids are unique across surfaces', () => {
+    block([ALLOW]);
+    reportAgent('surf-2' as SurfaceId, { awaitingHuman: true, choices: [ALLOW] as never });
+    expect(currentPromptId('surf-2' as SurfaceId)).not.toBe(currentPromptId(SID));
   });
 });
