@@ -18,15 +18,22 @@ import type { ConsoleOps, CreateRemoteConsoleRuntime, RemoteConsoleRuntime } fro
 
 type RuntimeModule = { createRemoteConsoleRuntime: CreateRemoteConsoleRuntime };
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const defaultLoader = (): RuntimeModule => require('./runtime') as RuntimeModule;
 
 let loadRuntime: () => RuntimeModule = defaultLoader;
 let runtime: RemoteConsoleRuntime | null = null;
 
+/**
+ * Only the FIRST line of Node's message names the module that is missing; the
+ * rest is the "Require stack", which lists runtime.js itself whenever one of
+ * ITS dependencies (`ws`, say) is the thing absent from the asar. Matching the
+ * whole message therefore filed "runtime shipped, its dependency did not" as
+ * "runtime not shipped" — the two faults this function exists to tell apart.
+ */
 function isMissingRuntime(err: unknown): boolean {
   const e = err as { code?: unknown; message?: unknown } | null;
-  return e?.code === 'MODULE_NOT_FOUND' && typeof e.message === 'string' && e.message.includes('runtime');
+  if (e?.code !== 'MODULE_NOT_FOUND' || typeof e.message !== 'string') return false;
+  return e.message.split('\n', 1)[0].includes("'./runtime'");
 }
 
 export function initRemoteConsole(ops: ConsoleOps): RemoteConsoleRuntime | null {

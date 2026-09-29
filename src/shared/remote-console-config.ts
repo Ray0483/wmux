@@ -82,13 +82,41 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 /**
+ * A dotted-quad IPv4 a LAN bind may name: four decimal octets, no leading
+ * zeros, and never the wildcard `0.0.0.0` (I3 — the console binds ONE
+ * interface or none). Split rather than one regex so each rule reads alone.
+ */
+export function isLanBindableIpv4(host: string): boolean {
+  const parts = host.split('.');
+  if (parts.length !== 4) return false;
+  for (const p of parts) {
+    if (!/^\d{1,3}$/.test(p) || (p.length > 1 && p.startsWith('0')) || Number(p) > 255) return false;
+  }
+  return host !== '0.0.0.0';
+}
+
+/** The LAN host to keep, or `null` when it is not acceptable (see `validateRemoteConfig`). */
+function acceptLanHost(host: unknown, lanAddresses: readonly string[] | null): string | null {
+  if (typeof host !== 'string') return null;
+  const ok = lanAddresses === null ? isLanBindableIpv4(host) : lanAddresses.includes(host);
+  return ok ? host : null;
+}
+
+/**
  * Validate a config from disk or from Settings. Absent fields take their
  * default (a file written by an older build stays loadable); present fields
- * must be the right type. `lanAddresses` is the set of IPv4s the machine has
- * NOW — a caller loading a saved LAN config whose interface has gone should
- * surface `lan-address-gone` at start rather than rewrite the user's choice.
+ * must be the right type.
+ *
+ * `lanAddresses` is the set of IPv4s the machine has NOW, and a Settings
+ * change (`setConfig`) must pass it: the user may only pick an interface that
+ * exists. Loading `remote-console.json` at start passes `null` instead, which
+ * checks only that `lanHost` is a bindable IPv4. With the live list there, a
+ * saved LAN config whose interface has gone (Wi-Fi off, VPN down) would fail
+ * validation and be replaced by the default — silently rewriting the user's
+ * choice — and `start()` could never report the `lan-address-gone` that
+ * actually happened. The presence check is `start()`'s job on that path.
  */
-export function validateRemoteConfig(raw: unknown, lanAddresses: readonly string[]): RemoteConfigResult {
+export function validateRemoteConfig(raw: unknown, lanAddresses: readonly string[] | null): RemoteConfigResult {
   if (!isRecord(raw)) return { ok: false, error: 'bad-shape' };
   const merged: Record<string, unknown> = { ...DEFAULT_REMOTE_CONFIG, ...raw };
 
@@ -105,10 +133,8 @@ export function validateRemoteConfig(raw: unknown, lanAddresses: readonly string
 
   let lanHost: string | null = null;
   if (merged.bind === 'lan') {
-    if (typeof merged.lanHost !== 'string' || !lanAddresses.includes(merged.lanHost)) {
-      return { ok: false, error: 'bad-lan-host' };
-    }
-    lanHost = merged.lanHost;
+    lanHost = acceptLanHost(merged.lanHost, lanAddresses);
+    if (lanHost === null) return { ok: false, error: 'bad-lan-host' };
   }
 
   return {

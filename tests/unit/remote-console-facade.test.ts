@@ -75,9 +75,21 @@ describe('initRemoteConsole', () => {
 
   it('logs a different line when the runtime is present but fails to load', () => {
     const ops = fakeOps();
-    __resetRemoteConsoleForTests(() => { throw Object.assign(new Error("Cannot find module 'ws'"), { code: 'MODULE_NOT_FOUND' }); });
+    // Node's real shape: the require stack names runtime.js, so a match on the
+    // whole message would misfile this as "runtime not shipped".
+    const message = "Cannot find module 'ws'\nRequire stack:\n- C:\\wmux\\dist\\main\\remote-console\\runtime.js\n- C:\\wmux\\dist\\main\\remote-console\\index.js";
+    __resetRemoteConsoleForTests(() => { throw Object.assign(new Error(message), { code: 'MODULE_NOT_FOUND' }); });
     expect(initRemoteConsole(ops)).toBe(null);
-    expect(ops.log).toHaveBeenCalledWith('remote-console-load-failed', { message: "Cannot find module 'ws'" });
+    expect(ops.log).toHaveBeenCalledWith('remote-console-load-failed', { message });
+    expect(ops.log).not.toHaveBeenCalledWith('remote-console-missing', {});
+  });
+
+  it('classifies Node\'s real "./runtime" miss (with its require stack) as missing', () => {
+    const ops = fakeOps();
+    const message = "Cannot find module './runtime'\nRequire stack:\n- C:\\wmux\\dist\\main\\remote-console\\index.js";
+    __resetRemoteConsoleForTests(() => { throw Object.assign(new Error(message), { code: 'MODULE_NOT_FOUND' }); });
+    expect(initRemoteConsole(ops)).toBe(null);
+    expect(ops.log).toHaveBeenCalledWith('remote-console-missing', {});
   });
 
   it('returns null when the factory throws', () => {

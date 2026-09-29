@@ -67,6 +67,17 @@ describe('validateRemoteConfig', () => {
     expect(r).toEqual({ ok: true, config: { ...DEFAULT_REMOTE_CONFIG, enabled: true, bind: 'lan', lanHost: HERE, allowInsecureControl: true } });
   });
 
+  it('loading from disk (null) keeps a LAN host whose interface has gone, for start() to report', () => {
+    const r = validateRemoteConfig({ enabled: true, bind: 'lan', lanHost: GONE }, null);
+    expect(r.ok && r.config.lanHost).toBe(GONE);
+  });
+
+  it('loading from disk (null) still refuses a host that is not a bindable IPv4', () => {
+    for (const lanHost of [ipv4(0, 0, 0, 0), 'box.local', '10.0.0.256', '10.0.0.05', '10.0.0', '::1', 42]) {
+      expect(validateRemoteConfig({ bind: 'lan', lanHost }, null)).toEqual({ ok: false, error: 'bad-lan-host' });
+    }
+  });
+
   it('drops lanHost and forces allowInsecureControl off on loopback', () => {
     const r = validateRemoteConfig({ bind: 'loopback', lanHost: HERE, allowInsecureControl: true }, LAN);
     expect(r.ok && r.config.lanHost).toBe(null);
