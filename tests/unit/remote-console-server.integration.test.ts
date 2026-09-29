@@ -12,7 +12,7 @@ import os from 'os';
 import path from 'path';
 import WebSocket from 'ws';
 import { DeviceRegistry } from '../../src/main/remote-console/devices';
-import { createConsoleServer, MAX_CONNECTIONS } from '../../src/main/remote-console/server';
+import { createConsoleServer, HOST_REFUSED_PAGE, MAX_CONNECTIONS } from '../../src/main/remote-console/server';
 import { LIMITS } from '../../src/main/remote-console/rate-limit';
 import type { ConsoleClient, ConsoleServer } from '../../src/main/remote-console/server';
 import { loadAllowedAssets } from '../../src/main/remote-console/static-assets';
@@ -270,6 +270,17 @@ describe('remote-console server: upgrade gate (#254)', () => {
     expect(JSON.parse(s.body)).toEqual({ paired: true, scope: 'operator', effectiveScope: 'viewer' });
   });
 
+  it('scope is frozen to the config the listener STARTED with (a LAN listener being replaced by loopback stays viewer)', async () => {
+    const r = await rig({ config: { bind: 'lan', lanHost: '127.0.0.1' } });
+    const cookie = pairDevice(r, 'operator');
+    // setConfig assigns the new config before the old listener is torn down.
+    r.config.bind = 'loopback';
+    await connect(r, { cookie });
+    expect(r.clients[0].effectiveScope).toBe('viewer');
+    const s = await request(r, 'GET', '/api/session', { Cookie: `wmux_rc=${cookie}` });
+    expect(JSON.parse(s.body).effectiveScope).toBe('viewer');
+  });
+
   it('LAN bind WITH the override keeps operator', async () => {
     const r = await rig({ config: { bind: 'lan', lanHost: '127.0.0.1', allowInsecureControl: true } });
     await connect(r, { cookie: pairDevice(r, 'operator') });
@@ -318,6 +329,17 @@ describe('remote-console server: HTTP', () => {
     expect(res.status).toBe(403);
     expect(res.headers['content-security-policy']).toBeDefined();
     expect(r.rejected).toContain('https://box.tail1234.ts.net');
+  });
+
+  it('a refused Host gets a static page pointing at Settings, echoing nothing from the request', async () => {
+    const r = await rig();
+    const res = await request(r, 'GET', '/?x=<script>', { Host: 'evil<b>.tail1234.ts.net' });
+    expect(res.status).toBe(403);
+    expect(res.headers['content-type']).toMatch(/^text\/html/);
+    expect(res.body).toBe(HOST_REFUSED_PAGE);
+    expect(res.body).toContain('Public URL');
+    expect(res.body).not.toContain('tail1234');
+    expect(res.body).not.toContain('<script>');
   });
 
   it('no manifest: 503 and ui-not-built', async () => {
@@ -444,6 +466,34 @@ describe('remote-console server: binding and shutdown', () => {
     r.server.closeNow();
     expect(r.server.httpServer.listening).toBe(false);
     expect(await closed).toBe(1006);
+  });
+
+  it('an upgrade arriving while close() drains a slow peer is refused, and close() still finishes', async () => {
+    const r = await rig();
+    const cookie = pairDevice(r);
+    // Peer A never answers our close frame, so close() waits its full second.
+    const sock = net.connect(r.port, '127.0.0.1');
+    let received = '';
+    sock.on('data', (d) => { received += d.toString('latin1'); });
+    sock.on('error', () => undefined);
+    sock.write([
+      'GET /ws HTTP/1.1', `Host: ${r.host}`, `Origin: ${r.origin}`, 'Upgrade: websocket', 'Connection: Upgrade',
+      `Sec-WebSocket-Key: ${crypto.randomBytes(16).toString('base64')}`, 'Sec-WebSocket-Version: 13',
+      `Cookie: wmux_rc=${cookie}`, '', '',
+    ].join('\r\n'));
+    await until(() => received.includes('\r\n\r\n') && r.clients.length === 1);
+
+    let closed = false;
+    const closing = r.server.close().then(() => { closed = true; });
+    await new Promise((res) => setTimeout(res, 100));
+    const b = await connect(r, { cookie });
+    expect(b.status).not.toBe('open');
+    expect(r.clients).toHaveLength(1);
+    await Promise.race([closing, new Promise((res) => setTimeout(res, 3000))]);
+    expect(closed).toBe(true);
+    expect(r.server.httpServer.listening).toBe(false);
+    expect(r.server.clients()).toHaveLength(0);
+    sock.destroy();
   });
 
   it('graceful close sends 1001', async () => {

@@ -63,6 +63,16 @@ export const WS_MAX_PAYLOAD = 65536;
 
 export type ListenError = 'port-busy' | 'bind-failed';
 
+/**
+ * What a phone sees when it opens an address wmux does not recognise, most
+ * often a Tailscale URL not yet saved as the Public URL. Static on purpose:
+ * nothing from the request is echoed back.
+ */
+export const HOST_REFUSED_PAGE =
+  '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+  '<title>wmux</title><p style="font:16px system-ui,sans-serif;margin:24px">' +
+  'wmux refused this address. On your computer, open Settings &rarr; Remote and use it as the Public URL if you recognise it.</p>';
+
 /** One authenticated socket, as the runtime sees it. */
 export interface ConsoleClient {
   readonly id: string;
@@ -113,8 +123,8 @@ export interface ConsoleServer {
   readonly httpServer: http.Server;
 }
 
-function writeBare(socket: Duplex, status: 401 | 403 | 404): void {
-  const text = { 401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found' }[status];
+function writeBare(socket: Duplex, status: 401 | 403 | 404 | 503): void {
+  const text = { 401: 'Unauthorized', 403: 'Forbidden', 404: 'Not Found', 503: 'Service Unavailable' }[status];
   try {
     socket.write(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
   } catch {
@@ -247,7 +257,17 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
   const penalty = new PenaltyBox(deps.now);
   const pairGlobal = new WindowCounter(LIMITS.pairGlobal.limit, LIMITS.pairGlobal.windowMs, deps.now);
   let lists: Allowlists = buildAllowlists(deps.config());
+  // The config this listener was STARTED with. A reconfigure assigns the new
+  // config before the old listener is torn down, so reading `deps.config()`
+  // live would let a device reconnecting over the old plain-HTTP LAN listener
+  // be scoped by the new (e.g. loopback) config: an operator over LAN.
+  let bound: RemoteConsoleConfig = { ...deps.config() };
   let heartbeat: unknown = null;
+  // Set at the top of close()/closeNow(): from then on nothing new is
+  // accepted (no request, no upgrade, no adoption), so a phone reconnecting
+  // during the graceful drain cannot land in an already-drained map and keep
+  // a session, and its PTY writes, alive after the console is off.
+  let stopping = false;
 
   const wss = new WebSocketServer({ noServer: true, maxPayload: WS_MAX_PAYLOAD, perMessageDeflate: false });
   const server = http.createServer();
@@ -355,7 +375,7 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
     deps.devices.touch(device.id);
     const secure = isHttpsRequest(header(req, 'host'), lists);
     // Sliding window: every visit re-issues the same value with a fresh Max-Age.
-    send(res, 200, { paired: true, scope: device.scope, effectiveScope: effectiveScopeFor(deps.config(), device) }, {
+    send(res, 200, { paired: true, scope: device.scope, effectiveScope: effectiveScopeFor(bound, device) }, {
       'Set-Cookie': cookieHeader(cookie, secure),
     });
   }
@@ -373,18 +393,39 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
 
   const POST_ROUTES = new Set(['/api/pair', '/api/logout']);
 
-  function onRequest(req: IncomingMessage, res: ServerResponse): void {
+  /** A fixed page for a refused Host: the phone gets a hint instead of a blank 403. Echoes nothing from the request. */
+  function sendHostRefused(res: ServerResponse): void {
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
+    res.statusCode = 403;
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Length', String(Buffer.byteLength(HOST_REFUSED_PAGE)));
+    res.end(HOST_REFUSED_PAGE);
+  }
+
+  /** The gates every request passes before its route is looked at; true when it was answered. */
+  function refusedBeforeRoute(req: IncomingMessage, res: ServerResponse): boolean {
+    if (stopping) {
+      req.resume();
+      send(res, 503, undefined, { Connection: 'close' });
+      return true;
+    }
     if (!unauth.hit(peerOf(req))) {
       req.resume();
       send(res, 429, { error: 'rate' });
-      return;
+      return true;
     }
     if (!isAllowedHost(header(req, 'host'), lists)) {
       reject(req);
       req.resume();
-      send(res, 403);
-      return;
+      sendHostRefused(res);
+      return true;
     }
+    return false;
+  }
+
+  function onRequest(req: IncomingMessage, res: ServerResponse): void {
+    if (refusedBeforeRoute(req, res)) return;
     const route = routeOf(req.url);
     if (route === null) {
       req.resume();
@@ -444,6 +485,10 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
 
   function onUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
     socket.on('error', () => undefined);
+    if (stopping) {
+      writeBare(socket, 503);
+      return;
+    }
     const auth = authorizeUpgrade(req);
     if ('status' in auth) {
       writeBare(socket, auth.status);
@@ -453,11 +498,15 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
   }
 
   function adopt(ws: WebSocket, device: DeviceRecord): void {
+    if (stopping) {
+      ws.terminate();
+      return;
+    }
     const id = deps.newId();
     const client: ConsoleClient = {
       id,
       device,
-      effectiveScope: effectiveScopeFor(deps.config(), device),
+      effectiveScope: effectiveScopeFor(bound, device),
       send: (msg) => {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
       },
@@ -537,21 +586,32 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
       const r = await listenOn(server, host, port);
       if (r.ok) {
         // Built from the port actually bound (tests listen on 0).
-        lists = buildAllowlists({ ...deps.config(), port: r.port });
+        bound = { ...deps.config() };
+        lists = buildAllowlists({ ...bound, port: r.port });
         heartbeat = setIntervalFn(beat, HEARTBEAT_MS);
         server.on('error', (e) => deps.log('remote-console-server-error', { message: e.message }));
       }
       return r;
     },
     async close(code = CLOSE_CODES.STOPPING) {
+      // Stop accepting BEFORE draining: the graceful waits below can take a
+      // second per peer, and every phone reconnects 1 s after a 1001.
+      stopping = true;
       if (heartbeat !== null) clearIntervalFn(heartbeat);
       heartbeat = null;
+      const listenerClosed = closeListener(server);
       const all = detachAll();
       await Promise.all(all.map((e) => closeGracefully(e, code)));
+      // Anything that slipped in regardless (an upgrade already mid-flight)
+      // is cut off, or server.close() would wait on its socket forever.
+      for (const ws of wss.clients) ws.terminate();
+      for (const e of detachAll()) e.ws.terminate();
       wss.close();
-      await closeListener(server);
+      server.closeAllConnections();
+      await listenerClosed;
     },
     closeNow() {
+      stopping = true;
       if (heartbeat !== null) clearIntervalFn(heartbeat);
       heartbeat = null;
       for (const e of detachAll()) e.ws.terminate();
