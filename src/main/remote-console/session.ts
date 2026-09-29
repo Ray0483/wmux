@@ -120,8 +120,13 @@ export function createDeviceSessionState(now: () => number): DeviceSessionState 
  * every CSI sequence as navigation — so it reads Shift+Tab (`ESC [ Z`) as a
  * scroll, while Claude Code's edit-permission prompt reads it as "Yes, allow
  * all edits during this session". The byte check still runs beside this list.
+ *
+ * ^C and ^D are here too: both are C0 bytes `isAnsweringInput` never counts,
+ * and both end a prompt — ^C cancels a permission question, ^D counts toward
+ * an agent's exit. The interrupt confirm covers ^C only while a run is open,
+ * and an agent that declares `blocked` without `--run-start` has none.
  */
-export const REMOTE_ANSWERING_KEYS: ReadonlySet<string> = new Set(['enter', 'y', 'n', 'esc', 'tab', 'shift-tab', 'backspace']);
+export const REMOTE_ANSWERING_KEYS: ReadonlySet<string> = new Set(['enter', 'y', 'n', 'esc', 'tab', 'shift-tab', 'backspace', 'ctrl-c', 'ctrl-d']);
 
 export type SessionOps = Pick<ConsoleOps,
   'isLivePty' | 'isBlocked' | 'promptId' | 'runDepth' | 'isAnsweringInput' | 'noteHumanInput' | 'write' | 'deliverAnswer' | 'log'>;
@@ -300,7 +305,10 @@ export class ConsoleSession {
 
   private handleAttach(s: string): void {
     if (!this.d.deviceState.attach.take()) {
-      this.d.send({ t: 'error', code: 'rate', message: 'Too many messages.' });
+      // Scoped to the surface: the view waiting on this attach only listens
+      // for `term.*` frames that name it, and a bare `error` left it on
+      // "Loading screen…" with nothing ever sending the attach again.
+      this.d.send({ t: 'term.error', s, code: 'rate', message: 'Too many messages.' });
       this.trip(this.rateTrips);
       return;
     }
@@ -454,7 +462,7 @@ export class ConsoleSession {
     if (bytes === undefined) return refuse(m.nonce, 'bad-key');
     if (!this.d.ops.isLivePty(m.s)) return refuse(m.nonce, 'gone');
     // Arrow keys are not answering input, so a menu can still be navigated
-    // from the phone without a confirm; Enter, y, n, Esc, Tab, Shift+Tab and
+    // from the phone without a confirm; Enter, y, n, Esc, Tab, Shift+Tab, ^C, ^D and
     // Backspace are.
     const answering = REMOTE_ANSWERING_KEYS.has(m.key) || this.d.ops.isAnsweringInput(bytes);
     if (wasBlocked && !waivesBlocked(m, prompt) && answering) return this.confirmBlocked(m.nonce, m.s);

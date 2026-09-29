@@ -42,6 +42,7 @@ type Phase =
   | { kind: 'expired' }
   | { kind: 'unpaired' }
   | { kind: 'revoked' }
+  | { kind: 'replaced' }
   | { kind: 'incompatible' }
   | { kind: 'unreachable' }
   | { kind: 'tooMany' }
@@ -51,9 +52,8 @@ type View = { screen: 'list' } | { screen: 'attach'; s: string } | { screen: 'pr
 
 type SessionResult = { kind: 'ok'; session: SessionInfo } | { kind: 'unpaired' } | { kind: 'error' };
 
-async function fetchSession(): Promise<SessionResult> {
+async function fetchSession(key: string | null): Promise<SessionResult> {
   // No page key: the desktop cannot say yes, so there is nothing to ask.
-  const key = loadDeviceKey();
   if (!key) return { kind: 'unpaired' };
   try {
     const res = await fetch('/api/session', { credentials: 'same-origin', cache: 'no-store', headers: { [DEVICE_KEY_HEADER]: key } });
@@ -68,12 +68,13 @@ async function fetchSession(): Promise<SessionResult> {
   }
 }
 
-function postJson(url: string, body: unknown): Promise<Response> {
+/** `key`: the page key, which /api/logout requires and /api/pair needs to replace this browser's own record. */
+function postJson(url: string, body: unknown, key: string | null = null): Promise<Response> {
   return fetch(url, {
     method: 'POST',
     credentials: 'same-origin',
     cache: 'no-store',
-    headers: { 'Content-Type': 'application/json' },
+    headers: key ? { 'Content-Type': 'application/json', [DEVICE_KEY_HEADER]: key } : { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
 }
@@ -121,6 +122,14 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
   const [dark, setDark] = useState(() => resolveDark(prefs.theme));
   const toastSeq = useRef(0);
   const answerGate = useRef(new AnswerGate());
+  // The page key this page last presented. Forgetting the key removes only
+  // THAT one: another tab of this browser may have paired again and saved a
+  // new key in the same origin-wide storage.
+  const usedKey = useRef<string | null>(null);
+  const currentKey = useCallback((): string | null => {
+    usedKey.current = loadDeviceKey();
+    return usedKey.current;
+  }, []);
 
   // ── Theme: tokens switch on [data-theme]; "system" leaves it to the media query.
   useEffect(() => {
@@ -158,27 +167,27 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
   // and per-surface keys must not outlive the pairing on this browser.
   useEffect(() => {
     if (UNPAIRED_PHASES.has(phase.kind)) forgetDeviceStorage(browserStorages());
-    if (KEYLESS_PHASES.has(phase.kind)) forgetDeviceKey();
+    if (KEYLESS_PHASES.has(phase.kind)) forgetDeviceKey(usedKey.current);
   }, [phase.kind]);
 
   // ── No pairing secret: ask the server who we are.
   useEffect(() => {
     if (phase.kind !== 'loading') return;
     let live = true;
-    fetchSession().then((r) => {
+    fetchSession(currentKey()).then((r) => {
       if (!live) return;
       if (r.kind === 'ok') setPhase({ kind: 'console', session: r.session });
       else setPhase({ kind: r.kind === 'unpaired' ? 'unpaired' : 'unreachable' });
     });
     return () => { live = false; };
-  }, [phase.kind]);
+  }, [phase.kind, currentKey]);
 
   const pair = async (name: string) => {
     if (phase.kind !== 'pair') return;
     setPhase({ ...phase, busy: true, failed: null });
     let failure: PairFailure = 'pair.failed';
     try {
-      const res = await postJson('/api/pair', { secret: phase.secret, name });
+      const res = await postJson('/api/pair', { secret: phase.secret, name }, loadDeviceKey());
       if (res.ok) {
         // The page key arrives once, here; the reload then presents it.
         const body: unknown = await res.json().catch(() => null);
@@ -224,12 +233,13 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
   const consoleActive = phase.kind === 'console';
   useEffect(() => {
     if (!consoleActive) return;
-    const c = createBrowserWsClient(async () => (await fetchSession()).kind !== 'unpaired', loadDeviceKey());
+    const c = createBrowserWsClient(async () => (await fetchSession(currentKey())).kind !== 'unpaired', currentKey);
     const offState = c.onState((st) => {
       setStatus(st.status);
       setWelcome(st.welcome);
       if (st.status !== 'stopped') return;
       if (st.stopReason === 'revoked') setPhase({ kind: 'revoked' });
+      else if (st.stopReason === 'replaced') setPhase({ kind: 'replaced' });
       else if (st.stopReason === 'incompatible') setPhase({ kind: 'incompatible' });
       else if (st.stopReason === 'unauthorized') setPhase({ kind: 'unpaired' });
       else if (st.stopReason === 'too-many') setPhase({ kind: 'tooMany' });
@@ -248,7 +258,7 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
       c.stop();
       setClient(null);
     };
-  }, [consoleActive]);
+  }, [consoleActive, currentKey]);
 
   // ── Title: "(N) wmux", N = agents waiting on a human.
   const blockedCount = roster.filter((e) => e.state === 'blocked').length;
@@ -286,7 +296,7 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
 
   const forget = async () => {
     let status: number | null = null;
-    try { status = (await postJson('/api/logout', {})).status; } catch { /* no answer: still paired */ }
+    try { status = (await postJson('/api/logout', {}, currentKey())).status; } catch { /* no answer: still paired */ }
     if (!logoutUnpaired(status)) {
       // The desktop never heard it: the device record and the HttpOnly cookie
       // are both still live, so stay on Prefs and say so.
@@ -332,6 +342,16 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
       return <NoticeScreen title={t.t('unpaired.title')} body={t.t('unpaired.body')} />;
     case 'revoked':
       return <NoticeScreen title={t.t('revoked.title')} body={t.t('revoked.body')} />;
+    case 'replaced':
+      // Not a revocation of this browser: it paired again in another tab. The
+      // reload presents the new key and cookie that tab stored.
+      return (
+        <NoticeScreen
+          title={t.t('replaced.title')}
+          body={t.t('replaced.body')}
+          action={{ label: t.t('common.reload'), onClick: () => globalThis.location.reload() }}
+        />
+      );
     case 'incompatible':
       return (
         <NoticeScreen
@@ -384,6 +404,7 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
         t={t}
         prefs={prefs}
         host={host}
+        status={status}
         device={welcome ? { name: welcome.device.name, scope: welcome.device.scope } : null}
         effectiveScope={effectiveScope}
         onChange={setPrefs}
@@ -415,6 +436,7 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
       {screen}
       <Toasts
         toasts={toasts}
+        attached={view.screen === 'attach' ? view.s : null}
         roster={roster}
         operator={operator}
         t={t}

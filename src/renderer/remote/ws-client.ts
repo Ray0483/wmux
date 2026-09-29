@@ -138,7 +138,8 @@ export interface WsClientDeps {
 }
 
 export type WsStatus = 'idle' | 'connecting' | 'handshake' | 'ready' | 'waiting' | 'stopped';
-export type WsStopReason = 'revoked' | 'incompatible' | 'unauthorized' | 'too-many' | 'closed';
+/** `replaced`: this browser paired again in another tab; its record here was superseded, not removed. */
+export type WsStopReason = 'revoked' | 'replaced' | 'incompatible' | 'unauthorized' | 'too-many' | 'closed';
 
 export type AckMessage = Extract<ServerMessage, { t: 'ack' }>;
 export type WelcomeMessage = Extract<ServerMessage, { t: 'welcome' }>;
@@ -280,7 +281,7 @@ export function createWsClient(deps: WsClientDeps, now: () => number = Date.now)
     for (const fn of listeners) {
       try { fn(msg); } catch { /* that listener's problem, not the socket's */ }
     }
-    if (msg.t === 'revoked') stop('revoked');
+    if (msg.t === 'revoked') stop(msg.replaced ? 'replaced' : 'revoked');
   };
 
   function scheduleReconnect(): void {
@@ -446,10 +447,13 @@ export function socketProtocols(key: string | null): string[] {
 }
 
 /** Wires the state machine to the real page: its own origin, real timers, real visibility. */
-export function createBrowserWsClient(verifySession: () => Promise<boolean>, key: string | null): WsClient {
+export function createBrowserWsClient(verifySession: () => Promise<boolean>, key: () => string | null): WsClient {
   return createWsClient({
     url: wsUrlFor(location.protocol, location.host),
-    createSocket: (url) => new WebSocket(url, socketProtocols(key)) as unknown as WsLike,
+    // Read per connection, never frozen at construction: `verifySession` reads
+    // the stored key afresh, and after a re-pair in another tab a frozen key
+    // was refused (401) while the probe said "paired" — reconnecting forever.
+    createSocket: (url) => new WebSocket(url, socketProtocols(key())) as unknown as WsLike,
     setTimeout: (fn, ms) => window.setTimeout(fn, ms),
     clearTimeout: (h) => window.clearTimeout(h as number),
     setInterval: (fn, ms) => window.setInterval(fn, ms),

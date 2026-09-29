@@ -84,7 +84,7 @@ describe('the page key rides as a second subprotocol (#254)', () => {
     expect(saveDeviceKey('bad key', storage)).toBe(false);
     map.set(DEVICE_KEY_ITEM, 'x y');
     expect(loadDeviceKey(storage)).toBeNull();
-    forgetDeviceKey(storage);
+    forgetDeviceKey(undefined, storage);
     expect(map.has(DEVICE_KEY_ITEM)).toBe(false);
   });
 });

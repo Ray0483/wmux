@@ -25,6 +25,8 @@ export const tr: Readonly<Record<string, string>> = {
   'unpaired.body': 'Bu tarayıcı wmux ile eşleştirilmemiş. Bilgisayarınızda Ayarlar → Uzaktan → Cihaz eşleştir’i açın ve kodu tarayın.',
   'revoked.title': 'Erişim kaldırıldı',
   'revoked.body': 'Bu cihaz bilgisayarınızdaki wmux’tan kaldırıldı. Yeniden bağlanmak için tekrar eşleştirin.',
+  'replaced.title': 'Başka bir sekmede yeniden eşleştirildi',
+  'replaced.body': 'Bu tarayıcı yeniden eşleştirildi, bu nedenle bu sekmenin bağlantısı değiştirildi. Yeni eşleştirmeyle devam etmek için sayfayı yeniden yükleyin.',
   'incompatible.title': 'Güncelleme gerekli',
   'incompatible.body': 'Bu sayfa bilgisayarınızdaki wmux’a göre eski. Güncel sürümü almak için yeniden yükleyin.',
   'unreachable.title': 'wmux’a ulaşılamıyor',

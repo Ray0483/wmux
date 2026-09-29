@@ -124,7 +124,7 @@ function uuidFrom(bytes: Buffer): string {
 export class DeviceRegistry {
   private devices = new Map<string, DeviceRecord>();
   private offer: Offer | null = null;
-  private readonly revokedListeners = new Set<(ids: string[]) => void>();
+  private readonly revokedListeners = new Set<(ids: string[], replaced: boolean) => void>();
   private lastPersist = 0;
   private dirty = false;
   /**
@@ -199,16 +199,17 @@ export class DeviceRegistry {
     if (this.dirty) this.persist();
   }
 
-  onRevoked(cb: (ids: string[]) => void): () => void {
+  /** `replaced`: the ids were superseded by a re-pair of the same browser, not removed. */
+  onRevoked(cb: (ids: string[], replaced: boolean) => void): () => void {
     this.revokedListeners.add(cb);
     return () => this.revokedListeners.delete(cb);
   }
 
-  private emitRevoked(ids: string[]): void {
+  private emitRevoked(ids: string[], replaced = false): void {
     if (ids.length === 0) return;
     for (const cb of this.revokedListeners) {
       try {
-        cb(ids);
+        cb(ids, replaced);
       } catch {
         // A listener's failure must not keep the revoke from completing.
       }
@@ -279,7 +280,7 @@ export class DeviceRegistry {
     }
     this.devices.set(device.id, device);
     this.persist();
-    if (old) this.emitRevoked([old.id]);
+    if (old) this.emitRevoked([old.id], true);
     return { ok: true, device: { ...device }, token, key };
   }
 

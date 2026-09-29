@@ -47,7 +47,16 @@ export function saveDeviceKey(key: unknown, storage: KeyStorage | null = local()
   }
 }
 
-export function forgetDeviceKey(storage: KeyStorage | null = local()): void {
+/**
+ * Removes the page key — but only if it is still `expected`, when given. A
+ * tab that learns its device is gone must not wipe a key ANOTHER tab of this
+ * browser has just saved by pairing again: storage is shared per origin, and
+ * the stale tab's removal can land after the new tab's save.
+ */
+export function forgetDeviceKey(expected?: string | null, storage: KeyStorage | null = local()): void {
   if (!storage) return;
-  try { storage.removeItem(DEVICE_KEY_ITEM); } catch { /* nothing more to do */ }
+  try {
+    if (expected !== undefined && storage.getItem(DEVICE_KEY_ITEM) !== expected) return;
+    storage.removeItem(DEVICE_KEY_ITEM);
+  } catch { /* nothing more to do */ }
 }

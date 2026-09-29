@@ -25,6 +25,8 @@ export const sv: Readonly<Record<string, string>> = {
   'unpaired.body': 'Den här webbläsaren är inte parkopplad med wmux. Öppna Inställningar → Fjärr → Parkoppla en enhet på datorn och skanna koden.',
   'revoked.title': 'Åtkomsten togs bort',
   'revoked.body': 'Den här enheten har tagits bort från wmux på datorn. Parkoppla den igen för att ansluta.',
+  'replaced.title': 'Parkopplad igen i en annan flik',
+  'replaced.body': 'Den här webbläsaren parkopplades igen, så flikens anslutning har ersatts. Läs in igen för att fortsätta med den nya parkopplingen.',
   'incompatible.title': 'Uppdatering krävs',
   'incompatible.body': 'Den här sidan är inaktuell jämfört med wmux på datorn. Ladda om för att få den aktuella versionen.',
   'unreachable.title': 'Kan inte nå wmux',

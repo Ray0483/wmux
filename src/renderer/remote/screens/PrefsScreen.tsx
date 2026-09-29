@@ -16,6 +16,8 @@ import { useState } from 'react';
 import { REMOTE_LANGUAGES, isRemoteLang, type RemoteLang, type RemoteT } from '../i18n';
 import type { RemoteScope } from '../../../shared/remote-console-protocol';
 import { ConfirmSheet } from '../components/ConfirmSheet';
+import type { WsStatus } from '../ws-client';
+import { connKey } from './ConsoleScreen';
 
 export type ThemePref = 'system' | 'light' | 'dark';
 
@@ -97,10 +99,21 @@ function currentAlertState(): AlertState {
   });
 }
 
+/**
+ * The host line: "Connected to {host}" only while the socket is up. Otherwise
+ * the bare host, beside the chip that says Reconnecting… or Offline — the
+ * offline Forget path used to print "Could not reach your computer" under a
+ * line claiming a connection.
+ */
+export function prefsHostLine(t: RemoteT, host: string, status: WsStatus): string {
+  return status === 'ready' ? t.t('prefs.connectedTo', { host }) : host;
+}
+
 interface Props {
   t: RemoteT;
   prefs: RemotePrefs;
   host: string;
+  status: WsStatus;
   device: { name: string; scope: RemoteScope } | null;
   effectiveScope: RemoteScope;
   onChange(p: RemotePrefs): void;
@@ -108,7 +121,7 @@ interface Props {
   onForget(): void;
 }
 
-export function PrefsScreen({ t, prefs, host, device, effectiveScope, onChange, onBack, onForget }: Readonly<Props>) {
+export function PrefsScreen({ t, prefs, host, status, device, effectiveScope, onChange, onBack, onForget }: Readonly<Props>) {
   const [alerts, setAlerts] = useState<AlertState>(currentAlertState);
   const [confirmForget, setConfirmForget] = useState(false);
 
@@ -130,11 +143,12 @@ export function PrefsScreen({ t, prefs, host, device, effectiveScope, onChange, 
       <header className="rc-bar">
         <button type="button" className="rc-bar__btn" onClick={onBack} aria-label={t.t('common.back')}>‹</button>
         <h1 className="rc-bar__title">{t.t('common.settings')}</h1>
+        <span className={`rc-chip rc-chip--${status}`}>{t.t(connKey(status))}</span>
       </header>
 
       <div className="rc-prefs__body">
         <section className="rc-prefs__section">
-          <p className="rc-prefs__line">{t.t('prefs.connectedTo', { host })}</p>
+          <p className="rc-prefs__line">{prefsHostLine(t, host, status)}</p>
           {device && <p className="rc-prefs__line">{t.t('prefs.device', { name: device.name })}</p>}
           <p className="rc-prefs__line rc-prefs__muted">
             {effectiveScope === 'operator' ? t.t('prefs.scopeOperator') : t.t('prefs.scopeViewer')}

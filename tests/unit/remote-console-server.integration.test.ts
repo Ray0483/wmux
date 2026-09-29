@@ -424,10 +424,21 @@ describe('remote-console server: pairing endpoints', () => {
     expect((await request(r, 'GET', '/api/pair')).status).toBe(405);
   });
 
-  it('logout revokes this device and clears the cookie', async () => {
+  it('logout without the page key revokes nothing: a lifted cookie cannot unpair the phone (#254)', async () => {
     const r = await rig();
     const cookie = pairDevice(r);
     const res = await request(r, 'POST', '/api/logout', { Origin: r.origin, Cookie: `wmux_rc=${cookie}` });
+    expect(res.status).toBe(401);
+    expect(r.devices.count()).toBe(1);
+    const wrong = await request(r, 'POST', '/api/logout', { Origin: r.origin, Cookie: `wmux_rc=${cookie}`, [DEVICE_KEY_HEADER]: 'k'.repeat(43) });
+    expect(wrong.status).toBe(401);
+    expect(r.devices.count()).toBe(1);
+  });
+
+  it('logout revokes this device and clears the cookie', async () => {
+    const r = await rig();
+    const cookie = pairDevice(r);
+    const res = await request(r, 'POST', '/api/logout', { Origin: r.origin, ...keyed(cookie) });
     expect(res.status).toBe(200);
     expect(String(res.headers['set-cookie'])).toContain('Max-Age=0');
     expect(r.devices.count()).toBe(0);
@@ -545,6 +556,16 @@ describe('remote-console server: review fixes, round 3 (#254)', () => {
     expect((await request(r, 'GET', '/', { Cookie: `wmux_rc=${cookie}` })).status).toBe(200);
   });
 
+  it('a cookie WITHOUT its page key is throttled like a stranger on the API routes (#254)', async () => {
+    const r = await rig();
+    const cookie = pairDevice(r);
+    for (let i = 0; i < LIMITS.unauth.limit; i++) await request(r, 'GET', '/nope');
+    // The lifted-cookie case: another server on this host was handed it.
+    expect((await request(r, 'GET', '/api/session', { Cookie: `wmux_rc=${cookie}` })).status).toBe(429);
+    expect((await request(r, 'POST', '/api/logout', { Origin: r.origin, Cookie: `wmux_rc=${cookie}` })).status).toBe(429);
+    expect(r.devices.count()).toBe(1);
+  });
+
   it('a refused address is explained in the phone\'s language, naming the desktop\'s own menus', async () => {
     const r = await rig();
     const fr = await request(r, 'GET', '/', { Host: 'box.tail1234.ts.net', 'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8' });
@@ -566,5 +587,20 @@ describe('remote-console server: review fixes, round 3 (#254)', () => {
     expect(r.rejected).toEqual([]);
     await request(r, 'GET', '/', { Host: 'box.tail1234.ts.net' });
     expect(r.rejected).toEqual(['https://box.tail1234.ts.net']);
+  });
+
+  it('an Origin is never offered as a Public URL, even a loopback https *.ts.net one (#254)', async () => {
+    // Any Tailscale user owns an https *.ts.net name with a valid cert; a page
+    // there, opened in the desktop browser, can reach ws://127.0.0.1:<port> and
+    // POST to it. Host is then ours, and only the Origin is the attacker's.
+    const r = await rig();
+    const evil = 'https://evil.tail9999.ts.net';
+    const cookie = pairDevice(r);
+    expect((await connect(r, { cookie, origin: evil })).status).toBe(403);
+    expect((await request(r, 'POST', '/api/pair', { Origin: evil, 'Content-Type': 'application/json' }, '{}')).status).toBe(403);
+    expect((await request(r, 'POST', '/api/logout', { Origin: evil })).status).toBe(403);
+    // A refused Host that also carries an Origin is not a top-level navigation either.
+    await request(r, 'GET', '/', { Host: 'box.tail1234.ts.net', Origin: evil });
+    expect(r.rejected).toEqual([]);
   });
 });

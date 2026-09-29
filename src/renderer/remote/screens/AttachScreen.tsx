@@ -27,30 +27,10 @@ import { ConfirmSheet } from '../components/ConfirmSheet';
 import { KeyBar } from '../components/KeyBar';
 import { TermView, type TermStatus } from '../components/TermView';
 import { connKey } from './ConsoleScreen';
+import { useVisualViewport } from '../visual-viewport';
 
 function safeStorage(): Storage | null {
   try { return globalThis.localStorage ?? null; } catch { return null; }
-}
-
-/** The visual viewport's box, or null where the API does not exist. */
-function useVisualViewport(): { height: number; top: number } | null {
-  const read = () => {
-    const vv = globalThis.visualViewport;
-    return vv ? { height: Math.round(vv.height), top: Math.round(vv.offsetTop) } : null;
-  };
-  const [box, setBox] = useState(read);
-  useEffect(() => {
-    const vv = globalThis.visualViewport;
-    if (!vv) return;
-    const update = () => setBox(read());
-    vv.addEventListener('resize', update);
-    vv.addEventListener('scroll', update);
-    return () => {
-      vv.removeEventListener('resize', update);
-      vv.removeEventListener('scroll', update);
-    };
-  }, []);
-  return box;
 }
 
 /**
@@ -160,8 +140,13 @@ export function AttachScreen({ client, s, entry, status, operator, maxText, font
     <main className="rc-screen rc-attach" style={style}>
       <header className="rc-bar">
         <button type="button" className="rc-bar__btn" onClick={onBack} aria-label={t.t('common.back')}>‹</button>
-        <h1 className="rc-bar__title rc-attach__title">{attachTitle(entry?.label, lastLabel, t)}</h1>
-        {chips.includes('state') && wordKey && <span className={`rc-chip rc-chip--${entry?.state}`}>{t.t(wordKey)}</span>}
+        {/* The state chip sits UNDER the title: beside it, with the back and
+            fit buttons, it left a 433 px phone ~80 px of label — every Claude
+            pane read "claud…", the part that tells two agents apart cut off. */}
+        <div className="rc-attach__heading">
+          <h1 className="rc-bar__title rc-attach__title">{attachTitle(entry?.label, lastLabel, t)}</h1>
+          {chips.includes('state') && wordKey && <span className={`rc-chip rc-chip--${entry?.state}`}>{t.t(wordKey)}</span>}
+        </div>
         {chips.includes('conn') && <span className={`rc-chip rc-chip--${status}`}>{t.t(connKey(status))}</span>}
         <button type="button" className="rc-bar__btn rc-bar__btn--text" onClick={toggleMode} aria-pressed={mode === 'pan'}>
           {mode === 'fit' ? t.t('attach.pan') : t.t('attach.fit')}

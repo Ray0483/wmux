@@ -7,6 +7,7 @@ import type {
 } from '../../../shared/remote-console-config';
 import { useT, type Translator, type TranslationKey } from '../../i18n';
 import { normalizePublicUrl } from '../../../shared/remote-console-config';
+import { DEVICE_NAME_MAX } from '../../../shared/remote-console-protocol';
 import PairDeviceDialog, { RemoteRecipes, fillTemplate, isBridgeError, remoteBridge, remoteErrorText } from './PairDeviceDialog';
 import '../../styles/remote-settings.css';
 
@@ -151,7 +152,7 @@ export default function RemoteConsoleSettings() {
           {t('settings.remote.pair')}
         </button>
       </div>
-      {!status.running && <p className="settings-hint">{t('settings.remote.pairNeedsRunning')}</p>}
+      {pairHintShown(status) && <p className="settings-hint">{t('settings.remote.pairNeedsRunning')}</p>}
 
       <DevicesTable t={t} status={status} />
 
@@ -235,6 +236,16 @@ export function suggestedPublicUrl(status: Pick<RemoteConsoleStatus, 'lastReject
  * ignores the Public URL for pairing on a LAN bind, where nothing listens
  * there. Showing them under LAN invited a setup that cannot reach wmux.
  */
+/**
+ * "Turn the remote console on to pair a device" — only when it is OFF. Enabled
+ * but not running is a port, bind or address error, which the status line
+ * above already names; telling the user to switch on a console whose toggle
+ * is checked sent them to the wrong fix.
+ */
+export function pairHintShown(status: Pick<RemoteConsoleStatus, 'config' | 'running'>): boolean {
+  return !status.running && !status.config.enabled;
+}
+
 export function showsProxySetup(bind: RemoteConsoleStatus['config']['bind']): boolean {
   return bind === 'loopback';
 }
@@ -546,7 +557,7 @@ function DevicesTable({ t, status }: { t: Translator; status: RemoteConsoleStatu
                       <input
                         className="settings-input remote-settings__name-input"
                         value={editing.name}
-                        maxLength={40}
+                        maxLength={DEVICE_NAME_MAX}
                         autoFocus
                         onChange={(e) => setEditing({ id: d.id, name: e.target.value })}
                         onKeyDown={(e) => {

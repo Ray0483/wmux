@@ -25,6 +25,8 @@ export const zhTW: Readonly<Record<string, string>> = {
   'unpaired.body': '此瀏覽器尚未與 wmux 配對。請在電腦上開啟 設定 → 遠端 → 配對裝置，然後掃描代碼。',
   'revoked.title': '存取權已移除',
   'revoked.body': '此裝置已從你電腦上的 wmux 移除。請重新配對以重新連線。',
+  'replaced.title': '已在另一個分頁重新配對',
+  'replaced.body': '此瀏覽器已重新配對，因此此分頁的連線已被取代。請重新載入以使用新的配對繼續。',
   'incompatible.title': '需要更新',
   'incompatible.body': '此頁面相較於你電腦上的 wmux 已過時。請重新載入以取得目前版本。',
   'unreachable.title': '無法連線到 wmux',

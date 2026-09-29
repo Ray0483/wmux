@@ -25,6 +25,8 @@ export const ja: Readonly<Record<string, string>> = {
   'unpaired.body': 'このブラウザーは wmux とペアリングされていません。コンピューターで 設定 → リモート → 端末をペアリング を開き、コードをスキャンしてください。',
   'revoked.title': 'アクセスが削除されました',
   'revoked.body': 'このデバイスはコンピューターの wmux から削除されました。再接続するには、もう一度ペアリングしてください。',
+  'replaced.title': '別のタブで再ペアリングされました',
+  'replaced.body': 'このブラウザーは再ペアリングされたため、このタブの接続は置き換えられました。新しいペアリングで続けるには再読み込みしてください。',
   'incompatible.title': '更新が必要です',
   'incompatible.body': 'このページはコンピューターの wmux より古くなっています。再読み込みして最新版を取得してください。',
   'unreachable.title': 'wmux に接続できません',

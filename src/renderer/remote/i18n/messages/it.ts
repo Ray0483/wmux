@@ -25,6 +25,8 @@ export const it: Readonly<Record<string, string>> = {
   'unpaired.body': 'Questo browser non è associato a wmux. Sul computer apri Impostazioni → Remoto → Associa un dispositivo, poi scansiona il codice.',
   'revoked.title': 'Accesso revocato',
   'revoked.body': 'Questo dispositivo è stato rimosso da wmux sul tuo computer. Associalo di nuovo per riconnetterti.',
+  'replaced.title': 'Associato di nuovo in un’altra scheda',
+  'replaced.body': 'Questo browser è stato associato di nuovo, quindi la connessione di questa scheda è stata sostituita. Ricarica per continuare con la nuova associazione.',
   'incompatible.title': 'Aggiornamento necessario',
   'incompatible.body': 'Questa pagina non è aggiornata rispetto al wmux del tuo computer. Ricarica per ottenere la versione attuale.',
   'unreachable.title': 'Impossibile raggiungere wmux',

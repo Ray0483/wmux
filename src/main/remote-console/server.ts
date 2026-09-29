@@ -291,12 +291,20 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
   server.keepAliveTimeout = 5_000;
   server.maxHeadersCount = 50;
 
-  const reject = (req: IncomingMessage): void => {
-    const v = rejectedOriginValue(header(req, 'origin'), header(req, 'host'));
+  const reject = (req: IncomingMessage, hostRefused: boolean): void => {
+    const origin = header(req, 'origin');
+    const v = rejectedOriginValue(origin, header(req, 'host'));
     if (!v) return;
     // Only a plausible proxy of the user's own is offered for one-click
-    // adoption (guards.ts); anything else is a line in main.log.
-    if (offersAsPublicUrl(v, req.socket.remoteAddress)) deps.onRejectedOrigin(v);
+    // adoption (guards.ts); anything else is a line in main.log. And only a
+    // refused HOST on a request with no Origin at all — a top-level
+    // navigation, which is how `tailscale serve` first reaches the console.
+    // An Origin is chosen by whatever page sent the request: any https page on
+    // an attacker's own *.ts.net name can open ws://127.0.0.1:<port> or POST
+    // to it from the user's desktop browser (loopback is not mixed content),
+    // and a card it planted would point every pairing QR at that page. A
+    // cross-origin page cannot choose the Host header.
+    if (hostRefused && origin === undefined && offersAsPublicUrl(v, req.socket.remoteAddress)) deps.onRejectedOrigin(v);
     else deps.log('remote-origin-refused', { value: v });
   };
 
@@ -344,6 +352,12 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
     });
   }
 
+  /** The device this request proves with its cookie AND its page key header, or null. */
+  function keyedDevice(req: IncomingMessage): DeviceRecord | null {
+    const device = deps.devices.verify(readCookie(header(req, 'cookie')));
+    return device && deps.devices.verifyKey(device, header(req, DEVICE_KEY_HEADER)) ? device : null;
+  }
+
   async function handlePair(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const peer = peerOf(req);
     // No live offer: nothing can be guessed, and the request is answered
@@ -364,9 +378,12 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
       return;
     }
     const offerLive = deps.devices.pairing() !== null;
-    // A browser that is already paired and pairs again (to change its access,
-    // or because it lost its page key) replaces its own record.
-    const prior = deps.devices.verify(readCookie(header(req, 'cookie')));
+    // A browser that is already paired and pairs again (to change its access)
+    // replaces its own record — proven by cookie AND page key, since a cookie
+    // alone may have been lifted by another server on this host and would
+    // otherwise let whoever redeems a code unpair the phone. A browser that
+    // lost its key gets a new record; the old one stays listed in Settings.
+    const prior = keyedDevice(req);
     const r = deps.devices.consumePairing(v.secret, v.name, prior?.id ?? null);
     if (!r.ok) {
       // Only a miss against a LIVE offer is a guess; with none there is
@@ -410,7 +427,10 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
 
   function handleLogout(req: IncomingMessage, res: ServerResponse): void {
     req.resume();
-    const device = deps.devices.verify(readCookie(header(req, 'cookie')));
+    // Cookie AND page key, as /api/session and the socket ask: a cookie some
+    // other server on this host was handed must not be able to unpair the
+    // phone (Origin is only a header to a non-browser client).
+    const device = keyedDevice(req);
     const secure = isHttpsRequest(header(req, 'host'), lists);
     if (device) {
       deps.devices.revoke(device.id);
@@ -433,6 +453,21 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
     res.end(page);
   }
 
+  /**
+   * A request that proves a device: cookie AND page key. The one exception is
+   * a GET of the static page and its assets, which a browser navigation cannot
+   * attach a header to — those need the cookie only, and serve nothing a
+   * stranger could not fetch anyway. A cookie without its key (lifted by
+   * another server on this host) is throttled like any other stranger on
+   * every API route.
+   */
+  function exemptFromUnauth(req: IncomingMessage): boolean {
+    if (keyedDevice(req)) return true;
+    const route = routeOf(req.url);
+    const staticGet = (req.method === 'GET' || req.method === 'HEAD') && route !== null && !route.startsWith('/api/');
+    return staticGet && deps.devices.verify(readCookie(header(req, 'cookie'))) !== null;
+  }
+
   /** The gates every request passes before its route is looked at; true when it was answered. */
   function refusedBeforeRoute(req: IncomingMessage, res: ServerResponse): boolean {
     if (stopping) {
@@ -440,16 +475,16 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
       send(res, 503, undefined, { Connection: 'close' });
       return true;
     }
-    // Only requests WITHOUT a valid device cookie share the per-peer budget:
+    // Only requests WITHOUT a device's credential share the per-peer budget:
     // behind a proxy every client is 127.0.0.1, and junk from one must not
     // 429 every paired phone's page load and session check.
-    if (deps.devices.verify(readCookie(header(req, 'cookie'))) === null && !unauth.hit(peerOf(req))) {
+    if (!exemptFromUnauth(req) && !unauth.hit(peerOf(req))) {
       req.resume();
       send(res, 429, { error: 'rate' });
       return true;
     }
     if (!isAllowedHost(header(req, 'host'), lists)) {
-      reject(req);
+      reject(req, true);
       req.resume();
       sendHostRefused(req, res);
       return true;
@@ -473,7 +508,7 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
         return;
       }
       if (!isAllowedOrigin(header(req, 'origin'), lists)) {
-        reject(req);
+        reject(req, false);
         req.resume();
         send(res, 403);
         return;
@@ -501,7 +536,7 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
    */
   function authorizeUpgrade(req: IncomingMessage): { device: DeviceRecord; full: boolean } | { status: 401 | 403 | 404 } {
     if (!isAllowedHost(header(req, 'host'), lists) || !isAllowedOrigin(header(req, 'origin'), lists)) {
-      reject(req);
+      reject(req, false);
       return { status: 403 };
     }
     if (routeOf(req.url) !== '/ws') return { status: 404 };

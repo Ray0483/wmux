@@ -192,7 +192,7 @@ remote:   resolvePaste, resolveDrop  # what should this gesture type? Main answe
                                      # paths would be an arbitrary local-file
                                      # upload API for a compromised renderer
 remoteConsole: getState, setConfig, pairStart, pairCancel, revoke, revokeAll,
-          rename, onState, onRendererRequest, replyRenderer
+          rename, dismissRejectedOrigin, onState, onRendererRequest, replyRenderer
                                      # Settings → Remote (#254) — the ONLY place a
                                      # phone credential is minted (I2). Every invoke
                                      # answers {error:'unavailable'} when the runtime
@@ -761,7 +761,7 @@ Meta:    metadata:update, hook:event, claude:activity, agent:state
 GPU:     gpu:stall, gpu:restarted   # watchdog (#229)
 Explorer: explorer:list-dir/reveal/open-in-app/diff-stats/read-markdown
           code:read-file, code:write-file
-RemoteC: remote-console:get-state/set-config/pair-start/pair-cancel/revoke/revoke-all/rename-device
+RemoteC: remote-console:get-state/set-config/pair-start/pair-cancel/revoke/revoke-all/rename-device/dismiss-rejected-origin
          remote-console:state            # main → renderer status push, 250 ms trailing (#254)
          remote-console:renderer-request # main → the window hosting a surface: snapshot | modes
          remote-console:renderer-reply   # renderer → main, matched on reqId

@@ -291,7 +291,17 @@ button { cursor: pointer; }
   height: 100%;
   background: var(--bg);
 }
-.rc-attach__title { font-size: 15px; }
+.rc-attach__heading {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.rc-attach__title { flex: none; max-width: 100%; font-size: 15px; }
+.rc-attach__heading .rc-chip { padding: 1px 8px; font-size: 11px; }
+.rc-attach .rc-bar__btn--text { flex: none; min-width: 0; padding: 0 8px; }
 
 .rc-term {
   position: relative;
@@ -337,6 +347,8 @@ button { cursor: pointer; }
   position: absolute;
   inset: 0;
   display: flex;
+  flex-direction: column;
+  gap: 12px;
   align-items: center;
   justify-content: center;
   padding: 24px;

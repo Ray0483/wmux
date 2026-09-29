@@ -168,7 +168,8 @@ export type ServerMessage =
   | { t: 'term.data'; s: string; data: string }
   | { t: 'term.lag'; s: string }
   | { t: 'term.exit'; s: string; code: number }
-  | { t: 'term.error'; s: string; code: 'no-terminal' | 'timeout' | 'gone'; message: string }
+  /** `rate`: the attach itself was refused by the per-device attach budget; the view may ask again. */
+  | { t: 'term.error'; s: string; code: 'no-terminal' | 'timeout' | 'gone' | 'rate'; message: string }
   | {
       t: 'ack'; nonce: string; ok: boolean; code?: AckCode; confirm?: ConfirmKind; duplicate?: boolean;
       /** With `confirm: 'blocked'`: the prompt the confirm is about, to send back with the waiver. */
@@ -181,7 +182,13 @@ export type ServerMessage =
       submitSkipped?: boolean;
     }
   | { t: 'error'; code: 'bad-frame' | 'hello-required' | 'forbidden' | 'rate'; message: string }
-  | { t: 'revoked' }
+  /**
+   * `replaced`: this browser paired again (another tab scanned a new code), so
+   * the record behind this socket was superseded rather than removed. The page
+   * must not treat it as a revocation of the browser: the new page key in its
+   * shared storage belongs to the tab that paired.
+   */
+  | { t: 'revoked'; replaced?: true }
   | { t: 'pong' };
 
 /**

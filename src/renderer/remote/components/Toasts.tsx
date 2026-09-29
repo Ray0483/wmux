@@ -13,6 +13,7 @@
 import type { RemoteRosterEntry } from '../../../shared/remote-console-protocol';
 import type { RemoteT } from '../i18n';
 import { ChoiceRow } from './ChoiceRow';
+import { useVisualViewport } from '../visual-viewport';
 
 export type Toast =
   | { id: number; kind: 'blocked' | 'done'; s: string; label: string }
@@ -21,8 +22,19 @@ export type Toast =
 /** A toast before it has an id. Distributive, so each variant keeps its own fields. */
 export type ToastInput = Toast extends infer T ? (T extends Toast ? Omit<T, 'id'> : never) : never;
 
+/**
+ * The toasts worth showing: not an agent's toast for the surface already on
+ * screen. The attach screen shows that pane's state and its answer buttons
+ * itself, and the toast only repeated them over the mirrored terminal.
+ */
+export function visibleToasts(toasts: readonly Toast[], attached: string | null): Toast[] {
+  return toasts.filter((x) => x.kind === 'error' || x.s !== attached);
+}
+
 interface Props {
   toasts: readonly Toast[];
+  /** The surface the attach screen is showing, or null. */
+  attached: string | null;
   roster: readonly RemoteRosterEntry[];
   operator: boolean;
   t: RemoteT;
@@ -58,11 +70,16 @@ function AgentToast({ toast, entry, operator, t, onOpen, onAnswer, onDismiss }: 
   );
 }
 
-export function Toasts({ toasts, roster, operator, t, onOpen, onAnswer, onDismiss }: Readonly<Props>) {
-  if (toasts.length === 0) return null;
+export function Toasts({ toasts, attached, roster, operator, t, onOpen, onAnswer, onDismiss }: Readonly<Props>) {
+  // Placed against the VISUAL viewport, like the attach screen: with the
+  // keyboard open iOS pans the layout viewport, and a stack fixed to it ends
+  // up off-screen.
+  const vv = useVisualViewport();
+  const shown = visibleToasts(toasts, attached);
+  if (shown.length === 0) return null;
   return (
-    <div className="rc-toasts" aria-live="polite">
-      {toasts.map((toast) =>
+    <div className="rc-toasts" aria-live="polite" style={vv && vv.top !== 0 ? { transform: `translateY(${vv.top}px)` } : undefined}>
+      {shown.map((toast) =>
         toast.kind === 'error' ? (
           <div key={toast.id} className="rc-toast rc-toast--error" role="alert">
             <span className="rc-toast__body">{toast.text}</span>

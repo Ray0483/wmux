@@ -377,16 +377,12 @@ describe('ConsoleRuntime pairing and devices', () => {
     expect(statuses.at(-1)).toBeNull();
   });
 
-  it('pairing again from a paired browser replaces its record, key minted and required (#254)', async () => {
-    const { rt, port } = await enabledRuntime();
-    const first = await pairViaHttp(rt, port, 'viewer');
-    const offer = rt.pairStart({ name: 'Phone', scope: 'operator' });
-    if ('error' in offer) throw new Error(offer.error);
-    const text = JSON.stringify({ secret: offer.url.split('#pair=')[1] });
-    const res = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+  const repair = (port: number, secret: string, headers: Record<string, string>) => {
+    const text = JSON.stringify({ secret });
+    return new Promise<{ status: number; body: string }>((resolve, reject) => {
       const req = http.request({
         host: '127.0.0.1', port, method: 'POST', path: '/api/pair',
-        headers: { 'Content-Type': 'application/json', Origin: `http://127.0.0.1:${port}`, Cookie: `wmux_rc=${first}`, 'Content-Length': Buffer.byteLength(text) },
+        headers: { 'Content-Type': 'application/json', Origin: `http://127.0.0.1:${port}`, 'Content-Length': String(Buffer.byteLength(text)), ...headers },
       }, (r) => {
         let data = '';
         r.on('data', (c) => { data += c; });
@@ -395,12 +391,67 @@ describe('ConsoleRuntime pairing and devices', () => {
       req.on('error', reject);
       req.end(text);
     });
+  };
+
+  it('pairing again from a paired browser (cookie AND page key) replaces its record, key minted and required (#254)', async () => {
+    const { rt, port } = await enabledRuntime();
+    const first = await pairViaHttp(rt, port, 'viewer');
+    // The old tab is still open: it must learn it was REPLACED, not revoked,
+    // or it wipes the new page key from the storage both tabs share.
+    const oldTab = await openPhone(port, first);
+    const offer = rt.pairStart({ name: 'Phone', scope: 'operator' });
+    if ('error' in offer) throw new Error(offer.error);
+    const res = await repair(port, offer.url.split('#pair=')[1], { Cookie: `wmux_rc=${first}`, 'x-wmux-key': pageKeys.get(first) ?? '' });
     expect(res.status).toBe(200);
     expect(JSON.parse(res.body).key).toMatch(/^[A-Za-z0-9_-]{43}$/);
     const devices = rt.getStatus().devices;
     expect(devices).toHaveLength(1);
     expect(devices[0]).toMatchObject({ scope: 'operator' });
     expect(devices[0].id).not.toBe(first.split('.')[0]);
+    expect(await oldTab.next('revoked')).toEqual({ t: 'revoked', replaced: true });
+    oldTab.ws.close();
+  });
+
+  it('a pairing code dies with the listener it was minted for: stop, and a rebind, void it (#254)', async () => {
+    const { rt, port } = await enabledRuntime();
+    const offer = rt.pairStart({ name: 'Phone', scope: 'operator' });
+    if ('error' in offer) throw new Error(offer.error);
+    expect(rt.getStatus().pairing).not.toBeNull();
+    // A reconfigure is a stop then a start on the new settings.
+    expect(await rt.setConfig({ enabled: true, port, publicUrl: 'https://box.tail1234.ts.net' })).toEqual({ ok: true });
+    expect(rt.getStatus().pairing).toBeNull();
+    const res = await post(port, '/api/pair', { secret: offer.url.split('#pair=')[1] });
+    expect(res.status).toBe(410);
+    expect(rt.getStatus().devices).toHaveLength(0);
+    rt.pairStart({ name: 'Phone', scope: 'viewer' });
+    await rt.stop();
+    expect(rt.getStatus()).toMatchObject({ running: false, pairing: null });
+  });
+
+  it('v2Status counts connected DEVICES, not sockets: one phone with two tabs is one (#254)', async () => {
+    const { rt, port } = await enabledRuntime();
+    const cookie = await pairViaHttp(rt, port);
+    const a = await openPhone(port, cookie);
+    const b = await openPhone(port, cookie);
+    a.ws.send(JSON.stringify({ t: 'hello', v: 1 }));
+    b.ws.send(JSON.stringify({ t: 'hello', v: 1 }));
+    await a.next('welcome');
+    await b.next('welcome');
+    expect(rt.v2Status()).toMatchObject({ deviceCount: 1, connectedCount: 1 });
+    a.ws.close();
+    b.ws.close();
+  });
+
+  it('a cookie without its page key cannot make /api/pair replace (unpair) that device (#254)', async () => {
+    const { rt, port } = await enabledRuntime();
+    const first = await pairViaHttp(rt, port, 'viewer');
+    const offer = rt.pairStart({ name: 'Phone', scope: 'operator' });
+    if ('error' in offer) throw new Error(offer.error);
+    const res = await repair(port, offer.url.split('#pair=')[1], { Cookie: `wmux_rc=${first}` });
+    expect(res.status).toBe(200);
+    const ids = rt.getStatus().devices.map((d) => d.id);
+    expect(ids).toHaveLength(2);
+    expect(ids).toContain(first.split('.')[0]);
   });
 
   it('publicUrl is the pairing base when set', async () => {

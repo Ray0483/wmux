@@ -25,6 +25,8 @@ export const ko: Readonly<Record<string, string>> = {
   'unpaired.body': '이 브라우저는 wmux와 페어링되지 않았습니다. 컴퓨터에서 설정 → 원격 → 기기 페어링을 열고 코드를 스캔하세요.',
   'revoked.title': '접근 권한 제거됨',
   'revoked.body': '이 기기는 컴퓨터의 wmux에서 제거되었습니다. 다시 연결하려면 다시 페어링하세요.',
+  'replaced.title': '다른 탭에서 다시 페어링됨',
+  'replaced.body': '이 브라우저가 다시 페어링되어 이 탭의 연결이 교체되었습니다. 새 페어링으로 계속하려면 새로 고치세요.',
   'incompatible.title': '업데이트 필요',
   'incompatible.body': '이 페이지는 컴퓨터의 wmux보다 오래되었습니다. 새로고침하여 최신 버전을 받으세요.',
   'unreachable.title': 'wmux에 연결할 수 없음',

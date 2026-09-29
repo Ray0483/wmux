@@ -25,6 +25,8 @@ export const nl: Readonly<Record<string, string>> = {
   'unpaired.body': 'Deze browser is niet gekoppeld aan wmux. Open op je computer Instellingen → Op afstand → Apparaat koppelen en scan de code.',
   'revoked.title': 'Toegang ingetrokken',
   'revoked.body': 'Dit apparaat is op je computer uit wmux verwijderd. Koppel het opnieuw om weer te verbinden.',
+  'replaced.title': 'Opnieuw gekoppeld in een ander tabblad',
+  'replaced.body': 'Deze browser is opnieuw gekoppeld, dus de verbinding van dit tabblad is vervangen. Laad opnieuw om met de nieuwe koppeling verder te gaan.',
   'incompatible.title': 'Update nodig',
   'incompatible.body': 'Deze pagina is verouderd ten opzichte van wmux op je computer. Laad opnieuw voor de huidige versie.',
   'unreachable.title': 'wmux niet bereikbaar',

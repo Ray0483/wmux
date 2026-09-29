@@ -25,6 +25,8 @@ export const cs: Readonly<Record<string, string>> = {
   'unpaired.body': 'Tento prohlížeč není spárován s wmux. Na počítači otevřete Nastavení → Vzdálený přístup → Spárovat zařízení a naskenujte kód.',
   'revoked.title': 'Přístup odebrán',
   'revoked.body': 'Toto zařízení bylo na vašem počítači z wmux odebráno. Pro opětovné připojení jej znovu spárujte.',
+  'replaced.title': 'Znovu spárováno v jiné kartě',
+  'replaced.body': 'Tento prohlížeč byl znovu spárován, takže připojení této karty bylo nahrazeno. Načtěte stránku znovu a pokračujte s novým spárováním.',
   'incompatible.title': 'Je nutná aktualizace',
   'incompatible.body': 'Tato stránka je zastaralá oproti wmux ve vašem počítači. Načtěte ji znovu a získejte aktuální verzi.',
   'unreachable.title': 'wmux je nedostupný',

@@ -25,6 +25,8 @@ export const fr: Readonly<Record<string, string>> = {
   'unpaired.body': 'Ce navigateur n’est pas associé à wmux. Sur votre ordinateur, ouvrez Paramètres → Distant → Associer un appareil, puis scannez le code.',
   'revoked.title': 'Accès retiré',
   'revoked.body': 'Cet appareil a été retiré de wmux sur votre ordinateur. Associez-le à nouveau pour vous reconnecter.',
+  'replaced.title': 'Associé à nouveau dans un autre onglet',
+  'replaced.body': 'Ce navigateur a été associé à nouveau : la connexion de cet onglet a été remplacée. Rechargez pour continuer avec la nouvelle association.',
   'incompatible.title': 'Mise à jour nécessaire',
   'incompatible.body': 'Cette page n’est plus à jour par rapport au wmux de votre ordinateur. Rechargez pour obtenir la version actuelle.',
   'unreachable.title': 'wmux injoignable',

@@ -95,10 +95,20 @@ export function altHintKey(operator: boolean): 'attach.altHint' | 'attach.altHin
   return operator ? 'attach.altHint' : 'attach.altHintViewer';
 }
 
-function errorKey(code: TermError) {
+export function errorKey(code: TermError) {
   if (code === 'timeout') return 'attach.errTimeout' as const;
   if (code === 'gone') return 'attach.errGone' as const;
+  if (code === 'rate') return 'ack.rate' as const;
   return 'attach.errNoTerminal' as const;
+}
+
+/**
+ * Whether the overlay offers Retry: the attach was refused (the per-device
+ * attach budget) or its snapshot never came, so asking again can work. Nothing
+ * else sends the attach again — the view sends it once, at mount.
+ */
+export function attachRetryable(code: TermError | null): boolean {
+  return code === 'rate' || code === 'timeout';
 }
 
 export function TermView({ client, s, mode, fontScale, dark, t, operator, onLink, onStatus }: Readonly<Props>) {
@@ -320,7 +330,24 @@ export function TermView({ client, s, mode, fontScale, dark, t, operator, onLink
       <div ref={wrapRef} className={mode === 'pan' ? 'rc-term__wrap rc-term__wrap--pan' : 'rc-term__wrap'}>
         <div ref={hostRef} className="rc-term__host" />
       </div>
-      {overlay && <div className="rc-term__overlay" role="status">{overlay}</div>}
+      {overlay && (
+        <div className="rc-term__overlay" role="status">
+          <span>{overlay}</span>
+          {status === 'error' && attachRetryable(error) && (
+            <button
+              type="button"
+              className="rc-btn rc-term__retry"
+              onClick={() => {
+                setError(null);
+                setStatus('loading');
+                client.attach(s);
+              }}
+            >
+              {t.t('common.retry')}
+            </button>
+          )}
+        </div>
+      )}
       {status === 'lag' && <div className="rc-term__pill rc-term__pill--lag" role="status">{t.t('attach.lag')}</div>}
       {altLive && hint && (
         <button type="button" className="rc-term__hint" onClick={() => setHint(false)}>{t.t(altHintKey(operator))}</button>

@@ -25,6 +25,8 @@ export const pt: Readonly<Record<string, string>> = {
   'unpaired.body': 'Este navegador não está pareado com o wmux. No computador, abra Configurações → Remoto → Parear um dispositivo e escaneie o código.',
   'revoked.title': 'Acesso removido',
   'revoked.body': 'Este dispositivo foi removido do wmux no seu computador. Pareie de novo para reconectar.',
+  'replaced.title': 'Pareado de novo em outra aba',
+  'replaced.body': 'Este navegador foi pareado de novo, então a conexão desta aba foi substituída. Recarregue para continuar com o novo pareamento.',
   'incompatible.title': 'Atualização necessária',
   'incompatible.body': 'Esta página está desatualizada em relação ao wmux do seu computador. Recarregue para obter a versão atual.',
   'unreachable.title': 'Não foi possível acessar o wmux',

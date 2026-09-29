@@ -227,12 +227,14 @@ describe('review fixes, round 3 (#254)', () => {
   });
 
   it('on a blocked agent every answering key arms, and Esc/^C arm for BOTH server questions', () => {
-    for (const k of ['enter', 'y', 'n', 'tab', 'shift-tab', 'backspace'] as const) {
+    for (const k of ['enter', 'y', 'n', 'tab', 'shift-tab', 'backspace', 'ctrl-d'] as const) {
       expect(keyArmKinds(k, 'blocked')).toEqual(['blocked']);
     }
     expect(keyArmKinds('esc', 'blocked')).toEqual(['blocked', 'interrupt']);
     expect(keyNeedsArming('esc', 'blocked')).toBe('interrupt');
-    expect(keyArmKinds('ctrl-c', 'blocked')).toEqual(['interrupt']);
+    // ^C cancels a permission prompt: it answers, as the server now counts it.
+    expect(keyArmKinds('ctrl-c', 'blocked')).toEqual(['blocked', 'interrupt']);
+    expect(keyArmKinds('ctrl-d', 'working')).toEqual([]);
     expect(keyArmKinds('up', 'blocked')).toEqual([]);
     const first = tapKey(null, 'esc', 'blocked', 0, () => 'nonce-esc-00001');
     expect(first).toMatchObject({ action: 'arm', arm: { force: ['blocked', 'interrupt'] } });

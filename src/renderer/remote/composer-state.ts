@@ -223,7 +223,7 @@ export const ARM_WINDOW_MS = 1500;
  * `REMOTE_ANSWERING_KEYS`). Mirrored here so the phone warns on the first tap
  * instead of learning it from a `confirm` round trip.
  */
-const ANSWERING_KEYS: ReadonlySet<RemoteKey> = new Set<RemoteKey>(['enter', 'y', 'n', 'esc', 'tab', 'shift-tab', 'backspace']);
+const ANSWERING_KEYS: ReadonlySet<RemoteKey> = new Set<RemoteKey>(['enter', 'y', 'n', 'esc', 'tab', 'shift-tab', 'backspace', 'ctrl-c', 'ctrl-d']);
 
 /**
  * Every confirm a key needs, from the roster alone, in the order the server

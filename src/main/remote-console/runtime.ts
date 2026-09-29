@@ -207,7 +207,7 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
       sha256: (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex'),
       log: (e, f) => ops.log(e, f),
     });
-    this.devices.onRevoked((ids) => this.onDevicesRevoked(ids));
+    this.devices.onRevoked((ids, replaced) => this.onDevicesRevoked(ids, replaced));
     this.tap = new TerminalTap({
       requestSnapshot: (s, reqId) => this.sendRenderer(s, { kind: 'snapshot', surfaceId: s, reqId }),
       send: (clientId, msg) => this.sessions.get(clientId)?.client.send(msg),
@@ -376,6 +376,10 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     this.expireTimer = null;
     if (this.pairTimer) clearTimeout(this.pairTimer);
     this.pairTimer = null;
+    // A pairing code belongs to the listener it was minted for: a QR shown for
+    // loopback + Tailscale must not stay redeemable over the plain-http LAN
+    // bind the user switches to next (a rebind is a stop then a start).
+    this.devices.cancelPairing();
     this.clearRejectedTimer();
     for (const p of this.pendingModes.values()) {
       clearTimeout(p.timer);
@@ -512,8 +516,8 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     this.emitStatus();
   }
 
-  private onDevicesRevoked(ids: string[]): void {
-    this.server?.closeDevices(ids, CLOSE_CODES.REVOKED, { t: 'revoked' });
+  private onDevicesRevoked(ids: string[], replaced = false): void {
+    this.server?.closeDevices(ids, CLOSE_CODES.REVOKED, replaced ? { t: 'revoked', replaced: true } : { t: 'revoked' });
     // Disposed NOW, not when the socket's 'close' fires: that waits on the peer
     // answering the close frame, and a revoked phone that never answers would
     // otherwise keep a live session — including an action already past its
@@ -565,7 +569,9 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
       port: this.listening?.port ?? this.config.port,
       publicUrl: this.config.publicUrl,
       deviceCount: this.devices.count(),
-      connectedCount: this.sessions.size,
+      // Devices, not sockets: one phone may hold two tabs, and the CLI prints
+      // this as "M connected" beside "N paired" devices, as Settings groups it.
+      connectedCount: new Set([...this.sessions.values()].map(({ client }) => client.device.id)).size,
       lastError: this.lastError,
     };
   }

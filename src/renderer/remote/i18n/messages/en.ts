@@ -35,6 +35,8 @@ export const en = {
   'unpaired.body': 'This browser is not paired with wmux. On your computer, open Settings → Remote → Pair a device, then scan the code.',
   'revoked.title': 'Access removed',
   'revoked.body': 'This device was removed from wmux on your computer. Pair it again to reconnect.',
+  'replaced.title': 'Paired again in another tab',
+  'replaced.body': 'This browser was paired again, so this tab’s connection was replaced. Reload to continue with the new pairing.',
   'incompatible.title': 'Update needed',
   'incompatible.body': 'This page is out of date for the wmux on your computer. Reload to get the current version.',
   'unreachable.title': 'Can’t reach wmux',

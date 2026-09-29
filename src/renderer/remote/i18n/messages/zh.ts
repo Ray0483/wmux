@@ -25,6 +25,8 @@ export const zh: Readonly<Record<string, string>> = {
   'unpaired.body': '此浏览器尚未与 wmux 配对。请在电脑上打开 设置 → 远程 → 配对设备，然后扫描二维码。',
   'revoked.title': '访问已移除',
   'revoked.body': '此设备已从你电脑上的 wmux 中移除。请重新配对以重新连接。',
+  'replaced.title': '已在另一个标签页重新配对',
+  'replaced.body': '此浏览器已重新配对，因此此标签页的连接已被替换。请重新加载以使用新的配对继续。',
   'incompatible.title': '需要更新',
   'incompatible.body': '此页面相对于你电脑上的 wmux 已过时。请重新加载以获取当前版本。',
   'unreachable.title': '无法连接到 wmux',

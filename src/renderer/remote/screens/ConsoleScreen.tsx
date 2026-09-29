@@ -32,6 +32,16 @@ export function sectionOf(e: RemoteRosterEntry): SectionId {
   return 'other';
 }
 
+/**
+ * The accessible name of a section, or undefined for the visible heading.
+ * Needs-you is the section that matters from across the room, so a screen
+ * reader hears it as "2 agents need you" rather than a heading and a bare
+ * number beside it.
+ */
+export function sectionLabel(t: RemoteT, id: SectionId, n: number): string | undefined {
+  return id === 'needsYou' ? t.tn('console.needsYouCount', n) : undefined;
+}
+
 export function connKey(status: WsStatus): RemoteMessageKey {
   if (status === 'ready') return 'conn.ready';
   if (status === 'waiting') return 'conn.waiting';
@@ -111,7 +121,7 @@ export function ConsoleScreen({ t, roster, rosterReceived, rosterAt, status, hos
           const list = buckets.get(id);
           if (!list || list.length === 0) return null;
           return (
-            <section key={id} className={`rc-section rc-section--${id}`}>
+            <section key={id} className={`rc-section rc-section--${id}`} aria-label={sectionLabel(t, id, list.length)}>
               <h2 className="rc-section__title">
                 <span>{t.t(key)}</span>
                 <span className="rc-section__count">{list.length}</span>

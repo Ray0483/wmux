@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { PairOffer, RemoteBridgeError, RemoteConsoleBridge, RemoteConsoleStatus } from '../../../shared/remote-console-config';
-import type { RemoteScope } from '../../../shared/remote-console-protocol';
+import { DEVICE_NAME_MAX, type RemoteScope } from '../../../shared/remote-console-protocol';
 import { useT, type TranslationKey, type Translator } from '../../i18n';
 import { qrDataUri } from './remote-qr';
 
@@ -365,7 +365,7 @@ function PairForm({ name, setName, scope, setScope, operatorAllowed }: PairFormP
           id="remote-pair-name"
           className="settings-input"
           value={name}
-          maxLength={40}
+          maxLength={DEVICE_NAME_MAX}
           autoFocus
           onChange={(e) => setName(e.target.value)}
         />

@@ -25,6 +25,8 @@ export const es: Readonly<Record<string, string>> = {
   'unpaired.body': 'Este navegador no está vinculado con wmux. En tu ordenador, abre Ajustes → Remoto → Vincular un dispositivo y escanea el código.',
   'revoked.title': 'Acceso retirado',
   'revoked.body': 'Este dispositivo se ha eliminado de wmux en tu ordenador. Vuelve a vincularlo para reconectar.',
+  'replaced.title': 'Vinculado de nuevo en otra pestaña',
+  'replaced.body': 'Este navegador se ha vinculado de nuevo, así que la conexión de esta pestaña se ha reemplazado. Recarga para continuar con la nueva vinculación.',
   'incompatible.title': 'Actualización necesaria',
   'incompatible.body': 'Esta página está desactualizada respecto al wmux de tu ordenador. Recarga para obtener la versión actual.',
   'unreachable.title': 'No se puede contactar con wmux',

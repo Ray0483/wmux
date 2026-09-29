@@ -25,6 +25,8 @@ export const pl: Readonly<Record<string, string>> = {
   'unpaired.body': 'Ta przeglądarka nie jest sparowana z wmux. Na komputerze otwórz Ustawienia → Zdalnie → Sparuj urządzenie i zeskanuj kod.',
   'revoked.title': 'Dostęp odebrany',
   'revoked.body': 'To urządzenie zostało usunięte z wmux na komputerze. Sparuj je ponownie, aby się połączyć.',
+  'replaced.title': 'Sparowano ponownie w innej karcie',
+  'replaced.body': 'Ta przeglądarka została sparowana ponownie, więc połączenie tej karty zostało zastąpione. Odśwież, aby kontynuować z nowym parowaniem.',
   'incompatible.title': 'Wymagana aktualizacja',
   'incompatible.body': 'Ta strona jest nieaktualna względem wmux na komputerze. Odśwież, aby pobrać bieżącą wersję.',
   'unreachable.title': 'Brak połączenia z wmux',

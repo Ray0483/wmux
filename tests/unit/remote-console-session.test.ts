@@ -396,6 +396,20 @@ describe('session: key (rule 5)', () => {
     expect(h.acks()[0].confirm).toBe('blocked');
   });
 
+  it('^C and ^D on a declared-blocked pane with NO run open still confirm first (#254)', async () => {
+    // The global CLAUDE.md recipe reports --blocked without --run-start, so
+    // runDepth is 0 and the interrupt confirm never fires: one tap of ^C used
+    // to cancel the permission prompt, and ^D was never confirmed at all.
+    const h = await greeted();
+    h.state.blocked = true;
+    await h.frame({ t: 'key', s: S, nonce: nonce(), key: 'ctrl-c' });
+    await h.frame({ t: 'key', s: S, nonce: nonce(), key: 'ctrl-d' });
+    expect(h.acks().map((a) => a.confirm)).toEqual(['blocked', 'blocked']);
+    expect(h.calls).toEqual([]);
+    await h.frame({ t: 'key', s: S, nonce: nonce(), key: 'ctrl-d', force: ['blocked'], prompt: 7 });
+    expect(h.calls).toEqual(['note:"\\u0004"', 'write:"\\u0004"']);
+  });
+
   it('ESC and ^C confirm an interrupt while a run is active; force sends', async () => {
     const h = await greeted();
     h.state.runDepth = 1;
@@ -577,7 +591,10 @@ describe('session: review fixes, round 3 (#254)', () => {
     const h = await greeted({ scope: 'viewer' });
     for (let i = 0; i < 6; i++) await h.frame({ t: 'attach', s: S });
     expect(h.deps.onAttach).toHaveBeenCalledTimes(4);
-    expect(h.sent.filter((m) => m.t === 'error' && m.code === 'rate')).toHaveLength(2);
+    // Scoped to the surface, so the view waiting on it can say so and retry
+    // rather than sit on "Loading screen…" (a bare `error` has no `s`).
+    expect(h.sent.filter((m) => m.t === 'term.error' && m.code === 'rate' && m.s === S)).toHaveLength(2);
+    expect(h.sent.filter((m) => m.t === 'error')).toEqual([]);
     expect(h.closed).toEqual([]);
     h.advance(1000);
     await h.frame({ t: 'attach', s: S });
