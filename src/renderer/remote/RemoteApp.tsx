@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MAX_TEXT, type RemoteRosterEntry, type RemoteScope, type ServerMessage } from '../../shared/remote-console-protocol';
 import { ackMessageKey, createT, matchLanguage, type RemoteT } from './i18n';
-import { createBrowserWsClient, newNonce, type WelcomeMessage, type WsClient, type WsStatus } from './ws-client';
+import { createBrowserWsClient, isUnconfirmed, newNonce, type WelcomeMessage, type WsClient, type WsStatus } from './ws-client';
 import { NoticeScreen, PairScreen } from './screens/PairScreen';
 import { ConsoleScreen } from './screens/ConsoleScreen';
 import { AttachScreen } from './screens/AttachScreen';
@@ -218,7 +218,11 @@ export function RemoteApp({ pairSecret }: Readonly<{ pairSecret: string | null }
     if (!client) return;
     client.request({ t: 'answer', s, nonce: newNonce(), choiceId }).then(
       (ack) => { if (!ack.ok) showError(t.t(ackMessageKey(ack.code), { max: MAX_TEXT })); },
-      () => { /* stopped: the full-screen state says why */ },
+      (err: unknown) => {
+        // Too old to resend: it may have landed, so say "check", not "failed".
+        // Anything else is a stopped client, and the full-screen state says why.
+        if (isUnconfirmed(err)) showError(t.t('ack.unconfirmed'));
+      },
     );
   }, [client, showError, t]);
 

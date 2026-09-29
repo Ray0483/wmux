@@ -86,6 +86,7 @@ export const sv: Readonly<Record<string, string>> = {
   'ack.tooLong': 'För långt för att skicka (högst {max} tecken).',
   'ack.badKey': 'Den tangenten stöds inte.',
   'ack.writeFailed': 'Kunde inte skicka.',
+  'ack.unconfirmed': 'Inte bekräftat. Kontrollera terminalen innan du skickar igen.',
 
   'toast.blocked': '{label} behöver dig',
   'toast.done': '{label} är klar',

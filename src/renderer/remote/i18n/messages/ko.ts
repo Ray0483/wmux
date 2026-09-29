@@ -85,6 +85,7 @@ export const ko: Readonly<Record<string, string>> = {
   'ack.tooLong': '너무 길어서 보낼 수 없습니다 (최대 {max}자).',
   'ack.badKey': '지원되지 않는 키입니다.',
   'ack.writeFailed': '보내지 못했습니다.',
+  'ack.unconfirmed': '확인되지 않았습니다. 다시 보내기 전에 터미널을 확인하세요.',
 
   'toast.blocked': '{label}: 확인 필요',
   'toast.done': '{label}: 완료',

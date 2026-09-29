@@ -86,6 +86,7 @@ export const nl: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Te lang om te verzenden (maximaal {max} tekens).',
   'ack.badKey': 'Die toets wordt niet ondersteund.',
   'ack.writeFailed': 'Verzenden mislukt.',
+  'ack.unconfirmed': 'Niet bevestigd. Controleer de terminal voordat je opnieuw verzendt.',
 
   'toast.blocked': '{label} wacht op jou',
   'toast.done': '{label} is klaar',

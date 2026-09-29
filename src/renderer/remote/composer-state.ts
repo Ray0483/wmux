@@ -37,12 +37,18 @@ export interface ComposerFrame {
 
 export type ComposerPhase = 'idle' | 'sending' | 'acked' | 'confirm' | 'failed';
 
+/**
+ * Why a send failed. `unconfirmed` is not an AckCode: no ack ever came, and the
+ * frame was too old to resend (ws-client rule 4) — it may have been typed.
+ */
+export type ComposerFailure = AckCode | 'unconfirmed';
+
 export interface ComposerState {
   phase: ComposerPhase;
   draft: string;
   frame: ComposerFrame | null;
   confirm: ConfirmKind | null;
-  code: AckCode | null;
+  code: ComposerFailure | null;
 }
 
 export type ComposerAction =
@@ -51,8 +57,12 @@ export type ComposerAction =
   | { type: 'ack'; nonce: string; ok: boolean; code?: AckCode; confirm?: ConfirmKind }
   | { type: 'accept' }
   | { type: 'cancel' }
-  /** The request itself failed (client stopped); the text stays. */
-  | { type: 'error' };
+  /**
+   * The request itself failed; the text stays. `unconfirmed`: it was sent and
+   * never acked, so it may have landed (ws-client rule 4) — the UI must not
+   * call that "could not send", or the user types it a second time.
+   */
+  | { type: 'error'; unconfirmed?: boolean };
 
 export const initialComposer = (draft = ''): ComposerState => ({
   phase: 'idle', draft, frame: null, confirm: null, code: null,
@@ -96,7 +106,12 @@ function onSubmit(s: ComposerState, nonce: string, blocked: boolean): ComposerSt
 function onAck(s: ComposerState, a: Extract<ComposerAction, { type: 'ack' }>): ComposerState {
   // A late ack for a frame the user already moved past is not ours to act on.
   if (s.phase !== 'sending' || !s.frame || s.frame.nonce !== a.nonce) return s;
-  if (a.ok) return { ...s, phase: 'acked', draft: '', frame: null, confirm: null, code: null };
+  // Clear what was SENT, not what is in the box: text typed while the frame
+  // was in flight is a new draft, and wiping it would lose it.
+  if (a.ok) {
+    const draft = s.draft === s.frame.text ? '' : s.draft;
+    return { ...s, phase: 'acked', draft, frame: null, confirm: null, code: null };
+  }
   if (a.code === 'confirm' && a.confirm) {
     return { ...s, phase: 'confirm', confirm: a.confirm, code: null };
   }
@@ -128,7 +143,9 @@ export function composerReducer(s: ComposerState, a: ComposerAction): ComposerSt
     case 'cancel':
       return s.phase === 'confirm' ? { ...s, phase: 'idle', frame: null, confirm: null } : s;
     case 'error':
-      return s.phase === 'sending' ? { ...s, phase: 'failed', code: 'write-failed', frame: null } : s;
+      return s.phase === 'sending'
+        ? { ...s, phase: 'failed', code: a.unconfirmed ? 'unconfirmed' : 'write-failed', frame: null }
+        : s;
   }
 }
 
@@ -162,6 +179,20 @@ export function saveDraft(storage: DraftStorage | null, surfaceId: string, text:
   try {
     if (text) storage.setItem(DRAFT_PREFIX + surfaceId, text);
     else storage.removeItem(DRAFT_PREFIX + surfaceId);
+  } catch { /* see loadDraft */ }
+}
+
+/**
+ * An ack ok that arrives after the composer is gone (the user tapped Back
+ * while "Sending…"; ws-client still resends and resolves the frame). The
+ * reducer never sees it, so the STORED draft would still hold the sent text,
+ * reappear on the next open, and one tap on Send would type it twice. Clears
+ * the stored draft only if it is still exactly what was sent.
+ */
+export function clearSentDraft(storage: DraftStorage | null, surfaceId: string, sentText: string): void {
+  if (!storage || !sentText) return;
+  try {
+    if (storage.getItem(DRAFT_PREFIX + surfaceId) === sentText) storage.removeItem(DRAFT_PREFIX + surfaceId);
   } catch { /* see loadDraft */ }
 }
 

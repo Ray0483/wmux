@@ -19,7 +19,7 @@ import type { RemoteKey, RemoteRosterEntry } from '../../../shared/remote-consol
 import { ackMessageKey, stateWordKey, type RemoteT } from '../i18n';
 import { armFromConfirm, tapKey, type KeyArm } from '../composer-state';
 import { loadFitMode, saveFitMode, type FitMode } from '../fit';
-import { newNonce, type WsClient, type WsStatus } from '../ws-client';
+import { isUnconfirmed, newNonce, type WsClient, type WsStatus } from '../ws-client';
 import { ChoiceRow } from '../components/ChoiceRow';
 import { Composer } from '../components/Composer';
 import { ConfirmSheet } from '../components/ConfirmSheet';
@@ -102,7 +102,10 @@ export function AttachScreen({ client, s, entry, status, operator, maxText, font
         if (ack.code === 'confirm') setArm(armFromConfirm(key, ack.nonce, Date.now()));
         else onError(t.t(ackMessageKey(ack.code), { max: maxText }));
       },
-      () => { /* stopped: the app screen already says why */ },
+      (err: unknown) => {
+        // Too old to resend (ws-client rule 4): it may have landed.
+        if (isUnconfirmed(err)) onError(t.t('ack.unconfirmed'));
+      },
     );
   }, [arm, agentState, client, s, onError, t, maxText]);
 

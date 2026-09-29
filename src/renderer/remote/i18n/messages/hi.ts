@@ -86,6 +86,7 @@ export const hi: Readonly<Record<string, string>> = {
   'ack.tooLong': 'भेजने के लिए बहुत लंबा (अधिकतम {max} अक्षर)।',
   'ack.badKey': 'यह कुंजी समर्थित नहीं है।',
   'ack.writeFailed': 'भेजा नहीं जा सका।',
+  'ack.unconfirmed': 'पुष्टि नहीं हुई। दोबारा भेजने से पहले टर्मिनल देखें।',
 
   'toast.blocked': '{label} को आपकी ज़रूरत है',
   'toast.done': '{label} पूरा हुआ',

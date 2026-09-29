@@ -88,6 +88,7 @@ export const pl: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Za długie do wysłania (maksymalnie {max} znaków).',
   'ack.badKey': 'Ten klawisz nie jest obsługiwany.',
   'ack.writeFailed': 'Nie udało się wysłać.',
+  'ack.unconfirmed': 'Niepotwierdzone. Sprawdź terminal, zanim wyślesz ponownie.',
 
   'toast.blocked': '{label} czeka na ciebie',
   'toast.done': '{label} — gotowe',

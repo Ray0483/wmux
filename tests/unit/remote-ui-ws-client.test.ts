@@ -6,6 +6,9 @@ import {
   wsUrlFor,
   BACKOFF_MAX_MS,
   PING_INTERVAL_MS,
+  RESEND_MAX_AGE_MS,
+  ActionUnconfirmedError,
+  isUnconfirmed,
   type WsLike,
   type WsClientDeps,
   type ActionFrame,
@@ -274,6 +277,43 @@ describe('ws-client state machine', () => {
     h.last().open();
     h.last().receive(welcome);
     expect(h.last().sent).toEqual([{ t: 'hello', v: PROTOCOL_VERSION }]);
+  });
+
+  it('never resends an action older than RESEND_MAX_AGE_MS — it is rejected as unconfirmed', async () => {
+    h.client.start();
+    h.last().open();
+    h.last().receive(welcome);
+    const stale = h.client.request({ t: 'answer', s: S1, nonce: 'nonce-stale-1', choiceId: 'yes' });
+    h.last().drop();
+    // Offline long enough that the server's 10-min nonce LRU may have
+    // forgotten it: a resend could answer whatever the agent asks NOW.
+    // (The 1 s retry makes a socket that simply stays connecting meanwhile.)
+    h.clock.advance(RESEND_MAX_AGE_MS + 1);
+    const fresh = h.client.request(sendFrame('nonce-fresh-1'));
+    h.last().open();
+    h.last().receive(welcome);
+    expect(h.last().sent).toEqual([
+      { t: 'hello', v: PROTOCOL_VERSION },
+      { t: 'send', s: S1, nonce: 'nonce-fresh-1', text: 'hi', submit: true },
+    ]);
+    const err = await stale.catch((e: unknown) => e);
+    expect(isUnconfirmed(err)).toBe(true);
+    expect(err).toBeInstanceOf(ActionUnconfirmedError);
+    expect(h.client.pendingCount).toBe(1);
+    h.last().receive({ t: 'ack', nonce: 'nonce-fresh-1', ok: true });
+    await expect(fresh).resolves.toMatchObject({ ok: true });
+  });
+
+  it('a throwing listener starves neither the others nor the revoke', () => {
+    const seen: string[] = [];
+    h.client.subscribe(() => { throw new Error('bad term.reset'); });
+    h.client.subscribe((m) => seen.push(m.t));
+    h.client.start();
+    h.last().open();
+    h.last().receive(welcome);
+    h.last().receive({ t: 'revoked' });
+    expect(seen).toEqual(['welcome', 'revoked']);
+    expect(h.client.state).toMatchObject({ status: 'stopped', stopReason: 'revoked' });
   });
 
   it('ignores malformed server frames', () => {

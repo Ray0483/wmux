@@ -88,6 +88,7 @@ export const ru: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Слишком длинно для отправки (не более {max} символов).',
   'ack.badKey': 'Эта клавиша не поддерживается.',
   'ack.writeFailed': 'Не удалось отправить.',
+  'ack.unconfirmed': 'Не подтверждено. Проверьте терминал, прежде чем отправлять снова.',
 
   'toast.blocked': '{label} ждёт вас',
   'toast.done': '{label}: готово',

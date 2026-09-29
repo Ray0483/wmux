@@ -85,6 +85,7 @@ export const zh: Readonly<Record<string, string>> = {
   'ack.tooLong': '内容过长，无法发送（最多 {max} 个字符）。',
   'ack.badKey': '不支持该按键。',
   'ack.writeFailed': '发送失败。',
+  'ack.unconfirmed': '未确认。再次发送前请先查看终端。',
 
   'toast.blocked': '{label} 在等你处理',
   'toast.done': '{label} 已完成',

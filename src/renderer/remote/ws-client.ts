@@ -23,6 +23,16 @@
  *     the attached surface's screen; replaying it before the mirror is back
  *     would be acting on a view the user cannot see.
  *
+ *  4. ...but only while the server can still recognise it. The nonce LRU keeps
+ *     an executed action for 10 minutes; past that a resend is a FRESH action
+ *     to the server, so a frame that did land types a second time — and an
+ *     `answer` or an `enter` resent half an hour later lands on whatever
+ *     question the agent is asking NOW, not the one the user saw. So a frame
+ *     older than `RESEND_MAX_AGE_MS` (well inside the LRU window) is never
+ *     resent: it is rejected as `ActionUnconfirmedError`, and the UI says "not
+ *     confirmed, check the terminal" rather than "could not send", because it
+ *     may well have landed.
+ *
  * Close codes decide whether to come back: 4401 (revoked) and 4400 (protocol
  * mismatch — the page is older than the desktop) are final; everything else,
  * 1001 "stopping or reconfigured" included, reconnects with backoff.
@@ -38,6 +48,29 @@ import {
 export const BACKOFF_MIN_MS = 1000;
 export const BACKOFF_MAX_MS = 30_000;
 export const PING_INTERVAL_MS = 20_000;
+/**
+ * Rule 4: how old an un-acked action may be and still be resent after a
+ * reconnect. Must stay well below the server's 10-minute nonce LRU (spec §5
+ * rule 3), or the resend stops being deduplicated.
+ */
+export const RESEND_MAX_AGE_MS = 120_000;
+
+/**
+ * An action that was sent, never acked, and is too old to resend safely
+ * (rule 4). It may or may not have executed — the caller must say so, not
+ * claim it failed, or the user retypes something that already landed.
+ */
+export class ActionUnconfirmedError extends Error {
+  readonly unconfirmed = true;
+  constructor(nonce: string) {
+    super(`remote console action ${nonce} unconfirmed`);
+    this.name = 'ActionUnconfirmedError';
+  }
+}
+
+export function isUnconfirmed(err: unknown): err is ActionUnconfirmedError {
+  return err instanceof ActionUnconfirmedError;
+}
 
 /** `min(30 s, 1 s · 2^attempt)` — no jitter: one phone, one desktop, no herd to spread. */
 export function backoffDelay(attempt: number): number {
@@ -136,6 +169,8 @@ export interface WsClient {
 
 interface Pending {
   frame: ActionFrame;
+  /** When the user last asked for this frame (a force resend refreshes it). */
+  requestedAt: number;
   resolve(ack: AckMessage): void;
   reject(err: Error): void;
 }
@@ -201,7 +236,16 @@ export function createWsClient(deps: WsClientDeps, now: () => number = Date.now)
     setStatus('ready');
     // Rule 3: the mirror first, then whatever the user typed that is not yet acked.
     if (attached) rawSend({ t: 'attach', s: attached });
-    for (const p of pending.values()) rawSend(p.frame);
+    const at = now();
+    for (const [nonce, p] of [...pending]) {
+      if (at - p.requestedAt > RESEND_MAX_AGE_MS) {
+        // Rule 4: too old for the server's dedupe to cover a resend.
+        pending.delete(nonce);
+        p.reject(new ActionUnconfirmedError(nonce));
+      } else {
+        rawSend(p.frame);
+      }
+    }
   };
 
   const onAck = (msg: AckMessage): void => {
@@ -216,7 +260,13 @@ export function createWsClient(deps: WsClientDeps, now: () => number = Date.now)
     if (!msg) return;
     if (msg.t === 'welcome') onWelcome(msg);
     else if (msg.t === 'ack') onAck(msg);
-    for (const fn of listeners) fn(msg);
+    // Each listener isolated: one that throws on a frame (a bad `term.reset`
+    // reaching xterm's resize, say) must not starve the others of it, nor —
+    // on a `revoked` frame — skip the stop below and leave a revoked page
+    // reconnecting.
+    for (const fn of listeners) {
+      try { fn(msg); } catch { /* that listener's problem, not the socket's */ }
+    }
     if (msg.t === 'revoked') stop('revoked');
   };
 
@@ -344,6 +394,7 @@ export function createWsClient(deps: WsClientDeps, now: () => number = Date.now)
         const prior = pending.get(frame.nonce);
         pending.set(frame.nonce, {
           frame,
+          requestedAt: now(),
           resolve: (ack) => { prior?.resolve(ack); resolve(ack); },
           reject: (err) => { prior?.reject(err); reject(err); },
         });

@@ -85,6 +85,7 @@ export const zhTW: Readonly<Record<string, string>> = {
   'ack.tooLong': '內容過長，無法送出（最多 {max} 個字元）。',
   'ack.badKey': '不支援此按鍵。',
   'ack.writeFailed': '無法送出。',
+  'ack.unconfirmed': '未確認。再次送出前請先查看終端機。',
 
   'toast.blocked': '{label} 在等你處理',
   'toast.done': '{label} 已完成',

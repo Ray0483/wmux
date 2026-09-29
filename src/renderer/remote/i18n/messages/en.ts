@@ -96,6 +96,7 @@ export const en = {
   'ack.tooLong': 'Too long to send ({max} characters at most).',
   'ack.badKey': 'That key is not supported.',
   'ack.writeFailed': 'Could not send.',
+  'ack.unconfirmed': 'Not confirmed. Check the terminal before sending again.',
 
   'toast.blocked': '{label} needs you',
   'toast.done': '{label} is done',

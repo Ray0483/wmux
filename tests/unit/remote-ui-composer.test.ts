@@ -3,6 +3,7 @@ import {
   ARM_WINDOW_MS,
   armFromConfirm,
   canSubmit,
+  clearSentDraft,
   composerLabel,
   composerReducer,
   initialComposer,
@@ -36,6 +37,19 @@ describe('composer state machine', () => {
     ]) {
       expect(next.draft).toBe('keep me');
     }
+  });
+
+  it('ack ok clears only what was sent: text typed mid-flight survives', () => {
+    let s = composerReducer(typed('first'), { type: 'submit', nonce: 'n-0000000b', blocked: false });
+    s = composerReducer(s, { type: 'edit', text: 'second' });
+    s = composerReducer(s, { type: 'ack', nonce: 'n-0000000b', ok: true });
+    expect(s).toMatchObject({ phase: 'acked', draft: 'second', frame: null });
+  });
+
+  it('an unconfirmed request is not reported as a plain send failure', () => {
+    const sending = composerReducer(typed('maybe'), { type: 'submit', nonce: 'n-0000000c', blocked: false });
+    expect(composerReducer(sending, { type: 'error', unconfirmed: true })).toMatchObject({ phase: 'failed', code: 'unconfirmed', draft: 'maybe' });
+    expect(composerReducer(sending, { type: 'error' })).toMatchObject({ phase: 'failed', code: 'write-failed' });
   });
 
   it('sending → failed carries the ack code', () => {
@@ -116,6 +130,17 @@ describe('draft persistence', () => {
     saveDraft(st, 'surf-a', '');
     expect(st.data.has('wmux-remote-draft:surf-a')).toBe(false);
     expect(loadDraft(st, 'surf-b')).toBe('other');
+  });
+
+  it('an ack that lands after unmount clears the stored draft only if it is still the sent text', () => {
+    const st = mem();
+    saveDraft(st, 'surf-a', 'sent text');
+    clearSentDraft(st, 'surf-a', 'sent text');
+    expect(loadDraft(st, 'surf-a')).toBe('');
+    saveDraft(st, 'surf-a', 'newer draft');
+    clearSentDraft(st, 'surf-a', 'sent text');
+    expect(loadDraft(st, 'surf-a')).toBe('newer draft');
+    expect(() => clearSentDraft(null, 'surf-a', 'x')).not.toThrow();
   });
 
   it('survives a Storage that throws, and a missing one', () => {

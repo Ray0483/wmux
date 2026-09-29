@@ -88,6 +88,7 @@ export const uk: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Занадто довго для надсилання (не більше {max} символів).',
   'ack.badKey': 'Ця клавіша не підтримується.',
   'ack.writeFailed': 'Не вдалося надіслати.',
+  'ack.unconfirmed': 'Не підтверджено. Перевірте термінал, перш ніж надсилати знову.',
 
   'toast.blocked': '{label} чекає на вас',
   'toast.done': '{label}: готово',

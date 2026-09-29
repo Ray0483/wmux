@@ -85,6 +85,7 @@ export const ja: Readonly<Record<string, string>> = {
   'ack.tooLong': '長すぎて送信できません (最大 {max} 文字)。',
   'ack.badKey': 'そのキーはサポートされていません。',
   'ack.writeFailed': '送信できませんでした。',
+  'ack.unconfirmed': '未確認です。再送する前にターミナルを確認してください。',
 
   'toast.blocked': '{label} が対応を待っています',
   'toast.done': '{label} が完了しました',

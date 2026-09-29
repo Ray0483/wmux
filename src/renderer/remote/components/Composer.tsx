@@ -14,6 +14,7 @@ import { useCallback, useEffect, useReducer, useRef, type ReactNode } from 'reac
 import type { ClientMessage } from '../../../shared/remote-console-protocol';
 import {
   canSubmit,
+  clearSentDraft,
   composerLabel,
   composerReducer,
   initialComposer,
@@ -24,7 +25,7 @@ import {
   type ComposerState,
 } from '../composer-state';
 import { ackMessageKey, type RemoteT } from '../i18n';
-import { newNonce, type WsClient } from '../ws-client';
+import { isUnconfirmed, newNonce, type WsClient } from '../ws-client';
 import { ConfirmSheet } from './ConfirmSheet';
 
 function safeStorage(): Storage | null {
@@ -61,8 +62,12 @@ export function Composer({ client, s, blocked, maxText, t }: Readonly<Props>) {
     // explicit `force:false` is noise.
     if (frame.force) msg.force = true;
     client.request(msg).then(
-      (ack) => dispatch({ type: 'ack', nonce: ack.nonce, ok: ack.ok, code: ack.code, confirm: ack.confirm }),
-      () => dispatch({ type: 'error' }),
+      (ack) => {
+        // Also when this composer is already unmounted — see clearSentDraft.
+        if (ack.ok) clearSentDraft(safeStorage(), s, frame.text);
+        dispatch({ type: 'ack', nonce: ack.nonce, ok: ack.ok, code: ack.code, confirm: ack.confirm });
+      },
+      (err: unknown) => dispatch({ type: 'error', unconfirmed: isUnconfirmed(err) }),
     );
   }, [client, s]);
 
@@ -85,7 +90,12 @@ export function Composer({ client, s, blocked, maxText, t }: Readonly<Props>) {
     sending: t.t('composer.sending'),
   }[label];
 
-  const failure = state.phase === 'failed' ? t.t(ackMessageKey(state.code ?? undefined), { max: maxText }) : null;
+  let failure: string | null = null;
+  if (state.phase === 'failed') {
+    failure = state.code === 'unconfirmed'
+      ? t.t('ack.unconfirmed')
+      : t.t(ackMessageKey(state.code ?? undefined), { max: maxText });
+  }
 
   let sheet: ReactNode = null;
   if (state.phase === 'confirm' && state.confirm) {

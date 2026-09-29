@@ -86,6 +86,7 @@ export const tr: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Göndermek için çok uzun (en fazla {max} karakter).',
   'ack.badKey': 'Bu tuş desteklenmiyor.',
   'ack.writeFailed': 'Gönderilemedi.',
+  'ack.unconfirmed': 'Onaylanmadı. Yeniden göndermeden önce terminali kontrol edin.',
 
   'toast.blocked': '{label} sizi bekliyor',
   'toast.done': '{label} bitti',

@@ -86,6 +86,7 @@ export const de: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Zu lang zum Senden (höchstens {max} Zeichen).',
   'ack.badKey': 'Diese Taste wird nicht unterstützt.',
   'ack.writeFailed': 'Senden fehlgeschlagen.',
+  'ack.unconfirmed': 'Nicht bestätigt. Prüfen Sie das Terminal, bevor Sie erneut senden.',
 
   'toast.blocked': '{label} braucht dich',
   'toast.done': '{label} ist fertig',

@@ -87,6 +87,7 @@ export const cs: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Příliš dlouhé k odeslání (nejvýše {max} znaků).',
   'ack.badKey': 'Tato klávesa není podporována.',
   'ack.writeFailed': 'Odeslání se nezdařilo.',
+  'ack.unconfirmed': 'Nepotvrzeno. Než odešlete znovu, zkontrolujte terminál.',
 
   'toast.blocked': '{label} na vás čeká',
   'toast.done': '{label}: hotovo',
