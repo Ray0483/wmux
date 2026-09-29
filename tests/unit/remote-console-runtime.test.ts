@@ -243,6 +243,25 @@ describe('ConsoleRuntime lifecycle (#254)', () => {
     expect(await closed).toBe(1006);
   });
 
+  it('stopNow while a start is queued or awaiting listen(): nothing is left listening afterwards', async () => {
+    const port = await freePort();
+    writeConfig({ enabled: true, port });
+    const rt = make(fakeOps());
+    const pending = rt.start();
+    rt.stopNow();
+    await pending;
+    expect(rt.getStatus().running).toBe(false);
+    // The port is free: a start that outlived stopNow would still hold it.
+    await new Promise<void>((resolve, reject) => {
+      const s = net.createServer();
+      s.once('error', reject);
+      s.listen(port, '127.0.0.1', () => s.close(() => resolve()));
+    });
+    // A start requested AFTER stopNow is a fresh request and works.
+    await rt.start();
+    expect(rt.getStatus().running).toBe(true);
+  });
+
   it('stop() is graceful (1001) and leaves bindSurface installed for a later start', async () => {
     const { rt, port } = await enabledRuntime();
     const phone = await openPhone(port, await pairViaHttp(rt, port));
@@ -385,6 +404,28 @@ describe('ConsoleRuntime sessions, roster, terminal', () => {
     expect(await phone.next('ack')).toEqual({ t: 'ack', nonce: 'nonce-0001', ok: true });
     expect(ops.write.mock.calls).toEqual([[S, 'ls'], [S, '\r']]);
     expect(ops.noteHumanInput.mock.calls).toEqual([[S, 'ls'], [S, '\r']]);
+  });
+
+  it('a revoke during a send\'s modes round trip: the send never writes', async () => {
+    const { rt, port, ops } = await enabledRuntime();
+    const modesReqs: RemoteRendererRequest[] = [];
+    rt.setRendererSender((_wc, req) => {
+      if (req.kind === 'modes') modesReqs.push(req); // answered by hand below
+      return true;
+    });
+    remoteTaps.bindSurface(S, {} as never);
+    const cookie = await pairViaHttp(rt, port);
+    const phone = await openPhone(port, cookie);
+    phone.ws.send(JSON.stringify({ t: 'hello', v: 1 }));
+    await phone.next('welcome');
+    phone.ws.send(JSON.stringify({ t: 'send', s: S, nonce: 'nonce-0003', text: 'rm -rf build', submit: true }));
+    for (let i = 0; i < 200 && modesReqs.length === 0; i++) await new Promise((r) => setTimeout(r, 5));
+    expect(modesReqs).toHaveLength(1);
+    rt.revoke(cookie.split('.')[0]);
+    rt.handleRendererReply(modesReqs[0].reqId, { bracketedPaste: true });
+    await new Promise((r) => setTimeout(r, 80));
+    expect(ops.noteHumanInput).not.toHaveBeenCalled();
+    expect(ops.write).not.toHaveBeenCalled();
   });
 
   it('a viewer on the wire can never cause a write', async () => {

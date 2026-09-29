@@ -133,6 +133,7 @@ type OperatorMsg = Extract<ClientMessage, { t: 'send' | 'key' | 'answer' }>;
 export class ConsoleSession {
   private helloed = false;
   private closed = false;
+  private disposed = false;
   private readonly frames: TokenBucket;
   private readonly rateTrips: WindowCounter;
   private readonly forbiddenTrips: WindowCounter;
@@ -158,7 +159,15 @@ export class ConsoleSession {
     if (!counter.hit()) this.shut(CLOSE_CODES.RATE, 'rate');
   }
 
+  /**
+   * The socket is gone, or its device was revoked. Also what stops an action
+   * already past its first await before it writes: a revoke disposes the
+   * session at once rather than waiting for the peer to answer the close
+   * frame, which a hostile peer never does. Idempotent.
+   */
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     this.closed = true;
     this.d.onDetach();
   }
@@ -299,6 +308,14 @@ export class ConsoleSession {
     if (wasBlocked && !m.force) return confirm(m.nonce, 'blocked');
 
     const modes = await this.d.queryModes(m.s);
+    // That await is up to 2 s, and two things can change across it. The
+    // session may have been closed — a revoke, a stop — and a revoked phone
+    // must not type anything after the revoke returned. And the agent may have
+    // gone blocked: text plus a trailing Enter would then answer a permission
+    // prompt the phone never saw. Both are read BEFORE any noteHumanInput, so
+    // this re-check still asks the question `wasBlocked` asks (I4).
+    if (this.closed) return refuse(m.nonce, 'gone');
+    if (!m.force && this.d.ops.isBlocked(m.s)) return confirm(m.nonce, 'blocked');
     const bracketed = 'bracketedPaste' in modes && modes.bracketedPaste === true;
     if (clean.includes('\n') && !bracketed && !m.force) return confirm(m.nonce, 'multiline');
     if (!this.d.ops.isLivePty(m.s)) return refuse(m.nonce, 'gone');
@@ -317,7 +334,7 @@ export class ConsoleSession {
       const trailingSubmit = submit && i > 0 && i === writes.length - 1;
       if (trailingSubmit) {
         await this.d.sleep(SUBMIT_GAP_MS);
-        if (!this.d.ops.isLivePty(s)) return 'gone';
+        if (this.closed || !this.d.ops.isLivePty(s)) return 'gone';
       }
       try {
         this.writeHuman(s, writes[i]);

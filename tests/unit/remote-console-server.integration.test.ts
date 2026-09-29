@@ -7,6 +7,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import crypto from 'crypto';
 import fs from 'fs';
 import http from 'http';
+import net from 'net';
 import os from 'os';
 import path from 'path';
 import WebSocket from 'ws';
@@ -42,6 +43,7 @@ interface Rig {
   devices: DeviceRegistry;
   port: number;
   clients: ConsoleClient[];
+  messages: string[];
   rejected: string[];
   uiNotBuilt: number;
   origin: string;
@@ -68,6 +70,7 @@ async function rig(opts: { config?: Partial<RemoteConsoleConfig>; staticRoot?: s
   const assets = loadAllowedAssets(opts.staticRoot ?? root);
   const r = {} as Rig;
   r.clients = [];
+  r.messages = [];
   r.rejected = [];
   r.uiNotBuilt = 0;
   r.config = config;
@@ -82,7 +85,10 @@ async function rig(opts: { config?: Partial<RemoteConsoleConfig>; staticRoot?: s
     onConnection: (c) => {
       r.clients.push(c);
       return {
-        onMessage: (text) => c.send({ t: 'error', code: 'bad-frame', message: `echo:${text.length}` }),
+        onMessage: (text) => {
+          r.messages.push(text);
+          c.send({ t: 'error', code: 'bad-frame', message: `echo:${text.length}` });
+        },
         onClose: () => undefined,
       };
     },
@@ -140,6 +146,26 @@ function closeCode(ws: WebSocket): Promise<number> {
   return new Promise((resolve) => ws.on('close', (code) => resolve(code)));
 }
 
+/** A client→server text frame, masked as RFC 6455 requires. Short payloads only. */
+function maskedText(text: string): Buffer {
+  const payload = Buffer.from(text, 'utf8');
+  const mask = crypto.randomBytes(4);
+  const out = Buffer.alloc(6 + payload.length);
+  out[0] = 0x81;
+  out[1] = 0x80 | payload.length;
+  mask.copy(out, 2);
+  for (let i = 0; i < payload.length; i++) out[6 + i] = payload[i] ^ mask[i % 4];
+  return out;
+}
+
+async function until(cond: () => boolean, ms = 2000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!cond()) {
+    if (Date.now() > end) throw new Error('timed out waiting');
+    await new Promise((res) => setTimeout(res, 5));
+  }
+}
+
 describe('remote-console server: upgrade gate (#254)', () => {
   it('refuses no cookie (401), bad Origin (403), null Origin (403), bad Host (403), wrong path', async () => {
     const r = await rig();
@@ -189,6 +215,36 @@ describe('remote-console server: upgrade gate (#254)', () => {
     expect(await closed).toBe(CLOSE_CODES.REVOKED);
     expect(frames).toContain('{"t":"revoked"}');
     expect((await connect(r, { cookie })).status).toBe(401);
+  });
+
+  it('frames arriving after the server hung up (CLOSING) are never handed to the session', async () => {
+    // A hostile peer simply never answers our close frame and keeps typing;
+    // ws goes on emitting 'message' for a CLOSING socket, so a revoked phone
+    // could otherwise write until the close timeout. Raw socket, because the
+    // ws client answers a close by itself.
+    const r = await rig();
+    const cookie = pairDevice(r);
+    const sock = net.connect(r.port, '127.0.0.1');
+    let received = Buffer.alloc(0);
+    sock.on('data', (d) => { received = Buffer.concat([received, d]); });
+    sock.on('error', () => undefined);
+    sock.write([
+      'GET /ws HTTP/1.1', `Host: ${r.host}`, `Origin: ${r.origin}`, 'Upgrade: websocket', 'Connection: Upgrade',
+      `Sec-WebSocket-Key: ${crypto.randomBytes(16).toString('base64')}`, 'Sec-WebSocket-Version: 13',
+      `Cookie: wmux_rc=${cookie}`, '', '',
+    ].join('\r\n'));
+    await until(() => received.toString('latin1').includes('\r\n\r\n') && r.clients.length === 1);
+    expect(received.toString('latin1')).toMatch(/^HTTP\/1\.1 101/);
+    received = Buffer.alloc(0);
+
+    sock.write(maskedText('before'));
+    await until(() => r.messages.includes('before'));
+    r.clients[0].close(CLOSE_CODES.REVOKED, 'revoked');
+    await until(() => received.includes(0x88)); // our close frame reached the peer
+    sock.write(maskedText('after'));
+    await new Promise((res) => setTimeout(res, 150));
+    expect(r.messages).toEqual(['before']);
+    sock.destroy();
   });
 
   it('LAN bind without the override: an operator device is an effective viewer', async () => {

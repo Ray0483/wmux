@@ -169,6 +169,8 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
   private pumping = false;
   private pumpAgain = false;
   private lifecycle: Promise<void> = Promise.resolve();
+  /** Bumped by `stopNow`, which cannot wait for the lifecycle queue: a start already awaiting `listen` sees it and backs out. */
+  private epoch = 0;
   private readonly version = readAppVersion();
   private readonly timings: RuntimeTimings;
 
@@ -241,8 +243,15 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     return next;
   }
 
+  /**
+   * Starts are tagged with the epoch they were REQUESTED in. stopNow() cannot
+   * wait for the lifecycle queue (will-quit is synchronous), so a start still
+   * queued behind it — or one already awaiting listen() — must notice it is
+   * obsolete by itself rather than open a port after quit.
+   */
   start(): Promise<void> {
-    return this.enqueue(() => this.doStart());
+    const epoch = this.epoch;
+    return this.enqueue(() => this.doStart(epoch));
   }
 
   stop(): Promise<void> {
@@ -250,14 +259,15 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
   }
 
   reconfigure(): Promise<void> {
+    const epoch = this.epoch;
     return this.enqueue(async () => {
       await this.doStop();
-      await this.doStart();
+      await this.doStart(epoch);
     });
   }
 
-  private async doStart(): Promise<void> {
-    if (this.server) return;
+  private async doStart(epoch: number): Promise<void> {
+    if (this.server || epoch !== this.epoch) return;
     this.config = this.loadConfig();
     this.devices.reload();
     this.devices.expireIdle();
@@ -279,6 +289,13 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     const host = cfg.bind === 'lan' && cfg.lanHost ? cfg.lanHost : '127.0.0.1';
     const srv = this.createServer();
     const r = await srv.listen(host, cfg.port);
+    if (epoch !== this.epoch) {
+      // will-quit ran stopNow() while listen() was pending. Adopting this
+      // server now would leave a bound port, a heartbeat and live taps behind
+      // a runtime that has been told to be gone.
+      srv.closeNow();
+      return;
+    }
     if (!r.ok) {
       srv.closeNow();
       this.lastError = r.error;
@@ -305,7 +322,11 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     if (!srv) return;
     this.server = null;
     this.listening = null;
+    const epoch = this.epoch;
     await srv.close(CLOSE_CODES.STOPPING);
+    // stopNow() ran meanwhile and already tore everything down; reinstalling
+    // the bind taps here would undo its resetRemoteTaps().
+    if (epoch !== this.epoch) return;
     this.teardown();
     resetRemoteTaps();
     this.installBindTaps();
@@ -314,6 +335,7 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
   }
 
   stopNow(): void {
+    this.epoch++;
     const srv = this.server;
     this.server = null;
     this.listening = null;
@@ -438,6 +460,14 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
 
   private onDevicesRevoked(ids: string[]): void {
     this.server?.closeDevices(ids, CLOSE_CODES.REVOKED, { t: 'revoked' });
+    // Disposed NOW, not when the socket's 'close' fires: that waits on the peer
+    // answering the close frame, and a revoked phone that never answers would
+    // otherwise keep a live session — including an action already past its
+    // modes await — for as long as ws lets a CLOSING socket linger.
+    const revoked = new Set(ids);
+    for (const { client, session } of this.sessions.values()) {
+      if (revoked.has(client.device.id)) session.dispose();
+    }
     for (const id of ids) {
       this.deviceStates.delete(id);
       this.trackers.delete(id);

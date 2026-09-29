@@ -234,6 +234,41 @@ describe('session: send (rule 4)', () => {
     expect(h.calls).toEqual([]);
   });
 
+  it('re-checks blocked after the modes await: a pane that went blocked meanwhile confirms, zero writes', async () => {
+    // Text + Enter landing on a permission prompt that appeared during the
+    // (up to 2 s) modes round trip would answer it unasked.
+    const h = await greeted();
+    h.deps.queryModes = async () => {
+      h.state.blocked = true;
+      return { bracketedPaste: true };
+    };
+    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'yes', submit: true });
+    expect(h.calls).toEqual([]);
+    expect(h.acks()[0]).toMatchObject({ ok: false, code: 'confirm', confirm: 'blocked' });
+    // force still goes through.
+    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'yes', submit: true, force: true });
+    expect(h.calls.filter((c) => c.startsWith('write'))).toHaveLength(2);
+  });
+
+  it('a session disposed during the modes await (revoke, stop) writes nothing', async () => {
+    const h = await greeted();
+    h.deps.queryModes = async () => {
+      h.session.dispose();
+      return { bracketedPaste: true };
+    };
+    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'x', submit: true });
+    expect(h.calls).toEqual([]);
+  });
+
+  it('a session disposed during the submit gap does not send the trailing Enter', async () => {
+    const h = await greeted();
+    h.deps.sleep = async () => {
+      h.session.dispose();
+    };
+    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'x', submit: true });
+    expect(h.calls.filter((c) => c.startsWith('write'))).toEqual(['write:"\\u001b[200~x\\u001b[201~"']);
+  });
+
   it('a write that throws is write-failed', async () => {
     const h = await greeted();
     h.ops.write = () => { throw new Error('pty gone'); };

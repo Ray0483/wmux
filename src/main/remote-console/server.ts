@@ -460,6 +460,11 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
       entry.missed = 0;
     });
     ws.on('message', (data, isBinary) => {
+      // ws keeps emitting frames while a socket is CLOSING — i.e. after we sent
+      // a close (revoke, stop, rate) and before the peer answered it, which a
+      // hostile peer never does. Nothing the server has already hung up on may
+      // still be acted upon.
+      if (ws.readyState !== WebSocket.OPEN) return;
       if (isBinary) {
         client.send({ t: 'error', code: 'bad-frame', message: 'Text frames only.' });
         return;
