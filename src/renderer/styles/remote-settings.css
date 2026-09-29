@@ -1,0 +1,165 @@
+/* Settings → Remote (#254). Imported by RemoteConsoleSettings.tsx, so the
+   rules load with the tab and not with every window. Builds on settings.css
+   (.settings-row, .settings-button, .settings-input) rather than restyling it. */
+
+.remote-settings__status {
+  font-size: 12.5px;
+  color: var(--ui-text-primary);
+  padding: 6px 10px;
+  margin: 4px 0 8px;
+  border-radius: 6px;
+  background: rgba(var(--ui-overlay-rgb), 0.05);
+}
+.remote-settings__status--error {
+  color: #ff8a8a;
+  background: rgba(255, 80, 80, 0.10);
+}
+
+.remote-settings__error {
+  color: #ff8a8a;
+  font-size: 12px;
+  margin: 6px 0;
+}
+
+.remote-settings__card {
+  border: 1px solid rgba(var(--ui-overlay-rgb), 0.12);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ui-text-primary);
+  background: rgba(var(--ui-overlay-rgb), 0.03);
+}
+.remote-settings__card p { margin: 4px 0 8px; }
+.remote-settings__card--muted { color: var(--ui-text-muted); }
+.remote-settings__card--warn {
+  border-color: rgba(255, 190, 80, 0.45);
+  background: rgba(255, 190, 80, 0.08);
+}
+.remote-settings__card--danger {
+  border-color: rgba(255, 110, 110, 0.5);
+  background: rgba(255, 80, 80, 0.08);
+}
+
+.remote-settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.remote-settings__actions--end { justify-content: flex-end; margin-top: 14px; }
+
+.remote-settings__inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.remote-settings__radios { align-items: flex-start; gap: 6px; }
+.remote-settings__radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ui-text-primary);
+  cursor: pointer;
+}
+.remote-settings__radio input {
+  margin: 2px 0 0;
+  accent-color: var(--ui-accent);
+  flex-shrink: 0;
+}
+.remote-settings__radio--disabled { opacity: 0.6; cursor: default; }
+.remote-settings__sub { display: block; }
+
+.remote-settings__recipes { margin: 6px 0 4px; }
+.remote-settings__recipe { margin-bottom: 8px; }
+.remote-settings__code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-family: Consolas, Menlo, Monaco, monospace;
+  font-size: 12px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  color: var(--ui-text-primary);
+  background: rgba(var(--ui-overlay-rgb), 0.08);
+  user-select: all;
+}
+
+.remote-settings__subtitle {
+  margin: 14px 0 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ui-text-primary);
+}
+.remote-settings__table-wrap { overflow-x: auto; }
+.remote-settings__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: var(--ui-text-primary);
+}
+.remote-settings__table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--ui-text-muted);
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(var(--ui-overlay-rgb), 0.12);
+}
+.remote-settings__table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid rgba(var(--ui-overlay-rgb), 0.06);
+  vertical-align: middle;
+}
+.remote-settings__row-actions { white-space: nowrap; text-align: right; }
+.remote-settings__row-actions .settings-button { margin-left: 6px; }
+.remote-settings__name-input { min-width: 0; width: 140px; }
+
+/* The pairing dialog is portalled to <body>, so it must clear the settings
+   overlay's z-index (5000) on its own. */
+.remote-settings__modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+.remote-settings__modal {
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: 18px 20px;
+  border-radius: 10px;
+  border: 1px solid rgba(var(--ui-overlay-rgb), 0.14);
+  background: var(--ui-bg-2);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+.remote-settings__offer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+/* The SVG carries its own white quiet zone; this only sizes it. */
+.remote-settings__qr {
+  align-self: center;
+  width: 240px;
+  height: 240px;
+  image-rendering: pixelated;
+  border-radius: 4px;
+}
+.remote-settings__url { flex: 1; min-width: 0; font-family: Consolas, Menlo, Monaco, monospace; font-size: 11.5px; }
+.remote-settings__countdown { margin: 2px 0; font-size: 12.5px; color: var(--ui-text-primary); }
+.remote-settings__paired {
+  padding: 14px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--ui-accent);
+}

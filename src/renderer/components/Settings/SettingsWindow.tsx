@@ -10,13 +10,16 @@ import PromptSettings from './PromptSettings';
 import QuickLaunchSettings from './QuickLaunchSettings';
 import HelpSettings from './HelpSettings';
 import ChangelogSettings from './ChangelogSettings';
+import RemoteConsoleSettings from './RemoteConsoleSettings';
 import { useT, type TranslationKey } from '../../i18n';
 import '../../styles/settings.css';
 
 // Changelog sits next to Help (issue #211) — both answer "tell me about wmux
 // itself" rather than "change how wmux behaves", and neither belongs among the
-// preference tabs above them.
-const TABS = ['General', 'Sidebar', 'Workspace', 'Terminal', 'Prompts', 'Notifications', 'Browser', 'Profiles', 'Shortcuts', 'Changelog', 'Help'] as const;
+// preference tabs above them. Remote (#254) closes the preference tabs: it is
+// the one that exposes wmux beyond this machine, so it is not in the way of
+// the everyday ones.
+const TABS = ['General', 'Sidebar', 'Workspace', 'Terminal', 'Prompts', 'Notifications', 'Browser', 'Profiles', 'Shortcuts', 'Remote', 'Changelog', 'Help'] as const;
 
 // Map each tab to its i18n key (issue #56). Typed as TranslationKey, not
 // string: the lookup is what reaches t(), so the keys are checked here.
@@ -30,6 +33,7 @@ const TAB_LABEL_KEYS: Record<typeof TABS[number], TranslationKey> = {
   Browser: 'settings.tab.browser',
   Profiles: 'settings.tab.profiles',
   Shortcuts: 'settings.tab.shortcuts',
+  Remote: 'settings.tab.remote',
   Changelog: 'settings.tab.changelog',
   Help: 'settings.tab.help',
 };
@@ -82,6 +86,10 @@ export default function SettingsWindow({ onClose, initialTab }: SettingsWindowPr
             {activeTab === 'Browser' && <BrowserSettings />}
             {activeTab === 'Profiles' && <QuickLaunchSettings />}
             {activeTab === 'Shortcuts' && <KeyboardSettings />}
+            {/* Mounted only while selected (#254): its getState/onState pair
+                is a live subscription to main, and nobody reading the font
+                settings needs remote-console pushes re-rendering this window. */}
+            {activeTab === 'Remote' && <RemoteConsoleSettings />}
             {/* Mounted only while selected, so opening Settings never fires the
                 GitHub fetch for a user who came here to change their font. */}
             {activeTab === 'Changelog' && <ChangelogSettings />}
