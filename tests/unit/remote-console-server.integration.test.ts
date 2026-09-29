@@ -11,8 +11,8 @@ import net from 'net';
 import os from 'os';
 import path from 'path';
 import WebSocket from 'ws';
-import { DeviceRegistry } from '../../src/main/remote-console/devices';
-import { createConsoleServer, HOST_REFUSED_PAGE, MAX_CONNECTIONS } from '../../src/main/remote-console/server';
+import { DeviceRegistry, MAX_DEVICES } from '../../src/main/remote-console/devices';
+import { createConsoleServer, HOST_REFUSED_PAGE, MAX_CONNECTIONS, MAX_PER_DEVICE } from '../../src/main/remote-console/server';
 import { LIMITS } from '../../src/main/remote-console/rate-limit';
 import type { ConsoleClient, ConsoleServer } from '../../src/main/remote-console/server';
 import { loadAllowedAssets } from '../../src/main/remote-console/static-assets';
@@ -141,7 +141,8 @@ function connect(r: Rig, headers: { origin?: string | null; cookie?: string; hos
     const h: Record<string, string> = { Host: headers.host ?? r.host };
     if (headers.cookie) h.Cookie = `wmux_rc=${headers.cookie}`;
     const origin = headers.origin === undefined ? r.origin : headers.origin;
-    const key = headers.key === undefined ? (headers.cookie ? keys.get(headers.cookie) ?? null : null) : headers.key;
+    const storedKey = headers.cookie ? keys.get(headers.cookie) ?? null : null;
+    const key = headers.key === undefined ? storedKey : headers.key;
     const protocols = key ? [WS_SUBPROTOCOL, WS_KEY_PROTOCOL_PREFIX + key] : [WS_SUBPROTOCOL];
     const ws = new WebSocket(`ws://127.0.0.1:${r.port}${headers.path ?? '/ws'}`, protocols, { headers: h, ...(origin ? { origin } : {}) });
     ws.on('open', () => resolve({ ws, status: 'open' }));
@@ -213,7 +214,8 @@ describe('remote-console server: upgrade gate (#254)', () => {
     ws.close();
   });
 
-  it('caps at 2 per device and 8 in total (the 9th is refused)', async () => {
+  it('caps at 2 per device, and the total never refuses a device under its own cap', async () => {
+    expect(MAX_CONNECTIONS).toBe(MAX_DEVICES * MAX_PER_DEVICE);
     const r = await rig();
     const a = pairDevice(r);
     expect((await connect(r, { cookie: a })).status).toBe('open');
@@ -222,14 +224,15 @@ describe('remote-console server: upgrade gate (#254)', () => {
     const third = await connect(r, { cookie: a });
     expect(third.status).toBe('open');
     expect(await closeCode(third.ws)).toBe(CLOSE_CODES.TOO_MANY);
-    for (let i = 0; i < 3; i++) {
+    // Every other device that can pair gets both of its tabs: 4409 only ever
+    // means "a tab on THIS device", which is what the phone tells the user.
+    for (let i = 1; i < MAX_DEVICES; i++) {
       const c = pairDevice(r);
-      expect((await connect(r, { cookie: c })).status).toBe('open');
+      const first = await connect(r, { cookie: c });
+      expect(first.status).toBe('open');
       expect((await connect(r, { cookie: c })).status).toBe('open');
     }
-    expect(r.clients).toHaveLength(MAX_CONNECTIONS);
-    const ninth = await connect(r, { cookie: pairDevice(r) });
-    expect(await closeCode(ninth.ws)).toBe(CLOSE_CODES.TOO_MANY);
+    await new Promise((resolve) => setTimeout(resolve, 20));
     expect(r.clients).toHaveLength(MAX_CONNECTIONS);
   });
 

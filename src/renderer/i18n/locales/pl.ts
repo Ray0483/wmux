@@ -610,6 +610,8 @@ export const pl: Translation = {
   'settings.remote.rejectedOrigin': 'Przeglądarka pod adresem {origin} została odrzucona, ponieważ wmux nie zna tego adresu.',
   'settings.remote.rejectedOriginCaution': 'Ten komunikat może wywołać dowolna strona internetowa otwarta na tym komputerze. Użyj go tylko wtedy, gdy rozpoznajesz ten adres jako swój, na przykład swój adres URL Tailscale.',
   'settings.remote.useAsPublicUrl': 'Użyj jako publicznego URL',
+  'settings.remote.useAsPublicUrlConfirm': 'Linki i kody QR parowania wyślą telefony pod {origin}. Kto kontroluje ten adres, może przejąć parowanie. Kontynuuj tylko, jeśli to Twój własny adres Tailscale.',
+  'settings.remote.useAsPublicUrlYes': 'Tak, użyj tego adresu',
   'settings.remote.dismiss': 'Odrzuć',
   'settings.remote.reachability': 'Dostępna z',
   'settings.remote.bindLoopback': 'Tylko ten komputer',

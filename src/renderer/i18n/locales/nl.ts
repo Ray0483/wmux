@@ -599,6 +599,8 @@ export const nl: Translation = {
   'settings.remote.rejectedOrigin': 'Een browser op {origin} is geweigerd omdat wmux dat adres niet kent.',
   'settings.remote.rejectedOriginCaution': 'Elke webpagina die op deze computer openstaat, kan deze melding veroorzaken. Gebruik het alleen als je het adres herkent als je eigen adres, bijvoorbeeld je Tailscale-URL.',
   'settings.remote.useAsPublicUrl': 'Gebruiken als openbare URL',
+  'settings.remote.useAsPublicUrlConfirm': 'Koppelingslinks en QR-codes sturen telefoons naar {origin}. Wie dat adres beheert, kan een koppeling overnemen. Ga alleen verder als het je eigen Tailscale-adres is.',
+  'settings.remote.useAsPublicUrlYes': 'Ja, dit adres gebruiken',
   'settings.remote.dismiss': 'Negeren',
   'settings.remote.reachability': 'Bereikbaar vanaf',
   'settings.remote.bindLoopback': 'Alleen deze computer',

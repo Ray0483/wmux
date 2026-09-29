@@ -469,9 +469,11 @@ describe('session: answer (rule 6)', () => {
   it('an answer with no prompt id is a bad frame: it cannot say which question it answers', async () => {
     const h = await greeted();
     h.state.blocked = true;
-    await h.frame({ t: 'answer', s: S, nonce: nonce(), choiceId: 'y' });
+    const n = nonce();
+    await h.frame({ t: 'answer', s: S, nonce: n, choiceId: 'y' });
     expect(h.ops.deliverAnswer).not.toHaveBeenCalled();
-    expect(h.sent[0]).toMatchObject({ t: 'error', code: 'bad-frame' });
+    // Refused BY NONCE, so the phone's pending answer settles instead of hanging.
+    expect(h.sent[0]).toEqual({ t: 'ack', nonce: n, ok: false, code: 'write-failed' });
   });
 });
 
@@ -519,6 +521,21 @@ describe('session: frame rate (rule 7)', () => {
     const before = h.sent.length;
     await h.frame({ t: 'ping' });
     expect(h.sent.length).toBe(before);
+  });
+
+  it('an action refused by the frame limiter is acked by its nonce, so the phone does not hang on it (#254)', async () => {
+    const h = await greeted();
+    for (let i = 0; i < 100; i++) await h.frame({ t: 'ping' });
+    const n = nonce();
+    await h.frame({ t: 'key', s: S, nonce: n, key: 'enter' });
+    expect(h.sent.at(-1)).toEqual({ t: 'ack', nonce: n, ok: false, code: 'rate' });
+    expect(h.calls).toEqual([]);
+  });
+
+  it('a malformed frame with no action nonce still gets the untargeted error', async () => {
+    const h = await greeted();
+    await h.frame({ t: 'send', s: S, nonce: 'short', text: 1 });
+    expect(h.sent.at(-1)).toMatchObject({ t: 'error', code: 'bad-frame' });
   });
 
   it('dispose detaches and drops further frames', async () => {

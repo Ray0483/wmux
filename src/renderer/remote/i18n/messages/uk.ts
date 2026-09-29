@@ -49,14 +49,15 @@ export const uk: Readonly<Record<string, string>> = {
   'console.waiting': 'Очікування комп’ютера…',
   'console.viewerNotice': 'Лише перегляд — це підключення не може друкувати чи відповідати.',
   'console.controlLimited': 'Тут лише перегляд — пристрій спарено з керуванням, але комп’ютер вимикає керування для незашифрованих HTTP-підключень.',
+  'console.repairForControl': 'Тут лише перегляд — пристрій спарено з керуванням, але його спарювання вже передавалося незашифрованим HTTP, тому керування вимкнено. Щоб керувати, спарте його знову звідси.',
   'console.needsYouCount_one': '{n} агент чекає на вас',
   'console.needsYouCount_few': '{n} агенти чекають на вас',
   'console.needsYouCount_many': '{n} агентів чекають на вас',
   'console.needsYouCount_other': '{n} агента чекають на вас',
 
-  'card.openToAnswer': 'Чекає на вас — відкрийте, щоб відповісти',
+  'card.openToAnswer': 'Відкрийте, щоб відповісти',
   'card.answerPending': 'Надіслано — чекаємо на агента',
-  'card.answerOnComputer': 'Потрібна ваша відповідь — дайте її на комп’ютері',
+  'card.answerOnComputer': 'Дайте відповідь на комп’ютері',
 
   'attach.fit': 'За шириною',
   'attach.pan': 'Читабельно',

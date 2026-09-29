@@ -49,11 +49,12 @@ export const zhTW: Readonly<Record<string, string>> = {
   'console.waiting': '正在等候你的電腦…',
   'console.viewerNotice': '僅檢視 — 此連線無法輸入或回答。',
   'console.controlLimited': '此處僅檢視 — 此裝置以控制權限配對，但你的電腦對未加密的 HTTP 連線關閉了控制。',
+  'console.repairForControl': '此處僅檢視 — 此裝置以控制權限配對，但其配對曾經透過未加密的 HTTP 使用，因此控制已關閉。請從這裡重新配對以使用控制。',
   'console.needsYouCount_other': '{n} 個代理程式在等你處理',
 
-  'card.openToAnswer': '等你處理 — 開啟以回答',
+  'card.openToAnswer': '開啟以回答',
   'card.answerPending': '已送出 — 等待代理程式',
-  'card.answerOnComputer': '需要你處理 — 請在電腦上回答',
+  'card.answerOnComputer': '請在電腦上回答',
 
   'attach.fit': '符合寬度',
   'attach.pan': '易讀',
@@ -135,7 +136,7 @@ export const zhTW: Readonly<Record<string, string>> = {
   'prefs.alertsOn': '提醒已開啟。',
   'prefs.alertsDenied': '提醒已在此瀏覽器的設定中遭到封鎖。',
   'prefs.alertsUnavailable': '系統提醒需要 HTTPS 位址。頁面內提醒仍可使用。',
-  'prefs.alertsUnsupported': '此瀏覽器無法為這類網頁顯示系統通知。頁面內的提醒仍可運作。',
+  'prefs.alertsUnsupported': '此瀏覽器無法為這類網頁顯示系統提醒。頁面內提醒仍可使用。',
   'prefs.forget': '忘記此裝置',
   'prefs.forgetTitle': '要忘記此裝置嗎？',
   'prefs.forgetBody': '重新連線需要從電腦取得新的代碼。',

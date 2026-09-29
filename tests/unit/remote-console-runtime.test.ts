@@ -688,3 +688,100 @@ describe('facade integration', () => {
     expect(typeof createRemoteConsoleRuntime).toBe('function');
   });
 });
+
+function getSession(port: number, cookie: string, key: string | undefined): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      host: '127.0.0.1', port, method: 'GET', path: '/api/session', agent: false,
+      headers: { Cookie: cookie, 'x-wmux-key': key ?? '' },
+    }, (res) => {
+      let data = '';
+      res.on('data', (c) => { data += c; });
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, body: data }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+describe('Control credentials and plain-HTTP LAN (#254, review round 5)', () => {
+  it('pairStart mints View only on a LAN bind without "allow control over plain HTTP"', async () => {
+    const port = await freePort();
+    writeConfig({ enabled: true, port, bind: 'lan', lanHost: '127.0.0.1' });
+    const rt = make(fakeOps({ lanAddresses: () => ['127.0.0.1'] }));
+    await rt.start();
+    const offer = rt.pairStart({ name: 'Phone', scope: 'operator' });
+    if ('error' in offer) throw new Error(offer.error);
+    expect(offer.scope).toBe('viewer');
+    const secret = offer.url.split('#pair=')[1];
+    const res = await post(port, '/api/pair', { secret, name: 'Pixel' });
+    expect(JSON.parse(res.body).device.scope).toBe('viewer');
+  });
+
+  it('an operator paired over plain-HTTP LAN is view-only once the bind is back on loopback, until it pairs again', async () => {
+    const port = await freePort();
+    writeConfig({ enabled: true, port, bind: 'lan', lanHost: '127.0.0.1', allowInsecureControl: true });
+    const rt = make(fakeOps({ lanAddresses: () => ['127.0.0.1'] }));
+    await rt.start();
+    const cookie = await pairViaHttp(rt, port, 'operator');
+    const onLan = await getSession(port, `wmux_rc=${cookie}`, pageKeys.get(cookie));
+    expect(JSON.parse(onLan.body)).toMatchObject({ scope: 'operator', effectiveScope: 'operator' });
+    const disk = JSON.parse(fs.readFileSync(path.join(dir, DEVICES_FILE), 'utf8')) as { devices: { cleartext?: boolean }[] };
+    expect(disk.devices[0].cleartext).toBe(true);
+
+    expect(await rt.setConfig({ enabled: true, port, bind: 'loopback' })).toEqual({ ok: true });
+    const back = await getSession(port, `wmux_rc=${cookie}`, pageKeys.get(cookie));
+    expect(JSON.parse(back.body)).toMatchObject({ scope: 'operator', effectiveScope: 'viewer' });
+
+    // Pairing again over the secure path replaces the record with a clean one.
+    const fresh = await pairViaHttp(rt, port, 'operator');
+    const again = await getSession(port, `wmux_rc=${fresh}`, pageKeys.get(fresh));
+    expect(JSON.parse(again.body)).toMatchObject({ effectiveScope: 'operator' });
+  });
+
+  it('a device paired on loopback and later presented over a LAN bind is marked too', async () => {
+    const { rt, port } = await enabledRuntime(fakeOps({ lanAddresses: () => ['127.0.0.1'] }));
+    const cookie = await pairViaHttp(rt, port, 'operator');
+    const session = async () => JSON.parse((await getSession(port, `wmux_rc=${cookie}`, pageKeys.get(cookie))).body).effectiveScope;
+    expect(await session()).toBe('operator');
+    expect(await rt.setConfig({ enabled: true, port, bind: 'lan', lanHost: '127.0.0.1', allowInsecureControl: true })).toEqual({ ok: true });
+    expect(await session()).toBe('operator');
+    expect(await rt.setConfig({ enabled: true, port, bind: 'loopback' })).toEqual({ ok: true });
+    expect(await session()).toBe('viewer');
+  });
+});
+
+describe('a tossed cookie does not shadow the paired one (#254, review round 5)', () => {
+  it('/api/session tries every wmux_rc value, so a Path=/api junk cookie sent first is skipped', async () => {
+    const { rt, port } = await enabledRuntime();
+    const cookie = await pairViaHttp(rt, port, 'viewer');
+    const res = await getSession(port, `wmux_rc=dev-00000000-0000-4000-8000-000000000000.junk; wmux_rc=${cookie}`, pageKeys.get(cookie));
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body)).toMatchObject({ paired: true });
+  });
+
+  it('the socket does too', async () => {
+    const { rt, port } = await enabledRuntime();
+    const cookie = await pairViaHttp(rt, port, 'viewer');
+    pageKeys.set(`junk; wmux_rc=${cookie}`, pageKeys.get(cookie) as string);
+    const phone = await openPhone(port, `junk; wmux_rc=${cookie}`);
+    phone.ws.send(JSON.stringify({ t: 'hello', v: 1 }));
+    expect((await phone.next('welcome')).t).toBe('welcome');
+    phone.ws.close();
+  });
+});
+
+describe('"Last seen" follows a connected device (#254, review round 5)', () => {
+  it('is touched when its socket closes, not left at connect time', async () => {
+    const { rt, port } = await enabledRuntime();
+    const cookie = await pairViaHttp(rt, port, 'viewer');
+    const phone = await openPhone(port, cookie);
+    phone.ws.send(JSON.stringify({ t: 'hello', v: 1 }));
+    await phone.next('welcome');
+    const connectedAt = rt.getStatus().devices[0].lastSeenAt;
+    await new Promise((r) => setTimeout(r, 30));
+    phone.ws.close();
+    await new Promise((r) => setTimeout(r, 60));
+    expect(rt.getStatus().devices[0].lastSeenAt).toBeGreaterThan(connectedAt);
+  });
+});

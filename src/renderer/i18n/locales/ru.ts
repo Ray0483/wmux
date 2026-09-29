@@ -610,6 +610,8 @@ export const ru: Translation = {
   'settings.remote.rejectedOrigin': 'Браузер с адреса {origin} отклонён: wmux не знает этот адрес.',
   'settings.remote.rejectedOriginCaution': 'Это сообщение может вызвать любая веб-страница, открытая на этом компьютере. Используйте его, только если узнаёте этот адрес как свой, например ваш URL Tailscale.',
   'settings.remote.useAsPublicUrl': 'Использовать как публичный URL',
+  'settings.remote.useAsPublicUrlConfirm': 'Ссылки и QR-коды сопряжения будут отправлять телефоны на {origin}. Тот, кто управляет этим адресом, может перехватить сопряжение. Продолжайте, только если это ваш собственный адрес Tailscale.',
+  'settings.remote.useAsPublicUrlYes': 'Да, использовать этот адрес',
   'settings.remote.dismiss': 'Скрыть',
   'settings.remote.reachability': 'Доступно с',
   'settings.remote.bindLoopback': 'Только этот компьютер',

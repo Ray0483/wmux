@@ -593,6 +593,8 @@ export const zh: Translation = {
   'settings.remote.rejectedOrigin': '来自 {origin} 的浏览器已被拒绝，因为 wmux 不认识该地址。',
   'settings.remote.rejectedOriginCaution': '此计算机上打开的任何网页都可能引发此消息。只有在你认出该地址是你自己的（例如你的 Tailscale URL）时才使用它。',
   'settings.remote.useAsPublicUrl': '用作公开 URL',
+  'settings.remote.useAsPublicUrlConfirm': '配对链接和二维码会把手机导向 {origin}。控制该地址的人可以接管配对。只有在这是你自己的 Tailscale 地址时才继续。',
+  'settings.remote.useAsPublicUrlYes': '是，使用此地址',
   'settings.remote.dismiss': '忽略',
   'settings.remote.reachability': '可访问范围',
   'settings.remote.bindLoopback': '仅此电脑',

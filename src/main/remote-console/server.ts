@@ -42,7 +42,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { RemoteConsoleConfig } from '../../shared/remote-console-config';
 import { CLOSE_CODES, DEVICE_KEY_HEADER, WS_SUBPROTOCOL } from '../../shared/remote-console-protocol';
 import type { RemoteScope, ServerMessage } from '../../shared/remote-console-protocol';
-import type { DeviceRecord, DeviceRegistry } from './devices';
+import { MAX_DEVICES, type DeviceRecord, type DeviceRegistry } from './devices';
 import {
   buildAllowlists,
   clearCookieHeader,
@@ -52,7 +52,7 @@ import {
   isHttpsRequest,
   keyFromProtocols,
   offersAsPublicUrl,
-  readCookie,
+  readCookies,
   rejectedOriginValue,
   routeOf,
   SECURITY_HEADERS,
@@ -62,8 +62,15 @@ import { KeyedWindowLimiter, LIMITS, PenaltyBox, WindowCounter } from './rate-li
 import { refusedPage } from './refused-page';
 import type { AssetEntry } from './static-assets';
 
-export const MAX_CONNECTIONS = 8;
 export const MAX_PER_DEVICE = 2;
+/**
+ * Every paired device's full allowance, so the server-wide cap can never be
+ * what refuses a device still under its own. Both caps close 4409, and the
+ * phone reads 4409 as "another tab on THIS device holds the slot" — at 8, four
+ * phones with two tabs each made a fifth phone, with one tab, be told to close
+ * tabs it did not have, and Retry hit the same wall. It stays as a backstop.
+ */
+export const MAX_CONNECTIONS = MAX_DEVICES * MAX_PER_DEVICE;
 export const HEARTBEAT_MS = 20_000;
 export const MAX_MISSED_PONGS = 2;
 export const MAX_BODY = 2048;
@@ -248,8 +255,17 @@ function closeListener(server: http.Server): Promise<void> {
   });
 }
 
-export function effectiveScopeFor(cfg: RemoteConsoleConfig, device: { scope: RemoteScope }): RemoteScope {
-  return cfg.bind === 'lan' && !cfg.allowInsecureControl ? 'viewer' : device.scope;
+/**
+ * What a device may do on this listener. On a plain-HTTP LAN bind, Control
+ * only with the user's explicit "allow control over plain HTTP". Anywhere
+ * else, a device whose cookie and page key have ever crossed a plain-HTTP LAN
+ * (`cleartext`) is view-only: whoever sniffed them there could replay them
+ * through the secure path the user went back to. Pairing again over that
+ * secure path mints a clean record.
+ */
+export function effectiveScopeFor(cfg: RemoteConsoleConfig, device: { scope: RemoteScope; cleartext?: boolean }): RemoteScope {
+  if (cfg.bind === 'lan') return cfg.allowInsecureControl ? device.scope : 'viewer';
+  return device.cleartext === true ? 'viewer' : device.scope;
 }
 
 export function createConsoleServer(deps: ServerDeps): ConsoleServer {
@@ -352,10 +368,27 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
     });
   }
 
+  /**
+   * The first `wmux_rc` value that verifies — and, given a key, whose device
+   * that key also proves. Every value is tried (guards.ts readCookies): a junk
+   * cookie another server on this host tossed must not shadow the real one.
+   * A device authenticated while the listener is a plain-HTTP LAN bind has
+   * had its credential on the wire in the clear, and is marked so
+   * (effectiveScopeFor).
+   */
+  function cookieDevice(req: IncomingMessage, key: string | null | undefined, checkKey: boolean): { device: DeviceRecord; cookie: string } | null {
+    for (const cookie of readCookies(header(req, 'cookie'))) {
+      const device = deps.devices.verify(cookie);
+      if (!device || (checkKey && !deps.devices.verifyKey(device, key))) continue;
+      if (checkKey && bound.bind === 'lan') deps.devices.markCleartext(device.id);
+      return { device, cookie };
+    }
+    return null;
+  }
+
   /** The device this request proves with its cookie AND its page key header, or null. */
   function keyedDevice(req: IncomingMessage): DeviceRecord | null {
-    const device = deps.devices.verify(readCookie(header(req, 'cookie')));
-    return device && deps.devices.verifyKey(device, header(req, DEVICE_KEY_HEADER)) ? device : null;
+    return cookieDevice(req, header(req, DEVICE_KEY_HEADER), true)?.device ?? null;
   }
 
   async function handlePair(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -384,7 +417,7 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
     // otherwise let whoever redeems a code unpair the phone. A browser that
     // lost its key gets a new record; the old one stays listed in Settings.
     const prior = keyedDevice(req);
-    const r = deps.devices.consumePairing(v.secret, v.name, prior?.id ?? null);
+    const r = deps.devices.consumePairing(v.secret, v.name, prior?.id ?? null, bound.bind === 'lan');
     if (!r.ok) {
       // Only a miss against a LIVE offer is a guess; with none there is
       // nothing to guess, and boxing 127.0.0.1 for it would lock out the
@@ -409,14 +442,14 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
   }
 
   function handleSession(req: IncomingMessage, res: ServerResponse): void {
-    const cookie = readCookie(header(req, 'cookie'));
-    const device = deps.devices.verify(cookie);
     // Cookie AND page key: a cookie lifted by another server on this host
     // reads as "not paired" here, as it does on the socket.
-    if (!device || !cookie || !deps.devices.verifyKey(device, header(req, DEVICE_KEY_HEADER))) {
+    const proven = cookieDevice(req, header(req, DEVICE_KEY_HEADER), true);
+    if (!proven) {
       send(res, 401, { paired: false });
       return;
     }
+    const { device, cookie } = proven;
     deps.devices.touch(device.id);
     const secure = isHttpsRequest(header(req, 'host'), lists);
     // Sliding window: every visit re-issues the same value with a fresh Max-Age.
@@ -465,7 +498,7 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
     if (keyedDevice(req)) return true;
     const route = routeOf(req.url);
     const staticGet = (req.method === 'GET' || req.method === 'HEAD') && route !== null && !route.startsWith('/api/');
-    return staticGet && deps.devices.verify(readCookie(header(req, 'cookie'))) !== null;
+    return staticGet && cookieDevice(req, null, false) !== null;
   }
 
   /** The gates every request passes before its route is looked at; true when it was answered. */
@@ -542,8 +575,7 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
     if (routeOf(req.url) !== '/ws') return { status: 404 };
     // Cookie BEFORE the box: behind a proxy every peer is 127.0.0.1, and one
     // client's junk must not lock every paired phone out.
-    const device = deps.devices.verify(readCookie(header(req, 'cookie')));
-    if (!device) {
+    if (!cookieDevice(req, null, false)) {
       const peer = peerOf(req);
       if (penalty.isBoxed(peer)) return { status: 403 };
       penalty.fail(peer);
@@ -552,7 +584,8 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
     // A valid cookie without its page key is a cookie some other server on
     // this host was handed (devices.ts). Not boxed: behind a proxy that would
     // lock out every real phone, and 32 random bytes are not guessable anyway.
-    if (!deps.devices.verifyKey(device, keyFromProtocols(header(req, 'sec-websocket-protocol')))) return { status: 401 };
+    const device = cookieDevice(req, keyFromProtocols(header(req, 'sec-websocket-protocol')), true)?.device;
+    if (!device) return { status: 401 };
     let perDevice = 0;
     for (const c of live.values()) if (c.client.device.id === device.id) perDevice++;
     return { device, full: live.size >= MAX_CONNECTIONS || perDevice >= MAX_PER_DEVICE };
@@ -605,8 +638,13 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
     const entry: LiveClient = { client, ws, missed: 0, handlers: { onMessage: () => undefined, onClose: () => undefined } };
     live.set(id, entry);
     deps.devices.touch(device.id);
+    // "Last seen" in Settings means the last time the device was actually
+    // there: a phone connected for hours is touched on every heartbeat (the
+    // registry writes at most once a minute) and once more when it leaves,
+    // not left at the minute it connected.
     ws.on('pong', () => {
       entry.missed = 0;
+      deps.devices.touch(device.id);
     });
     ws.on('message', (data, isBinary) => {
       // ws keeps emitting frames while a socket is CLOSING — i.e. after we sent
@@ -623,6 +661,7 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
     ws.on('error', () => undefined);
     ws.on('close', () => {
       if (live.get(id) !== entry) return;
+      deps.devices.touch(device.id);
       live.delete(id);
       entry.handlers.onClose();
     });

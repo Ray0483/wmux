@@ -49,12 +49,13 @@ export const fr: Readonly<Record<string, string>> = {
   'console.waiting': 'En attente de votre ordinateur…',
   'console.viewerNotice': 'Lecture seule — cette connexion ne peut ni écrire ni répondre.',
   'console.controlLimited': 'Lecture seule ici — cet appareil est associé avec le contrôle, mais votre ordinateur désactive le contrôle pour les connexions HTTP non chiffrées.',
+  'console.repairForControl': 'Lecture seule ici — cet appareil est associé avec le contrôle, mais son association a déjà transité en HTTP non chiffré, donc le contrôle est coupé. Associez-le à nouveau depuis ici pour utiliser le contrôle.',
   'console.needsYouCount_one': '{n} agent vous attend',
   'console.needsYouCount_other': '{n} agents vous attendent',
 
-  'card.openToAnswer': 'Vous attend — ouvrir pour répondre',
+  'card.openToAnswer': 'Ouvrir pour répondre',
   'card.answerPending': 'Envoyé — en attente de l’agent',
-  'card.answerOnComputer': 'Vous attend — répondez sur votre ordinateur',
+  'card.answerOnComputer': 'Répondez sur votre ordinateur',
 
   'attach.fit': 'Ajuster',
   'attach.pan': 'Lisible',

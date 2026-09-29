@@ -49,14 +49,15 @@ export const pl: Readonly<Record<string, string>> = {
   'console.waiting': 'Czekam na komputer…',
   'console.viewerNotice': 'Tylko podgląd — to połączenie nie może pisać ani odpowiadać.',
   'console.controlLimited': 'Tutaj tylko podgląd — urządzenie jest sparowane ze sterowaniem, ale komputer wyłącza sterowanie dla nieszyfrowanych połączeń HTTP.',
+  'console.repairForControl': 'Tutaj tylko podgląd — urządzenie jest sparowane ze sterowaniem, ale jego parowanie było już użyte przez nieszyfrowane HTTP, więc sterowanie jest wyłączone. Aby sterować, sparuj je ponownie stąd.',
   'console.needsYouCount_one': '{n} agent czeka na ciebie',
   'console.needsYouCount_few': '{n} agenty czekają na ciebie',
   'console.needsYouCount_many': '{n} agentów czeka na ciebie',
   'console.needsYouCount_other': '{n} agenta czeka na ciebie',
 
-  'card.openToAnswer': 'Czeka na ciebie — otwórz, aby odpowiedzieć',
+  'card.openToAnswer': 'Otwórz, aby odpowiedzieć',
   'card.answerPending': 'Wysłano — czekam na agenta',
-  'card.answerOnComputer': 'Potrzebuje Cię — odpowiedz na komputerze',
+  'card.answerOnComputer': 'Odpowiedz na komputerze',
 
   'attach.fit': 'Dopasuj',
   'attach.pan': 'Czytelny',

@@ -610,6 +610,8 @@ export const uk: Translation = {
   'settings.remote.rejectedOrigin': 'Браузер з адреси {origin} відхилено: wmux не знає цієї адреси.',
   'settings.remote.rejectedOriginCaution': 'Це повідомлення може спричинити будь-яка вебсторінка, відкрита на цьому комп’ютері. Використовуйте його, лише якщо впізнаєте цю адресу як свою, наприклад ваш URL Tailscale.',
   'settings.remote.useAsPublicUrl': 'Використати як публічний URL',
+  'settings.remote.useAsPublicUrlConfirm': 'Посилання та QR-коди спарювання надсилатимуть телефони на {origin}. Той, хто керує цією адресою, може перехопити спарювання. Продовжуйте, лише якщо це ваша власна адреса Tailscale.',
+  'settings.remote.useAsPublicUrlYes': 'Так, використати цю адресу',
   'settings.remote.dismiss': 'Приховати',
   'settings.remote.reachability': 'Доступно з',
   'settings.remote.bindLoopback': 'Лише цей комп’ютер',

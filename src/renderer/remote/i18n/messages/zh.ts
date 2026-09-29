@@ -49,11 +49,12 @@ export const zh: Readonly<Record<string, string>> = {
   'console.waiting': '正在等待你的电脑…',
   'console.viewerNotice': '仅查看 — 此连接无法输入或回答。',
   'console.controlLimited': '此处仅查看 — 此设备以控制权限配对，但你的电脑对未加密的 HTTP 连接关闭了控制。',
+  'console.repairForControl': '此处仅查看 — 此设备以控制权限配对，但其配对曾经通过未加密的 HTTP 使用，因此控制已关闭。请从这里重新配对以使用控制。',
   'console.needsYouCount_other': '{n} 个代理在等你处理',
 
-  'card.openToAnswer': '等你处理 — 打开以回答',
+  'card.openToAnswer': '打开以回答',
   'card.answerPending': '已发送 — 等待代理',
-  'card.answerOnComputer': '需要你处理 — 请在电脑上回答',
+  'card.answerOnComputer': '请在电脑上回答',
 
   'attach.fit': '适应宽度',
   'attach.pan': '易读',
@@ -70,7 +71,7 @@ export const zh: Readonly<Record<string, string>> = {
 
   'keys.more': '更多按键',
   'keys.armed': '再次点按以发送',
-  'keys.armedInterrupt': '再次点按以中断智能体',
+  'keys.armedInterrupt': '再次点按以中断代理',
   'keys.armedAnswer': '再次点按以回答问题',
   'keys.up': '上',
   'keys.down': '下',
@@ -135,7 +136,7 @@ export const zh: Readonly<Record<string, string>> = {
   'prefs.alertsOn': '提醒已开启。',
   'prefs.alertsDenied': '提醒已在此浏览器的设置中被阻止。',
   'prefs.alertsUnavailable': '系统提醒需要 HTTPS 地址。页面内提醒仍然可用。',
-  'prefs.alertsUnsupported': '此浏览器无法为这类网页显示系统通知。页面内的提醒仍然有效。',
+  'prefs.alertsUnsupported': '此浏览器无法为这类网页显示系统提醒。页面内提醒仍然可用。',
   'prefs.forget': '忘记此设备',
   'prefs.forgetTitle': '忘记此设备？',
   'prefs.forgetBody': '重新连接需要从电脑获取新的代码。',

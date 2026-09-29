@@ -31,6 +31,7 @@ import type {
 import {
   CLOSE_CODES,
   MAX_TEXT,
+  NONCE_RE,
   PROTOCOL_VERSION,
   SCOPE_OF,
   validateClientMessage,
@@ -163,6 +164,28 @@ const ok = (nonce: string): AckMsg => ({ t: 'ack', nonce, ok: true });
 const refuse = (nonce: string, code: AckCode): AckMsg => ({ t: 'ack', nonce, ok: false, code });
 const confirm = (nonce: string, kind: ConfirmKind): AckMsg => ({ t: 'ack', nonce, ok: false, code: 'confirm', confirm: kind });
 
+const ACTION_TYPES: ReadonlySet<unknown> = new Set(['send', 'key', 'answer']);
+
+/**
+ * The nonce of a frame that LOOKS like an action, whether or not it validates.
+ * The phone keeps every action pending until an ack names its nonce, so a
+ * refusal that only says `error` leaves the composer on "Sending…" and the
+ * answer gate shut until the socket happens to reconnect — on a healthy link,
+ * never. Null for anything that is not an object with an action `t` and a
+ * well-formed nonce: those have nothing waiting on them.
+ */
+export function actionNonceOf(raw: string): string | null {
+  let o: unknown;
+  try {
+    o = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof o !== 'object' || o === null) return null;
+  const { t, nonce } = o as { t?: unknown; nonce?: unknown };
+  return ACTION_TYPES.has(t) && typeof nonce === 'string' && NONCE_RE.test(nonce) ? nonce : null;
+}
+
 /** Did the user accept THIS confirm? A waiver answers one question, never all of them. */
 const waives = (m: { force?: ConfirmKind[] }, kind: ConfirmKind): boolean => m.force?.includes(kind) === true;
 
@@ -236,7 +259,8 @@ export class ConsoleSession {
   handleFrame(raw: string): Promise<void> {
     if (this.closed) return Promise.resolve();
     if (!this.frames.take()) {
-      this.d.send({ t: 'error', code: 'rate', message: 'Too many messages.' });
+      const nonce = this.helloed ? actionNonceOf(raw) : null;
+      this.d.send(nonce ? refuse(nonce, 'rate') : { t: 'error', code: 'rate', message: 'Too many messages.' });
       this.trip(this.rateTrips);
       return Promise.resolve();
     }
@@ -246,7 +270,8 @@ export class ConsoleSession {
       return Promise.resolve();
     }
     if (!v.ok) {
-      this.d.send({ t: 'error', code: 'bad-frame', message: 'Malformed message.' });
+      const nonce = actionNonceOf(raw);
+      this.d.send(nonce ? refuse(nonce, 'write-failed') : { t: 'error', code: 'bad-frame', message: 'Malformed message.' });
       return Promise.resolve();
     }
     return this.dispatch(v.msg);

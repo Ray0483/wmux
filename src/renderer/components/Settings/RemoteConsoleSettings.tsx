@@ -246,6 +246,14 @@ export function pairHintShown(status: Pick<RemoteConsoleStatus, 'config' | 'runn
   return !status.running && !status.config.enabled;
 }
 
+/**
+ * "· N connected" counts DEVICES with a live socket, as `wmux remote status`
+ * does — not sockets: one phone with two tabs is one connected device.
+ */
+export function connectedDevices(status: Pick<RemoteConsoleStatus, 'connected'>): number {
+  return status.connected.filter((c) => c.count > 0).length;
+}
+
 export function showsProxySetup(bind: RemoteConsoleStatus['config']['bind']): boolean {
   return bind === 'loopback';
 }
@@ -253,7 +261,7 @@ export function showsProxySetup(bind: RemoteConsoleStatus['config']['bind']): bo
 function StatusLine({ t, status, busy, apply }: RowProps) {
   const { config } = status;
   const error = config.enabled ? lastErrorText(t, status) : null;
-  const connected = status.connected.reduce((n, c) => n + c.count, 0);
+  const connected = connectedDevices(status);
   let line: string;
   if (!config.enabled) line = t('settings.remote.statusOff');
   else if (error) line = error;
@@ -266,6 +274,12 @@ function StatusLine({ t, status, busy, apply }: RowProps) {
   } else line = t('settings.remote.statusStarting');
 
   const rejected = suggestedPublicUrl(status);
+  // Adopting a refused address is two steps: the card cannot tell the user's
+  // own proxy from any local program that sent that Host, and the saved value
+  // is where every pairing link then points. So the full address is spelled
+  // out, with what adopting it means, before anything is saved.
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const confirmingThis = confirming !== null && confirming === rejected;
   return (
     <>
       <div className={`remote-settings__status ${error ? 'remote-settings__status--error' : ''}`} role="status">
@@ -282,14 +296,27 @@ function StatusLine({ t, status, busy, apply }: RowProps) {
           {/* Not on a LAN bind: the Public URL row is hidden there and pairing
               ignores it, so this would save a trusted origin the user can no
               longer see, edit or clear. */}
-          {showsProxySetup(config.bind) && (
-            <button className="settings-button" disabled={busy} onClick={() => { apply({ publicUrl: rejected }); }}>
+          {showsProxySetup(config.bind) && confirmingThis && (
+            <>
+              <p className="settings-hint" role="alert">{fillTemplate(t('settings.remote.useAsPublicUrlConfirm'), { origin: rejected })}</p>
+              <button className="settings-button" disabled={busy} onClick={() => { setConfirming(null); apply({ publicUrl: rejected }); }}>
+                {t('settings.remote.useAsPublicUrlYes')}
+              </button>
+              <button className="settings-button" onClick={() => { setConfirming(null); }}>
+                {t('settings.remote.cancel')}
+              </button>
+            </>
+          )}
+          {showsProxySetup(config.bind) && !confirmingThis && (
+            <button className="settings-button" disabled={busy} onClick={() => { setConfirming(rejected); }}>
               {t('settings.remote.useAsPublicUrl')}
             </button>
           )}
-          <button className="settings-button" onClick={() => { remoteBridge()?.dismissRejectedOrigin().catch(() => undefined); }}>
-            {t('settings.remote.dismiss')}
-          </button>
+          {!confirmingThis && (
+            <button className="settings-button" onClick={() => { remoteBridge()?.dismissRejectedOrigin().catch(() => undefined); }}>
+              {t('settings.remote.dismiss')}
+            </button>
+          )}
         </div>
       )}
     </>

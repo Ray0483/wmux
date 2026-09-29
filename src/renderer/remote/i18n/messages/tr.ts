@@ -49,12 +49,13 @@ export const tr: Readonly<Record<string, string>> = {
   'console.waiting': 'Bilgisayarınız bekleniyor…',
   'console.viewerNotice': 'Yalnızca görüntüleme — bu bağlantı yazamaz ve yanıt veremez.',
   'console.controlLimited': 'Burada yalnızca görüntüleme — bu cihaz kontrol erişimiyle eşleştirildi, ancak bilgisayarınız şifrelenmemiş HTTP bağlantılarında kontrolü kapatıyor.',
+  'console.repairForControl': 'Burada yalnızca görüntüleme — bu cihaz kontrol erişimiyle eşleştirildi, ancak eşleştirmesi şifrelenmemiş HTTP üzerinden kullanıldığı için kontrol kapalı. Kontrol için buradan yeniden eşleştirin.',
   'console.needsYouCount_one': '{n} ajan sizi bekliyor',
   'console.needsYouCount_other': '{n} ajan sizi bekliyor',
 
-  'card.openToAnswer': 'Sizi bekliyor — yanıtlamak için açın',
+  'card.openToAnswer': 'Yanıtlamak için açın',
   'card.answerPending': 'Gönderildi — ajan bekleniyor',
-  'card.answerOnComputer': 'Size ihtiyacı var — bilgisayarınızda yanıtlayın',
+  'card.answerOnComputer': 'Bilgisayarınızda yanıtlayın',
 
   'attach.fit': 'Sığdır',
   'attach.pan': 'Okunaklı',

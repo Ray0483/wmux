@@ -210,9 +210,11 @@ export const CLOSE_CODES = {
   REVOKED: 4401,
   HEARTBEAT: 4408,
   /**
-   * This device already has its maximum of live sockets (or the server all of
-   * its). Final for the tab that gets it: another tab of the same phone is
-   * holding the slot, and retrying would only fight it for it.
+   * This device already has its maximum of live sockets. (The server-wide cap
+   * is every device's full allowance, so it never refuses a device under its
+   * own — server.ts MAX_CONNECTIONS.) Final for the tab that gets it: another
+   * tab of the same phone is holding the slot, and retrying would only fight
+   * it for it.
    */
   TOO_MANY: 4409,
   RATE: 4429,

@@ -893,6 +893,8 @@ export const en = {
   'settings.remote.rejectedOrigin': 'A browser at {origin} was refused because wmux does not know that address.',
   'settings.remote.rejectedOriginCaution': 'Any web page open on this computer can cause this message. Use it only if you recognise the address as your own, for example your Tailscale URL.',
   'settings.remote.useAsPublicUrl': 'Use as Public URL',
+  'settings.remote.useAsPublicUrlConfirm': 'Pairing links and QR codes will send phones to {origin}. Whoever controls that address can take over a pairing. Continue only if it is your own Tailscale address.',
+  'settings.remote.useAsPublicUrlYes': 'Yes, use this address',
   'settings.remote.dismiss': 'Dismiss',
   'settings.remote.reachability': 'Reachable from',
   'settings.remote.bindLoopback': 'This computer only',

@@ -49,14 +49,15 @@ export const ru: Readonly<Record<string, string>> = {
   'console.waiting': 'Ожидание компьютера…',
   'console.viewerNotice': 'Только просмотр — это подключение не может печатать или отвечать.',
   'console.controlLimited': 'Здесь только просмотр — устройство сопряжено с управлением, но компьютер отключает управление для незашифрованных HTTP-подключений.',
+  'console.repairForControl': 'Здесь только просмотр — устройство сопряжено с управлением, но его сопряжение уже передавалось по незашифрованному HTTP, поэтому управление отключено. Чтобы управлять, сопрягите его заново отсюда.',
   'console.needsYouCount_one': '{n} агент ждёт вас',
   'console.needsYouCount_few': '{n} агента ждут вас',
   'console.needsYouCount_many': '{n} агентов ждут вас',
   'console.needsYouCount_other': '{n} агента ждут вас',
 
-  'card.openToAnswer': 'Ждёт вас — откройте, чтобы ответить',
+  'card.openToAnswer': 'Откройте, чтобы ответить',
   'card.answerPending': 'Отправлено — ждём агента',
-  'card.answerOnComputer': 'Нужен ваш ответ — ответьте на компьютере',
+  'card.answerOnComputer': 'Ответьте на компьютере',
 
   'attach.fit': 'По ширине',
   'attach.pan': 'Читаемо',

@@ -49,12 +49,13 @@ export const sv: Readonly<Record<string, string>> = {
   'console.waiting': 'Väntar på datorn…',
   'console.viewerNotice': 'Endast visning – den här anslutningen kan inte skriva eller svara.',
   'console.controlLimited': 'Endast visning här – enheten är parkopplad med kontroll, men datorn stänger av kontroll för okrypterade HTTP-anslutningar.',
+  'console.repairForControl': 'Endast visning här – enheten är parkopplad med kontroll, men parkopplingen har använts över okrypterad HTTP, så kontroll är avstängd. Parkoppla den igen härifrån för att använda kontroll.',
   'console.needsYouCount_one': '{n} agent behöver dig',
   'console.needsYouCount_other': '{n} agenter behöver dig',
 
-  'card.openToAnswer': 'Behöver dig – öppna för att svara',
+  'card.openToAnswer': 'Öppna för att svara',
   'card.answerPending': 'Skickat – väntar på agenten',
-  'card.answerOnComputer': 'Behöver dig — svara på datorn',
+  'card.answerOnComputer': 'Svara på datorn',
 
   'attach.fit': 'Anpassa',
   'attach.pan': 'Läsbar',

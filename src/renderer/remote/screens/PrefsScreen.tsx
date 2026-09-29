@@ -17,7 +17,7 @@ import { REMOTE_LANGUAGES, isRemoteLang, type RemoteLang, type RemoteT } from '.
 import type { RemoteScope } from '../../../shared/remote-console-protocol';
 import { ConfirmSheet } from '../components/ConfirmSheet';
 import type { WsStatus } from '../ws-client';
-import { connKey } from './ConsoleScreen';
+import { connKey, viewerNoticeKey } from './ConsoleScreen';
 
 export type ThemePref = 'system' | 'light' | 'dark';
 
@@ -153,9 +153,11 @@ export function PrefsScreen({ t, prefs, host, status, device, effectiveScope, on
           <p className="rc-prefs__line rc-prefs__muted">
             {effectiveScope === 'operator' ? t.t('prefs.scopeOperator') : t.t('prefs.scopeViewer')}
           </p>
-          {/* Paired with Control, narrowed by a plain-HTTP bind: say why. */}
+          {/* Paired with Control, narrowed by a plain-HTTP bind or a pairing that crossed one: say why. */}
           {device?.scope === 'operator' && effectiveScope !== 'operator' && (
-            <p className="rc-prefs__line">{t.t('console.controlLimited')}</p>
+            <p className="rc-prefs__line">
+              {t.t(viewerNoticeKey('operator', 'viewer', globalThis.isSecureContext === true) ?? 'console.controlLimited')}
+            </p>
           )}
         </section>
 

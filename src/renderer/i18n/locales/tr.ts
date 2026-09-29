@@ -610,6 +610,8 @@ export const tr: Translation = {
   'settings.remote.rejectedOrigin': '{origin} adresindeki bir tarayıcı reddedildi, çünkü wmux bu adresi tanımıyor.',
   'settings.remote.rejectedOriginCaution': 'Bu bilgisayarda açık herhangi bir web sayfası bu mesaja yol açabilir. Yalnızca adresi kendinize ait olarak tanıyorsanız kullanın, örneğin Tailscale URL’niz.',
   'settings.remote.useAsPublicUrl': 'Genel URL olarak kullan',
+  'settings.remote.useAsPublicUrlConfirm': 'Eşleştirme bağlantıları ve QR kodları telefonları {origin} adresine gönderecek. Bu adresi kontrol eden kişi bir eşleştirmeyi ele geçirebilir. Yalnızca kendi Tailscale adresinizse devam edin.',
+  'settings.remote.useAsPublicUrlYes': 'Evet, bu adresi kullan',
   'settings.remote.dismiss': 'Kapat',
   'settings.remote.reachability': 'Erişilebildiği yer',
   'settings.remote.bindLoopback': 'Yalnızca bu bilgisayar',

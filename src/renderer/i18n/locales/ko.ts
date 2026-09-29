@@ -619,6 +619,8 @@ export const ko: Translation = {
   'settings.remote.rejectedOrigin': 'wmux가 모르는 주소라서 {origin}의 브라우저가 거부되었습니다.',
   'settings.remote.rejectedOriginCaution': '이 컴퓨터에서 열린 어떤 웹 페이지라도 이 메시지를 일으킬 수 있습니다. Tailscale URL처럼 본인의 주소임을 확인한 경우에만 사용하세요.',
   'settings.remote.useAsPublicUrl': '공개 URL로 사용',
+  'settings.remote.useAsPublicUrlConfirm': '페어링 링크와 QR 코드가 휴대폰을 {origin}(으)로 보냅니다. 이 주소를 제어하는 사람은 페어링을 가로챌 수 있습니다. 본인의 Tailscale 주소일 때만 계속하세요.',
+  'settings.remote.useAsPublicUrlYes': '예, 이 주소 사용',
   'settings.remote.dismiss': '닫기',
   'settings.remote.reachability': '접근 범위',
   'settings.remote.bindLoopback': '이 컴퓨터만',

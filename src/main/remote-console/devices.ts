@@ -48,6 +48,13 @@ export interface DeviceRecord {
   keyHash: string | null;
   createdAt: number;
   lastSeenAt: number;
+  /**
+   * The cookie and page key have crossed a plain-HTTP LAN bind — minted there,
+   * or presented there. Anyone on that network may hold them, so once the
+   * listener is back on a secure path the device is view-only until it pairs
+   * again (server.ts effectiveScopeFor). Absent rather than false when clean.
+   */
+  cleartext?: true;
 }
 
 export interface DevicesFile {
@@ -103,14 +110,17 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 function parseDevice(v: unknown): DeviceRecord | null {
   if (!isRecord(v)) return null;
-  const { id, name, scope, tokenHash, keyHash, createdAt, lastSeenAt } = v;
+  const { id, name, scope, tokenHash, keyHash, createdAt, lastSeenAt, cleartext } = v;
   if (typeof id !== 'string' || !/^dev-[0-9a-f-]{36}$/.test(id)) return null;
   if (scope !== 'viewer' && scope !== 'operator') return null;
   if (typeof tokenHash !== 'string' || !/^[0-9a-f]{64}$/.test(tokenHash)) return null;
   if (typeof createdAt !== 'number' || typeof lastSeenAt !== 'number') return null;
   if (!Number.isFinite(createdAt) || !Number.isFinite(lastSeenAt)) return null;
   const key = typeof keyHash === 'string' && /^[0-9a-f]{64}$/.test(keyHash) ? keyHash : null;
-  return { id, name: cleanDeviceName(name), scope, tokenHash, keyHash: key, createdAt, lastSeenAt };
+  return {
+    id, name: cleanDeviceName(name), scope, tokenHash, keyHash: key, createdAt, lastSeenAt,
+    ...(cleartext === true ? { cleartext: true as const } : {}),
+  };
 }
 
 function uuidFrom(bytes: Buffer): string {
@@ -244,7 +254,7 @@ export class DeviceRegistry {
    * it too — 32 random bytes are not guessable, so five misses mean somebody
    * is trying rather than mistyping, and a fresh QR is one click away.
    */
-  consumePairing(secret: unknown, name: unknown, replaces?: string | null): ConsumeResult {
+  consumePairing(secret: unknown, name: unknown, replaces?: string | null, cleartext = false): ConsumeResult {
     const offer = this.offer;
     if (!offer || this.deps.now() >= offer.expiresAt) {
       this.offer = null;
@@ -273,6 +283,7 @@ export class DeviceRegistry {
       keyHash: this.deps.sha256(key),
       createdAt: now,
       lastSeenAt: now,
+      ...(cleartext ? { cleartext: true as const } : {}),
     };
     if (old) {
       this.devices.delete(old.id);
@@ -312,6 +323,14 @@ export class DeviceRegistry {
     dev.lastSeenAt = now;
     this.dirty = true;
     if (now - this.lastPersist >= TOUCH_PERSIST_MS) this.persist();
+  }
+
+  /** Record that this device's credential crossed a plain-HTTP LAN bind. Persisted once. */
+  markCleartext(id: string): void {
+    const dev = this.devices.get(id);
+    if (!dev || dev.cleartext) return;
+    dev.cleartext = true;
+    this.persist();
   }
 
   get(id: string): DeviceRecord | null {

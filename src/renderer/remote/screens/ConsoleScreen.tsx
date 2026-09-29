@@ -64,10 +64,16 @@ export function emptyListKey(rosterReceived: boolean, status: WsStatus): RemoteM
  * Control that a plain-HTTP LAN bind demotes to view-only is told THAT, not
  * the generic line: otherwise it looks broken, and the fix (Tailscale, or the
  * desktop's "allow control over plain HTTP") is nowhere in sight.
+ *
+ * On a SECURE page the LAN bind is not what demoted it — a LAN bind is plain
+ * http on a LAN address, never a secure context. There the reason is that
+ * this device's pairing once crossed a plain-HTTP LAN (server.ts
+ * effectiveScopeFor), and the fix is to pair it again from here.
  */
-export function viewerNoticeKey(pairedScope: RemoteScope, effectiveScope: RemoteScope): RemoteMessageKey | null {
+export function viewerNoticeKey(pairedScope: RemoteScope, effectiveScope: RemoteScope, secureContext = false): RemoteMessageKey | null {
   if (effectiveScope === 'operator') return null;
-  return pairedScope === 'operator' ? 'console.controlLimited' : 'console.viewerNotice';
+  if (pairedScope !== 'operator') return 'console.viewerNotice';
+  return secureContext ? 'console.repairForControl' : 'console.controlLimited';
 }
 
 interface Props {
@@ -88,7 +94,7 @@ interface Props {
 }
 
 export function ConsoleScreen({ t, roster, rosterReceived, rosterAt, status, host, operator, pairedScope, onOpen, onAnswer, onSeen, onPrefs }: Readonly<Props>) {
-  const notice = viewerNoticeKey(pairedScope, operator ? 'operator' : 'viewer');
+  const notice = viewerNoticeKey(pairedScope, operator ? 'operator' : 'viewer', globalThis.isSecureContext === true);
   // Ages tick without a new roster frame; 15 s is finer than any age shows.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {

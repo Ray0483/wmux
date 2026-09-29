@@ -272,3 +272,69 @@ describe('TerminalTap: exit', () => {
     expect(h.tap.isWatched(S)).toBe(false);
   });
 });
+
+describe('TerminalTap: a large snapshot is not lag (#254)', () => {
+  it('the reset\'s own backlog does not trip lag; growth past it does', () => {
+    const h = harness();
+    h.tap.attach('c1', S);
+    // The reset is still in the socket when the next batch flushes.
+    h.buffered.set('c1', TAP_TIMINGS.lagHigh + 400_000);
+    h.tap.handleReply(h.lastReq(), snap('BIG'));
+    h.sent.length = 0;
+    h.tap.deliver(S, 'next');
+    h.advance(TAP_TIMINGS.flushMs);
+    expect(h.msgs()).toEqual([{ t: 'term.data', s: S, data: 'next' }]);
+    // It drains, then genuinely falls behind by more than lagHigh.
+    h.buffered.set('c1', 10_000);
+    h.tap.deliver(S, 'a');
+    h.advance(TAP_TIMINGS.flushMs);
+    h.buffered.set('c1', 10_000 + TAP_TIMINGS.lagHigh + 1);
+    h.tap.deliver(S, 'b');
+    h.advance(TAP_TIMINGS.flushMs);
+    expect(h.msgs().at(-1)).toEqual({ t: 'term.lag', s: S });
+  });
+
+  it('gives up after maxLagCycles lag-driven resnapshots in a row', () => {
+    const h = harness();
+    h.tap.attach('c1', S);
+    h.tap.handleReply(h.lastReq(), snap());
+    for (let i = 0; i < TAP_TIMINGS.maxLagCycles; i++) {
+      h.buffered.set('c1', TAP_TIMINGS.lagHigh + 1);
+      h.tap.deliver(S, 'x');
+      h.advance(TAP_TIMINGS.flushMs);
+      expect(h.msgs().at(-1)).toEqual({ t: 'term.lag', s: S });
+      h.buffered.set('c1', 0);
+      h.advance(TAP_TIMINGS.drainPollMs);
+      h.tap.handleReply(h.lastReq(), snap());
+    }
+    h.buffered.set('c1', TAP_TIMINGS.lagHigh + 1);
+    h.tap.deliver(S, 'x');
+    h.advance(TAP_TIMINGS.flushMs);
+    expect(h.msgs().at(-1)).toMatchObject({ t: 'term.error', code: 'timeout' });
+    expect(h.tap.isWatched(S)).toBe(false);
+  });
+
+  it('a phone that caught up starts its lag budget over', () => {
+    const h = harness();
+    h.tap.attach('c1', S);
+    h.tap.handleReply(h.lastReq(), snap());
+    for (let i = 0; i < TAP_TIMINGS.maxLagCycles + 2; i++) {
+      h.buffered.set('c1', TAP_TIMINGS.lagHigh + 1);
+      h.tap.deliver(S, 'x');
+      h.advance(TAP_TIMINGS.flushMs);
+      h.buffered.set('c1', 0);
+      h.advance(TAP_TIMINGS.drainPollMs);
+      h.tap.handleReply(h.lastReq(), snap());
+      h.tap.deliver(S, 'fine');
+      h.advance(TAP_TIMINGS.flushMs);
+    }
+    expect(h.msgs().at(-1)).toEqual({ t: 'term.data', s: S, data: 'fine' });
+  });
+});
+
+describe('snapshot cap vs lag threshold (#254)', () => {
+  it('a snapshot never exceeds the backlog the tap calls lag', async () => {
+    const { SNAPSHOT_MAX_CHARS } = await import('../../src/renderer/utils/remote-snapshot');
+    expect(SNAPSHOT_MAX_CHARS).toBeLessThan(TAP_TIMINGS.lagHigh);
+  });
+});

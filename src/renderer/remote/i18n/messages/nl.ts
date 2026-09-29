@@ -49,12 +49,13 @@ export const nl: Readonly<Record<string, string>> = {
   'console.waiting': 'Wachten op je computer…',
   'console.viewerNotice': 'Alleen bekijken — deze verbinding kan niet typen of antwoorden.',
   'console.controlLimited': 'Hier alleen bekijken — dit apparaat is gekoppeld met besturing, maar je computer zet besturing uit voor onversleutelde HTTP-verbindingen.',
+  'console.repairForControl': 'Hier alleen bekijken — dit apparaat is gekoppeld met besturing, maar de koppeling is al eens via onversleuteld HTTP gebruikt, dus besturing staat uit. Koppel het hier opnieuw om te besturen.',
   'console.needsYouCount_one': '{n} agent wacht op jou',
   'console.needsYouCount_other': '{n} agents wachten op jou',
 
-  'card.openToAnswer': 'Wacht op jou — open om te antwoorden',
+  'card.openToAnswer': 'Open om te antwoorden',
   'card.answerPending': 'Verzonden — wacht op de agent',
-  'card.answerOnComputer': 'Heeft je nodig — antwoord op je computer',
+  'card.answerOnComputer': 'Antwoord op je computer',
 
   'attach.fit': 'Passend',
   'attach.pan': 'Leesbaar',

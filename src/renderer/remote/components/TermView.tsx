@@ -30,7 +30,7 @@ import { Terminal, type ITheme } from '@xterm/xterm';
 import type { ServerMessage } from '../../../shared/remote-console-protocol';
 import { createTouchPanTracker } from '../../utils/touch-pan';
 import { createFlingVelocityTracker, startFling, stepFling, type Fling } from '../../utils/touch-fling';
-import { fontForMode, type FitMode } from '../fit';
+import { fontForMode, mirrorPans, type FitMode } from '../fit';
 import type { RemoteT } from '../i18n';
 import type { WsClient } from '../ws-client';
 
@@ -121,6 +121,7 @@ export function TermView({ client, s, mode, fontScale, dark, t, operator, onLink
   onStatusRef.current = onStatus;
   const layoutRef = useRef({ mode, fontScale });
   layoutRef.current = { mode, fontScale };
+  const refitRef = useRef<(() => void) | null>(null);
 
   const [status, setStatus] = useState<TermStatus>('loading');
   const [exitCode, setExitCode] = useState(0);
@@ -128,6 +129,8 @@ export function TermView({ client, s, mode, fontScale, dark, t, operator, onLink
   const [alt, setAlt] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
   const [hint, setHint] = useState(false);
+  /** `fit` hit the floor font and the grid is still wider than the screen: pan sideways. */
+  const [clipped, setClipped] = useState(false);
 
   useEffect(() => { onStatusRef.current?.(status); }, [status]);
 
@@ -168,7 +171,10 @@ export function TermView({ client, s, mode, fontScale, dark, t, operator, onLink
       const { mode: m, fontScale: sc } = layoutRef.current;
       const size = fontForMode(m, wrap.clientWidth, term.cols, sc);
       if (term.options.fontSize !== size) term.options.fontSize = size;
+      const drawn = host.querySelector('.xterm-screen')?.getBoundingClientRect().width ?? 0;
+      setClipped(mirrorPans(m, wrap.clientWidth, term.cols, drawn));
     };
+    refitRef.current = refit;
     const trackBottom = () => {
       const b = term.buffer.active;
       setAtBottom(b.viewportY >= b.baseY);
@@ -219,15 +225,16 @@ export function TermView({ client, s, mode, fontScale, dark, t, operator, onLink
       for (const d of subs) d.dispose();
       term.dispose();
       termRef.current = null;
+      refitRef.current = null;
     };
   }, [client, s]);
 
   // ── Font follows the fit mode / scale ───────────────────────────────────
   useEffect(() => {
-    const term = termRef.current;
-    const wrap = wrapRef.current;
-    if (!term || !wrap) return;
-    term.options.fontSize = fontForMode(mode, wrap.clientWidth, term.cols, fontScale);
+    refitRef.current?.();
+    // xterm lays the grid out at the new font on its next frame; measure then too.
+    const id = requestAnimationFrame(() => refitRef.current?.());
+    return () => cancelAnimationFrame(id);
   }, [mode, fontScale]);
 
   useEffect(() => {
@@ -327,7 +334,7 @@ export function TermView({ client, s, mode, fontScale, dark, t, operator, onLink
 
   return (
     <div className="rc-term">
-      <div ref={wrapRef} className={mode === 'pan' ? 'rc-term__wrap rc-term__wrap--pan' : 'rc-term__wrap'}>
+      <div ref={wrapRef} className={mode === 'pan' || clipped ? 'rc-term__wrap rc-term__wrap--pan' : 'rc-term__wrap'}>
         <div ref={hostRef} className="rc-term__host" />
       </div>
       {overlay && (

@@ -45,6 +45,19 @@ export function fitOverflows(widthPx: number, cols: number): boolean {
   return widthPx > 0 && cols > 0 && Math.floor(widthPx / (cols * CELL_WIDTH_EM)) < MIN_FONT_PX;
 }
 
+/**
+ * Whether the mirror must scroll sideways. Always in `pan`; in `fit` whenever
+ * the floor font still cannot show every column — by the arithmetic, or by the
+ * drawn grid measured wider than the box (the 0.6 em cell is an estimate).
+ * Without this, `fit` at 7 px silently cropped the right-hand columns of a
+ * 100-column pane on a 290 px screen, with no way to pan them into view.
+ */
+export function mirrorPans(mode: FitMode, widthPx: number, cols: number, drawnWidthPx = 0): boolean {
+  if (mode === 'pan') return true;
+  if (fitOverflows(widthPx, cols)) return true;
+  return Number.isFinite(drawnWidthPx) && widthPx > 0 && drawnWidthPx > widthPx + 1;
+}
+
 export interface FitStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;

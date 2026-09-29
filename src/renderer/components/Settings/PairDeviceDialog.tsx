@@ -148,8 +148,9 @@ interface PairDeviceDialogProps {
 export default function PairDeviceDialog({ status, onClose }: PairDeviceDialogProps) {
   const t = useT();
   const { config } = status;
-  // Operator over plain-HTTP LAN is refused by main anyway (spec I3); greying it
-  // out here, with the reason, beats a pairing that silently comes out viewer.
+  // Operator over plain-HTTP LAN is minted as View only by main anyway
+  // (runtime.ts pairStart, spec I3); greying it out here, with the reason,
+  // beats a pairing that silently comes out viewer.
   const operatorAllowed = config.bind !== 'lan' || config.allowInsecureControl;
   const [name, setName] = useState(() => t('settings.remote.pair.defaultName'));
   const [scope, setScope] = useState<RemoteScope>('viewer');

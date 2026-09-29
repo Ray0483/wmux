@@ -746,6 +746,8 @@ export const fr: Translation = {
   'settings.remote.rejectedOrigin': 'Un navigateur à l’adresse {origin} a été refusé, car wmux ne connaît pas cette adresse.',
   'settings.remote.rejectedOriginCaution': 'N’importe quelle page web ouverte sur cet ordinateur peut provoquer ce message. Ne l’utilisez que si vous reconnaissez l’adresse comme la vôtre, par exemple votre URL Tailscale.',
   'settings.remote.useAsPublicUrl': 'Utiliser comme URL publique',
+  'settings.remote.useAsPublicUrlConfirm': 'Les liens et QR codes d’association enverront les téléphones vers {origin}. Qui contrôle cette adresse peut s’approprier une association. Continuez seulement si c’est votre propre adresse Tailscale.',
+  'settings.remote.useAsPublicUrlYes': 'Oui, utiliser cette adresse',
   'settings.remote.dismiss': 'Ignorer',
   'settings.remote.reachability': 'Accessible depuis',
   'settings.remote.bindLoopback': 'Cet ordinateur uniquement',

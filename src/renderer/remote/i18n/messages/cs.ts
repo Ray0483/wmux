@@ -49,13 +49,14 @@ export const cs: Readonly<Record<string, string>> = {
   'console.waiting': 'Čeká se na počítač…',
   'console.viewerNotice': 'Jen prohlížení — toto připojení nemůže psát ani odpovídat.',
   'console.controlLimited': 'Zde jen prohlížení — zařízení je spárované s ovládáním, ale počítač ovládání u nešifrovaných připojení HTTP vypíná.',
+  'console.repairForControl': 'Zde jen prohlížení — zařízení je spárované s ovládáním, ale jeho párování už prošlo nešifrovaným HTTP, takže je ovládání vypnuté. Chcete-li ovládat, spárujte ho znovu odsud.',
   'console.needsYouCount_one': '{n} agent na vás čeká',
   'console.needsYouCount_few': '{n} agenti na vás čekají',
   'console.needsYouCount_other': '{n} agentů na vás čeká',
 
-  'card.openToAnswer': 'Čeká na vás — otevřete a odpovězte',
+  'card.openToAnswer': 'Otevřete a odpovězte',
   'card.answerPending': 'Odesláno — čeká se na agenta',
-  'card.answerOnComputer': 'Potřebuje vás — odpovězte na počítači',
+  'card.answerOnComputer': 'Odpovězte na počítači',
 
   'attach.fit': 'Na šířku',
   'attach.pan': 'Čitelné',

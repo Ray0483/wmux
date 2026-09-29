@@ -59,12 +59,13 @@ export const en = {
   'console.waiting': 'Waiting for your computer…',
   'console.viewerNotice': 'View only — this connection cannot type or answer.',
   'console.controlLimited': 'View only here — this device is paired with Control, but your computer turns Control off for plain-HTTP connections.',
+  'console.repairForControl': 'View only here — this device is paired with Control, but its pairing was once used over plain HTTP, so Control is off for it. Pair it again from here to use Control.',
   'console.needsYouCount_one': '{n} agent needs you',
   'console.needsYouCount_other': '{n} agents need you',
 
-  'card.openToAnswer': 'Needs you — open to answer',
+  'card.openToAnswer': 'Open to answer',
   'card.answerPending': 'Sent — waiting for the agent',
-  'card.answerOnComputer': 'Needs you — answer on your computer',
+  'card.answerOnComputer': 'Answer on your computer',
 
   'attach.fit': 'Fit width',
   'attach.pan': 'Readable',

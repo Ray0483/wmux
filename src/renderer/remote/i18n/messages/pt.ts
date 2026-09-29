@@ -49,12 +49,13 @@ export const pt: Readonly<Record<string, string>> = {
   'console.waiting': 'Aguardando o computador…',
   'console.viewerNotice': 'Somente leitura — esta conexão não pode digitar nem responder.',
   'console.controlLimited': 'Somente leitura aqui — este dispositivo foi pareado com controle, mas o computador desativa o controle em conexões HTTP sem criptografia.',
+  'console.repairForControl': 'Somente leitura aqui — este dispositivo foi pareado com controle, mas o pareamento já foi usado por HTTP sem criptografia, então o controle está desativado. Pareie de novo a partir daqui para usar o controle.',
   'console.needsYouCount_one': '{n} agente precisa de você',
   'console.needsYouCount_other': '{n} agentes precisam de você',
 
-  'card.openToAnswer': 'Precisa de você — abra para responder',
+  'card.openToAnswer': 'Abra para responder',
   'card.answerPending': 'Enviado — aguardando o agente',
-  'card.answerOnComputer': 'Precisa de você — responda no computador',
+  'card.answerOnComputer': 'Responda no computador',
 
   'attach.fit': 'Ajustar',
   'attach.pan': 'Legível',

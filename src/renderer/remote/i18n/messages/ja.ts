@@ -9,9 +9,9 @@ export const ja: Readonly<Record<string, string>> = {
 
   'loading': '接続中…',
 
-  'pair.title': 'このデバイスをペアリング',
+  'pair.title': 'この端末をペアリング',
   'pair.body': 'お使いのコンピューターが、このブラウザーを wmux リモートコンソールとペアリングしようとしています。このコードを今ご自身でスキャンした場合のみ続行してください。',
-  'pair.nameLabel': 'デバイス名',
+  'pair.nameLabel': '端末名',
   'pair.namePlaceholder': 'コンピューターで設定した名前',
   'pair.confirm': 'ペアリング',
   'pair.pairing': 'ペアリング中…',
@@ -24,7 +24,7 @@ export const ja: Readonly<Record<string, string>> = {
   'unpaired.title': '未ペアリング',
   'unpaired.body': 'このブラウザーは wmux とペアリングされていません。コンピューターで 設定 → リモート → 端末をペアリング を開き、コードをスキャンしてください。',
   'revoked.title': 'アクセスが削除されました',
-  'revoked.body': 'このデバイスはコンピューターの wmux から削除されました。再接続するには、もう一度ペアリングしてください。',
+  'revoked.body': 'この端末はコンピューターの wmux から削除されました。再接続するには、もう一度ペアリングしてください。',
   'replaced.title': '別のタブで再ペアリングされました',
   'replaced.body': 'このブラウザーは再ペアリングされたため、このタブの接続は置き換えられました。新しいペアリングで続けるには再読み込みしてください。',
   'incompatible.title': '更新が必要です',
@@ -49,11 +49,12 @@ export const ja: Readonly<Record<string, string>> = {
   'console.waiting': 'コンピューターを待っています…',
   'console.viewerNotice': '閲覧のみ — この接続では入力も回答もできません。',
   'console.controlLimited': 'ここでは閲覧のみ — この端末は操作ありでペアリングされていますが、コンピューターが暗号化されていない HTTP 接続での操作をオフにしています。',
+  'console.repairForControl': 'ここでは閲覧のみ — この端末は操作ありでペアリングされていますが、そのペアリングが暗号化されていない HTTP で使われたため、操作はオフです。操作するには、ここからもう一度ペアリングしてください。',
   'console.needsYouCount_other': '{n} 件のエージェントが対応を待っています',
 
-  'card.openToAnswer': '対応が必要 — 開いて回答',
+  'card.openToAnswer': '開いて回答',
   'card.answerPending': '送信済み — エージェントを待っています',
-  'card.answerOnComputer': '対応が必要です — コンピューターで回答してください',
+  'card.answerOnComputer': 'コンピューターで回答してください',
 
   'attach.fit': '幅に合わせる',
   'attach.pan': '読みやすく',
@@ -102,7 +103,7 @@ export const ja: Readonly<Record<string, string>> = {
   'link.title': 'このリンクを開きますか?',
   'link.ok': '開く',
 
-  'ack.forbidden': 'このデバイスからは許可されていません。',
+  'ack.forbidden': 'この端末からは許可されていません。',
   'ack.rate': '操作が速すぎます。少し待ってください。',
   'ack.gone': 'ターミナルは閉じられました。',
   'ack.notBlocked': 'この質問にはすでに回答済みです。',
@@ -119,7 +120,7 @@ export const ja: Readonly<Record<string, string>> = {
   'toast.done': '{label} が完了しました',
 
   'prefs.connectedTo': '{host} に接続中',
-  'prefs.device': 'このデバイス: {name}',
+  'prefs.device': 'この端末: {name}',
   'prefs.scopeOperator': '入力と回答が可能',
   'prefs.scopeViewer': '閲覧のみ',
   'prefs.language': '言語',
@@ -136,9 +137,9 @@ export const ja: Readonly<Record<string, string>> = {
   'prefs.alertsDenied': '通知はこのブラウザーの設定でブロックされています。',
   'prefs.alertsUnavailable': 'システム通知には HTTPS アドレスが必要です。ページ内の通知は引き続き動作します。',
   'prefs.alertsUnsupported': 'このブラウザーは、このようなウェブページのシステム通知を表示できません。ページ内の通知は引き続き使えます。',
-  'prefs.forget': 'このデバイスを削除',
-  'prefs.forgetTitle': 'このデバイスを削除しますか?',
+  'prefs.forget': 'この端末を削除',
+  'prefs.forgetTitle': 'この端末を削除しますか?',
   'prefs.forgetBody': '再接続するには、コンピューターで新しいコードが必要です。',
-  'prefs.forgetFailed': 'コンピューターに接続できなかったため、このデバイスはまだペアリングされています。もう一度試すか、コンピューターの wmux で削除してください。',
+  'prefs.forgetFailed': 'コンピューターに接続できなかったため、この端末はまだペアリングされています。もう一度試すか、コンピューターの wmux で削除してください。',
   'prefs.limits': '通知が届くのは、このページが開いていて画面に表示されている間だけです。スマートフォンがロック中やタブがバックグラウンドのときは届かないことがあり、iOS では振動できません。',
 };

@@ -610,6 +610,8 @@ export const hi: Translation = {
   'settings.remote.rejectedOrigin': '{origin} पर एक ब्राउज़र अस्वीकार किया गया, क्योंकि wmux उस पते को नहीं जानता।',
   'settings.remote.rejectedOriginCaution': 'इस कंप्यूटर पर खुला कोई भी वेब पेज यह संदेश ला सकता है। इसका उपयोग तभी करें जब आप इस पते को अपना मानते हों, जैसे आपका Tailscale URL।',
   'settings.remote.useAsPublicUrl': 'सार्वजनिक URL के रूप में उपयोग करें',
+  'settings.remote.useAsPublicUrlConfirm': 'पेयरिंग लिंक और QR कोड फ़ोन को {origin} पर भेजेंगे। जो भी इस पते को नियंत्रित करता है, वह पेयरिंग अपने कब्ज़े में ले सकता है। तभी आगे बढ़ें जब यह आपका अपना Tailscale पता हो।',
+  'settings.remote.useAsPublicUrlYes': 'हाँ, यह पता इस्तेमाल करें',
   'settings.remote.dismiss': 'हटाएँ',
   'settings.remote.reachability': 'कहाँ से पहुँच',
   'settings.remote.bindLoopback': 'केवल यह कंप्यूटर',

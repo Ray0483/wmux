@@ -610,6 +610,8 @@ export const zhTW: Translation = {
   'settings.remote.rejectedOrigin': '來自 {origin} 的瀏覽器已被拒絕，因為 wmux 不認得該位址。',
   'settings.remote.rejectedOriginCaution': '這台電腦上開啟的任何網頁都可能引發此訊息。只有在你認得該位址是你自己的（例如你的 Tailscale URL）時才使用它。',
   'settings.remote.useAsPublicUrl': '用作公開 URL',
+  'settings.remote.useAsPublicUrlConfirm': '配對連結和 QR 碼會把手機導向 {origin}。控制該位址的人可以接管配對。只有在這是你自己的 Tailscale 位址時才繼續。',
+  'settings.remote.useAsPublicUrlYes': '是，使用此位址',
   'settings.remote.dismiss': '關閉',
   'settings.remote.reachability': '可存取範圍',
   'settings.remote.bindLoopback': '僅此電腦',

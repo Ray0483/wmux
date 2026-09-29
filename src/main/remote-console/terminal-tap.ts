@@ -53,6 +53,12 @@ export const TAP_TIMINGS = Object.freeze({
   lagLow: 128 * 1024,
   drainPollMs: 250,
   resizeDebounceMs: 250,
+  /**
+   * Lag-driven resnapshots in a row before the tap gives up. Each one ships a
+   * whole snapshot again, so a phone that never catches up would otherwise
+   * cycle lag, reset, lag for as long as the agent prints.
+   */
+  maxLagCycles: 3,
 });
 
 export interface TapDeps {
@@ -83,6 +89,16 @@ interface Attachment {
   pendingLen: number;
   flushTimer: unknown;
   drainTimer: unknown;
+  /**
+   * The socket backlog right after the last `term.reset` went out, lowered as
+   * it drains. A snapshot goes out in one piece and may be larger than
+   * `lagHigh` on its own, so lag is growth PAST this floor. Measured from zero,
+   * the reset's own bytes tripped the lag check 50 ms later and the lag-driven
+   * resnapshot resent the same reset, for as long as the agent printed.
+   */
+  lagFloor: number;
+  /** Consecutive lag-driven resnapshots; back to 0 once the phone has caught up. */
+  lagCycles: number;
 }
 
 function isSnapshot(r: unknown): r is { data: string; cols: number; rows: number } {
@@ -122,6 +138,7 @@ export class TerminalTap {
       clientId, s: surfaceId, phase: 'snapshotting', reqId: null,
       buf: [], bufLen: 0, timeoutRetries: 0, noTermRetried: false, overflows: 0,
       snapTimer: null, pending: [], pendingLen: 0, flushTimer: null, drainTimer: null,
+      lagFloor: 0, lagCycles: 0,
     };
     this.byClient.set(clientId, att);
     let set = this.bySurface.get(surfaceId);
@@ -244,6 +261,7 @@ export class TerminalTap {
     }
     this.deps.send(att.clientId, { t: 'term.reset', s: att.s, cols: result.cols, rows: result.rows, data: result.data });
     if (att.bufLen > 0) this.deps.send(att.clientId, { t: 'term.data', s: att.s, data: att.buf.join('') });
+    att.lagFloor = this.backlog(att);
     att.buf = [];
     att.bufLen = 0;
     att.overflows = 0;
@@ -285,20 +303,33 @@ export class TerminalTap {
     if (att.flushTimer !== null) this.deps.clearTimer(att.flushTimer);
     att.flushTimer = null;
     if (att.pendingLen === 0 || att.phase !== 'live') return;
-    if (this.deps.bufferedAmount(att.clientId) > TAP_TIMINGS.lagHigh) {
+    const backlog = this.backlog(att);
+    att.lagFloor = Math.min(att.lagFloor, backlog);
+    if (backlog - att.lagFloor > TAP_TIMINGS.lagHigh) {
       // The phone cannot keep up. Queueing more only grows main's memory and
       // the phone's delay; drop, say so, and resnapshot once it has drained.
       att.pending = [];
       att.pendingLen = 0;
+      att.lagCycles++;
+      if (att.lagCycles > TAP_TIMINGS.maxLagCycles) {
+        this.fail(att, 'timeout', 'This device cannot keep up with the terminal output.');
+        return;
+      }
       att.phase = 'stale';
       this.deps.send(att.clientId, { t: 'term.lag', s: att.s });
       this.scheduleDrainPoll(att);
       return;
     }
+    if (backlog < TAP_TIMINGS.lagLow) att.lagCycles = 0;
     const data = att.pending.join('');
     att.pending = [];
     att.pendingLen = 0;
     this.deps.send(att.clientId, { t: 'term.data', s: att.s, data });
+  }
+
+  private backlog(att: Attachment): number {
+    const n = this.deps.bufferedAmount(att.clientId);
+    return Number.isFinite(n) && n > 0 ? n : 0;
   }
 
   private scheduleDrainPoll(att: Attachment): void {

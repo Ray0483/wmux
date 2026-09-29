@@ -49,12 +49,13 @@ export const es: Readonly<Record<string, string>> = {
   'console.waiting': 'Esperando a tu ordenador…',
   'console.viewerNotice': 'Solo lectura: esta conexión no puede escribir ni responder.',
   'console.controlLimited': 'Aquí solo lectura: este dispositivo está vinculado con control, pero tu ordenador desactiva el control en conexiones HTTP sin cifrar.',
+  'console.repairForControl': 'Aquí solo lectura: este dispositivo está vinculado con control, pero su vínculo ya se usó por HTTP sin cifrar, así que el control está desactivado. Vuelve a vincularlo desde aquí para usar el control.',
   'console.needsYouCount_one': '{n} agente te necesita',
   'console.needsYouCount_other': '{n} agentes te necesitan',
 
-  'card.openToAnswer': 'Te necesita: ábrelo para responder',
+  'card.openToAnswer': 'Ábrelo para responder',
   'card.answerPending': 'Enviado: esperando al agente',
-  'card.answerOnComputer': 'Te necesita — responde en tu ordenador',
+  'card.answerOnComputer': 'Responde en tu ordenador',
 
   'attach.fit': 'Ajustar',
   'attach.pan': 'Legible',

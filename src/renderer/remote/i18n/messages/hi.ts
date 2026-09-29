@@ -49,12 +49,13 @@ export const hi: Readonly<Record<string, string>> = {
   'console.waiting': 'आपके कंप्यूटर का इंतज़ार…',
   'console.viewerNotice': 'केवल देखें — यह कनेक्शन न टाइप कर सकता है न जवाब दे सकता है।',
   'console.controlLimited': 'यहाँ केवल देखें — यह डिवाइस नियंत्रण के साथ पेयर है, लेकिन आपका कंप्यूटर बिना एन्क्रिप्शन वाले HTTP कनेक्शन पर नियंत्रण बंद रखता है।',
+  'console.repairForControl': 'यहाँ केवल देखें — यह डिवाइस नियंत्रण के साथ पेयर है, लेकिन इसकी पेयरिंग पहले बिना एन्क्रिप्शन वाले HTTP पर इस्तेमाल हुई थी, इसलिए नियंत्रण बंद है। नियंत्रण के लिए इसे यहीं से फिर से पेयर करें।',
   'console.needsYouCount_one': '{n} एजेंट को आपकी ज़रूरत है',
   'console.needsYouCount_other': '{n} एजेंटों को आपकी ज़रूरत है',
 
-  'card.openToAnswer': 'आपकी ज़रूरत है — जवाब देने के लिए खोलें',
+  'card.openToAnswer': 'जवाब देने के लिए खोलें',
   'card.answerPending': 'भेजा गया — एजेंट का इंतज़ार',
-  'card.answerOnComputer': 'आपकी ज़रूरत है — अपने कंप्यूटर पर जवाब दें',
+  'card.answerOnComputer': 'अपने कंप्यूटर पर जवाब दें',
 
   'attach.fit': 'चौड़ाई में फ़िट',
   'attach.pan': 'पढ़ने योग्य',

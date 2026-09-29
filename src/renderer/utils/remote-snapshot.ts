@@ -48,8 +48,12 @@ export const SNAPSHOT_FENCE = '';
  * that goes into the JSON on the IPC hop and then the WebSocket frame). 1000
  * lines of scrollback full of SGR runs can exceed it; the phone keeps the
  * NEWEST part, because that is the part it is about to append to.
+ *
+ * Kept below the tap's `lagHigh` (1 MiB of socket backlog, terminal-tap.ts):
+ * the reset goes out in one piece, and one larger than the lag threshold is a
+ * phone that reads as lagging before it has drawn anything.
  */
-export const SNAPSHOT_MAX_CHARS = 2 * 1024 * 1024;
+export const SNAPSHOT_MAX_CHARS = 512 * 1024;
 
 /** The slice of an xterm Terminal the handler touches. */
 export interface SnapshotTerminal {

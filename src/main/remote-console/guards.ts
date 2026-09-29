@@ -134,16 +134,30 @@ export function clearCookieHeader(secure: boolean): string {
 
 /** The `wmux_rc` value from a Cookie header, or null. First occurrence wins. */
 export function readCookie(header: string | undefined): string | null {
-  if (!header) return null;
+  return readCookies(header)[0] ?? null;
+}
+
+/** At most this many `wmux_rc` values are tried from one Cookie header. */
+export const MAX_COOKIE_CANDIDATES = 4;
+
+/**
+ * Every non-empty `wmux_rc` value, in header order, capped. Another server on
+ * this host can SET cookies for it too (plain http is not port-scoped), and a
+ * `wmux_rc=<junk>; Path=/api` it tosses is sent BEFORE the phone's own
+ * Path=/ one — so taking only the first made a paired phone read as "not
+ * paired" and throw its page key away. The server tries each instead.
+ */
+export function readCookies(header: string | undefined): string[] {
+  if (!header) return [];
+  const out: string[] = [];
   for (const part of header.split(';')) {
     const eq = part.indexOf('=');
-    if (eq === -1) continue;
-    if (part.slice(0, eq).trim() === COOKIE_NAME) {
-      const v = part.slice(eq + 1).trim();
-      return v === '' ? null : v;
-    }
+    if (eq === -1 || part.slice(0, eq).trim() !== COOKIE_NAME) continue;
+    const v = part.slice(eq + 1).trim();
+    if (v !== '') out.push(v);
+    if (out.length >= MAX_COOKIE_CANDIDATES) break;
   }
-  return null;
+  return out;
 }
 
 /**

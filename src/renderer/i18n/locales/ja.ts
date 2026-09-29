@@ -610,6 +610,8 @@ export const ja: Translation = {
   'settings.remote.rejectedOrigin': '{origin} のブラウザーは、wmux がそのアドレスを知らないため拒否されました。',
   'settings.remote.rejectedOriginCaution': 'このコンピューターで開いている任意の Web ページがこのメッセージを発生させることがあります。Tailscale の URL など、自分のアドレスだと確認できる場合にのみ使用してください。',
   'settings.remote.useAsPublicUrl': '公開 URL として使う',
+  'settings.remote.useAsPublicUrlConfirm': 'ペアリングのリンクと QR コードは、スマートフォンを {origin} に送ります。このアドレスを制御できる人はペアリングを乗っ取れます。自分の Tailscale アドレスである場合にのみ続行してください。',
+  'settings.remote.useAsPublicUrlYes': 'はい、このアドレスを使う',
   'settings.remote.dismiss': '閉じる',
   'settings.remote.reachability': '接続できる範囲',
   'settings.remote.bindLoopback': 'このコンピューターのみ',

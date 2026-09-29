@@ -610,6 +610,8 @@ export const cs: Translation = {
   'settings.remote.rejectedOrigin': 'Prohlížeč na adrese {origin} byl odmítnut, protože wmux tuto adresu nezná.',
   'settings.remote.rejectedOriginCaution': 'Tuto zprávu může vyvolat jakákoli webová stránka otevřená na tomto počítači. Použijte ji jen tehdy, pokud adresu poznáváte jako svou, například svou adresu Tailscale.',
   'settings.remote.useAsPublicUrl': 'Použít jako veřejnou URL',
+  'settings.remote.useAsPublicUrlConfirm': 'Párovací odkazy a QR kódy pošlou telefony na {origin}. Kdo tuto adresu ovládá, může párování převzít. Pokračujte, jen pokud je to vaše vlastní adresa Tailscale.',
+  'settings.remote.useAsPublicUrlYes': 'Ano, použít tuto adresu',
   'settings.remote.dismiss': 'Zavřít',
   'settings.remote.reachability': 'Dostupné z',
   'settings.remote.bindLoopback': 'Pouze tento počítač',

@@ -445,8 +445,12 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
 
   pairStart(o: { name: string; scope: RemoteScope }): PairOffer | { error: string } {
     if (!this.server || !this.listening) return { error: 'not-running' };
-    const scope = o?.scope;
-    if (scope !== 'viewer' && scope !== 'operator') return { error: 'bad-scope' };
+    if (o?.scope !== 'viewer' && o?.scope !== 'operator') return { error: 'bad-scope' };
+    // Control over a plain-HTTP LAN bind is the user's explicit opt-in; without
+    // it main mints View only, whatever the dialog asked for. The dialog greys
+    // the choice out, but that is the renderer's word and this is the rule.
+    const insecure = this.config.bind === 'lan' && !this.config.allowInsecureControl;
+    const scope: RemoteScope = insecure ? 'viewer' : o.scope;
     const minted = this.devices.mintPairing({ scope, name: o.name });
     if ('error' in minted) return minted;
     const base = pairingBase(this.config, this.listening);

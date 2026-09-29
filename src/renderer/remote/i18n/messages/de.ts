@@ -54,12 +54,13 @@ export const de: Readonly<Record<string, string>> = {
   'console.waiting': 'Warte auf Ihren Computer…',
   'console.viewerNotice': 'Nur ansehen – diese Verbindung kann weder tippen noch antworten.',
   'console.controlLimited': 'Hier nur ansehen – dieses Gerät ist mit Steuerung gekoppelt, aber Ihr Computer schaltet die Steuerung bei unverschlüsselten HTTP-Verbindungen ab.',
+  'console.repairForControl': 'Hier nur ansehen – dieses Gerät ist mit Steuerung gekoppelt, aber seine Kopplung wurde schon über unverschlüsseltes HTTP verwendet, daher ist die Steuerung aus. Koppeln Sie es von hier aus erneut, um zu steuern.',
   'console.needsYouCount_one': '{n} Agent wartet auf Sie',
   'console.needsYouCount_other': '{n} Agenten warten auf Sie',
 
-  'card.openToAnswer': 'Wartet auf Sie – zum Antworten öffnen',
+  'card.openToAnswer': 'Zum Antworten öffnen',
   'card.answerPending': 'Gesendet – wartet auf den Agenten',
-  'card.answerOnComputer': 'Wartet auf Sie — antworten Sie am Computer',
+  'card.answerOnComputer': 'Antworten Sie am Computer',
 
   'attach.fit': 'Einpassen',
   'attach.pan': 'Lesbar',

@@ -198,10 +198,11 @@ describe('phone screens (#254)', () => {
 });
 
 describe('phone and desktop wording (#254)', () => {
-  it('French: the alerts limitation is grammatical, and "Needs you" is worded one way', () => {
+  it('French: the alerts limitation is grammatical, and the card hint does not repeat "Needs you"', () => {
     expect(phoneFr['prefs.limits']).toContain('il se peut que rien n’arrive');
     expect(phoneFr['prefs.limits']).not.toContain('rien peut ne pas');
-    expect(phoneFr['card.answerOnComputer'].startsWith(phoneFr['console.needsYou'])).toBe(true);
+    // The section heading and the state chip already say it (review round 5).
+    expect(phoneFr['card.answerOnComputer']).not.toContain(phoneFr['console.needsYou']);
   });
 
   it('de/es/it name the key caps the key bar actually shows', () => {
