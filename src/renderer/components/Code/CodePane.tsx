@@ -334,7 +334,10 @@ export function CodePane({ surfaceId }: { surfaceId: SurfaceId }): React.JSX.Ele
               // purpose is editing source, tabbing out is never what was meant
               // — and the pane is reachable by click and by the tree's own
               // keyboard navigation, so this does not strand keyboard users.
-              if (e.key === 'Tab') {
+              // A MODIFIED Tab is not indentation: Ctrl+Tab / Ctrl+Shift+Tab
+              // cycle tabs (#249), and indenting here as well would type a
+              // literal TAB into the file on the way out of it.
+              if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.metaKey) {
                 e.preventDefault();
                 const el = e.currentTarget;
                 const { selectionStart: from, selectionEnd: to, value } = el;

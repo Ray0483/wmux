@@ -347,8 +347,8 @@ holds swaps them, so trading `Ctrl+1–9` and `Ctrl+Alt+1–9` is a single click
 | Shortcut | Action |
 |----------|--------|
 | Ctrl+T | New surface |
-| Ctrl+Shift+] | Next surface |
-| Ctrl+Shift+[ | Previous surface |
+| Ctrl+Tab | Next surface |
+| Ctrl+Shift+Tab | Previous surface |
 | Ctrl+Alt+1–8 | Jump to surface 1–8 |
 | Ctrl+Alt+9 | Jump to last surface |
 | Ctrl+W | Close surface |

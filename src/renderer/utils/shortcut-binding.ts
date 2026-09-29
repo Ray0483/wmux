@@ -96,6 +96,15 @@ export function isSafeToIntercept(e: KeyEventLike): boolean {
   // Ctrl+= / Ctrl+- / Ctrl+0 are safe (font size)
   if (e.key === '=' || e.key === '-' || e.key === '0') return true;
 
+  // Ctrl+Tab is safe (#249) — browser-style tab cycling, the nextSurface
+  // default. It is not a shell key: readline and the TUIs wmux hosts read Tab
+  // and Shift+Tab, and xterm has no encoding for a Ctrl-modified Tab at all —
+  // it drops the Ctrl and sends a plain TAB, so before this a Ctrl+Tab over a
+  // terminal quietly triggered completion. Ctrl+Shift+Tab was already free
+  // under the Shift rule above, which left a hand-bound pair working in one
+  // direction only.
+  if (e.key === 'Tab') return true;
+
   // Specifically whitelisted bare Ctrl keys
   if (SAFE_CTRL_KEYS.has(e.key.toLowerCase())) return true;
 
@@ -141,6 +150,11 @@ export function claimsKeyEvent(
   // warning — so without this a rebind to `a` would swallow every `a` the user
   // types into the shell. Named keys carry no such risk: nothing types F3.
   if (!e.ctrlKey && !e.altKey && e.key.length === 1) return false;
+  // Tab is the one NAMED key that is also typing (#249): completion in every
+  // shell, field cycling in every TUI, and Shift+Tab is back-tab. Freeing
+  // Ctrl+Tab above must not make a bare Tab or Shift+Tab claimable over a
+  // terminal — a rebind to either would eat completion outright.
+  if (!e.ctrlKey && !e.altKey && e.key === 'Tab') return false;
 
   if (!isSafeToIntercept(e)) return false;
   const pressed = bindingFromEvent(e);

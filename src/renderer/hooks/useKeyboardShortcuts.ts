@@ -20,9 +20,11 @@ import { useT } from '../i18n';
  *
  * Only consulted when the direct e.key comparison already failed AND Shift is
  * held, so a non-US layout is unaffected: there the recorder stored whatever
- * e.key produced, and that matches directly. This exists to rescue the shipped
- * US-layout defaults (`Ctrl+Shift+[` / `Ctrl+Shift+]`), which are written as
- * the unshifted character but can only ever arrive as the shifted one.
+ * e.key produced, and that matches directly. This exists to rescue the
+ * US-layout surface-cycling defaults shipped through 2.13.x (`Ctrl+Shift+[` /
+ * `Ctrl+Shift+]`, replaced by Ctrl+Tab in #249 but still held by anyone who
+ * chose them), which are written as the unshifted character but can only ever
+ * arrive as the shifted one.
  */
 const UNSHIFTED_BY_CODE: Readonly<Record<string, string>> = {
   BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'",

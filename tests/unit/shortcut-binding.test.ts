@@ -218,3 +218,53 @@ describe('claimsKeyEvent', () => {
     expect(claimsKeyEvent(key('N', { ctrl: true, shift: true }), rebound, DEFAULT_KEYBOARD_PREFS)).toBe(true);
   });
 });
+
+// Browser-style tab cycling (#249). Ctrl+Tab used to be refused by BOTH callers
+// (the shared predicate said no), so over a terminal it fell through to xterm,
+// which drops the Ctrl and sends a plain TAB — completion, not a tab switch.
+describe('Ctrl+Tab tab cycling (#249)', () => {
+  const claims = (e: ReturnType<typeof key>) =>
+    claimsKeyEvent(e, DEFAULT_SHORTCUTS, DEFAULT_KEYBOARD_PREFS);
+
+  it('is the nextSurface/prevSurface default', () => {
+    expect(DEFAULT_SHORTCUTS.nextSurface).toEqual({ key: 'Tab', ctrl: true });
+    expect(DEFAULT_SHORTCUTS.prevSurface).toEqual({ key: 'Tab', ctrl: true, shift: true });
+  });
+
+  it('is safe to intercept over a terminal, in both directions', () => {
+    expect(isSafeToIntercept(key('Tab', { ctrl: true }))).toBe(true);
+    expect(isSafeToIntercept(key('Tab', { ctrl: true, shift: true }))).toBe(true);
+  });
+
+  it('is claimed in both directions, so the pair is symmetric', () => {
+    expect(claims(key('Tab', { ctrl: true }))).toBe(true);
+    expect(claims(key('Tab', { ctrl: true, shift: true }))).toBe(true);
+  });
+
+  it('never claims a bare Tab or Shift+Tab by default', () => {
+    expect(claims(key('Tab'))).toBe(false);
+    expect(claims(key('Tab', { shift: true }))).toBe(false);
+  });
+
+  it('never claims a bare Tab or Shift+Tab even when a user binds one', () => {
+    // A named key is otherwise claimable bare (F1, F3). Tab is the exception:
+    // claiming it would eat completion and back-tab in every pane.
+    const rebound = { ...DEFAULT_SHORTCUTS, nextSurface: { key: 'Tab' }, prevSurface: { key: 'Tab', shift: true } };
+    expect(claimsKeyEvent(key('Tab'), rebound, DEFAULT_KEYBOARD_PREFS)).toBe(false);
+    expect(claimsKeyEvent(key('Tab', { shift: true }), rebound, DEFAULT_KEYBOARD_PREFS)).toBe(false);
+  });
+
+  it('leaves Ctrl+Tab to the terminal once nothing is bound to it', () => {
+    const rebound = {
+      ...DEFAULT_SHORTCUTS,
+      nextSurface: { key: ']', ctrl: true, shift: true },
+      prevSurface: { key: '[', ctrl: true, shift: true },
+    };
+    expect(claimsKeyEvent(key('Tab', { ctrl: true }), rebound, DEFAULT_KEYBOARD_PREFS)).toBe(false);
+  });
+
+  it('is held by no other default action', () => {
+    const tabBound = Object.entries(DEFAULT_SHORTCUTS).filter(([, b]) => b.key === 'Tab').map(([a]) => a);
+    expect(tabBound.sort()).toEqual(['nextSurface', 'prevSurface']);
+  });
+});

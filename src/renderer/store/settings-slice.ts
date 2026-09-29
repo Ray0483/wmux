@@ -1,6 +1,7 @@
 import { StateCreator } from 'zustand';
 import { QuickLaunchProfile, SavedLayout } from '../../shared/types';
 import { INDEX_MODIFIER_CHOICES, IndexModifiers, reconcileIndexModifiers } from '../utils/index-shortcuts';
+import { bindingsEqual } from '../utils/shortcut-binding';
 import type { WorkspaceLayout } from './split-utils';
 import {
   Language,
@@ -30,6 +31,7 @@ const STORAGE_KEYS = {
   notificationPrefs: 'wmux-notification-prefs',
   browserPrefs:      'wmux-browser-prefs',
   shortcuts:         'wmux-shortcuts',
+  shortcutDefaults:  'wmux-shortcut-defaults',
   quickLaunchProfiles: 'wmux-quick-launch-profiles',
   savedLayouts:      'wmux-saved-layouts',
   language:          'wmux-language',
@@ -222,9 +224,13 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, ShortcutBinding> = {
   focusDown:         { key: 'ArrowDown', ctrl: true, alt: true },
   closeSurfaceOrPane:{ key: 'w', ctrl: true },
   newSurface:        { key: 't', ctrl: true },
-  nextSurface:       { key: ']', ctrl: true, shift: true },
-  prevSurface:       { key: '[', ctrl: true, shift: true },
-  jumpToUnread:      { key: 'u', ctrl: true, shift: true },
+  // Browser-style tab cycling (#249). Was Ctrl+Shift+] / Ctrl+Shift+[ through
+  // 2.13.x; existing users are moved over by SHORTCUT_PROMOTIONS below, and
+  // only if they still hold those old defaults. Ctrl+Tab needed a line in
+  // isSafeToIntercept to be claimable over a terminal at all.
+  nextSurface:       { key: 'Tab', ctrl: true },
+  prevSurface:       { key: 'Tab', ctrl: true, shift: true },
+  jumpToUnread:     { key: 'u', ctrl: true, shift: true },
   showNotifications: { key: 'n', ctrl: true, alt: true },
   flashFocused:      { key: 'f', ctrl: true, alt: true },
   openBrowser:       { key: 'i', ctrl: true, shift: true },
@@ -308,6 +314,98 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, ShortcutBinding> = {
   togglePinnedPrompt:     { key: 'k', ctrl: true, shift: true },
   followOutput:           { key: 'End', ctrl: true, shift: true },
 };
+
+// ─── Shortcut default promotions (#249) ──────────────────────────────────────
+// Changing a value in DEFAULT_SHORTCUTS reaches almost nobody on its own:
+// `setShortcut` persists the WHOLE merged table, so the first rebind of any
+// one action puts every other action's then-default on disk too, and
+// `{ ...DEFAULT_SHORTCUTS, ...stored }` lets that stale copy win forever. The
+// same trap promptDefaultRev and the appearance revs exist for.
+//
+// The rev lives under its own key rather than inside `wmux-shortcuts`: that
+// blob is a Record<ShortcutAction, ShortcutBinding>, and every consumer walks
+// it with Object.values/entries expecting a binding in each slot — a number
+// there would reach bindingsEqual on the keydown path.
+//
+// Unlike the prefs promotions, these are VALUE-GUARDED as well as rev-gated. A
+// shortcut is the one pref where "the user never touched it" is observable per
+// field: a slot still holding the exact old default is a slot nobody chose, and
+// anything else is somebody's decision and is left alone.
+
+/** Which generation of DEFAULT_SHORTCUTS a stored table has been reconciled against. */
+export interface ShortcutDefaultsState {
+  shortcutDefaultRev: number;
+}
+
+/**
+ * 0 — every release through 2.13.x. No promotion has ever run.
+ * 1 — #249: nextSurface/prevSurface Ctrl+Shift+] / [ → Ctrl+Tab / Ctrl+Shift+Tab.
+ */
+export const SHORTCUT_DEFAULT_REV = 1;
+
+/** The pre-#249 surface-cycling defaults, which the rev-1 promotion replaces. */
+export const PRE_249_SURFACE_CYCLE: Readonly<Partial<Record<ShortcutAction, ShortcutBinding>>> = {
+  nextSurface: { key: ']', ctrl: true, shift: true },
+  prevSurface: { key: '[', ctrl: true, shift: true },
+};
+
+/**
+ * Move each action in `from` to its CURRENT default, in place — but only where
+ * the slot still holds the old default, and only where no other action already
+ * holds the new combo (a user who bound, say, nextWorkspace to Ctrl+Tab while
+ * it worked outside terminals must not wake up with two actions on one key and
+ * one of them dead).
+ */
+function promoteUnchosen(
+  shortcuts: Record<ShortcutAction, ShortcutBinding>,
+  from: Readonly<Partial<Record<ShortcutAction, ShortcutBinding>>>,
+): void {
+  for (const [action, old] of Object.entries(from) as [ShortcutAction, ShortcutBinding][]) {
+    const held = shortcuts[action];
+    if (!held || !bindingsEqual(held, old)) continue;
+    const next = DEFAULT_SHORTCUTS[action];
+    const taken = (Object.entries(shortcuts) as [ShortcutAction, ShortcutBinding | undefined][])
+      .some(([other, b]) => other !== action && !!b && bindingsEqual(b, next));
+    if (taken) continue;
+    shortcuts[action] = { ...next };
+  }
+}
+
+interface ShortcutPromotion {
+  /** The rev this promotion brings a table up to. */
+  current: number;
+  apply: (shortcuts: Record<ShortcutAction, ShortcutBinding>) => void;
+}
+
+const SHORTCUT_PROMOTIONS: ReadonlyArray<ShortcutPromotion> = [
+  { current: 1, apply: (s) => promoteUnchosen(s, PRE_249_SURFACE_CYCLE) },
+];
+
+/**
+ * The stored shortcut table, merged over the defaults and brought up to
+ * SHORTCUT_DEFAULT_REV.
+ *
+ * The rev is read off the RAW stored state, never a merged one — the same rule,
+ * and the same bug to look for if a promotion seems to do nothing, as
+ * loadPromptPrefs. It is written back the moment it is due, even when nothing
+ * changed (a fresh install, a user who had rebound both actions): the rev has to
+ * be on disk for this to stay ONE-time, or a user who deliberately sets
+ * Ctrl+Shift+] back would be re-promoted on every launch.
+ */
+export function loadShortcuts(): Record<ShortcutAction, ShortcutBinding> {
+  const stored = loadPersisted<Record<ShortcutAction, ShortcutBinding>>(STORAGE_KEYS.shortcuts);
+  const merged: Record<ShortcutAction, ShortcutBinding> = { ...DEFAULT_SHORTCUTS, ...stored };
+
+  const rev = loadPersisted<ShortcutDefaultsState>(STORAGE_KEYS.shortcutDefaults).shortcutDefaultRev ?? 0;
+  const due = SHORTCUT_PROMOTIONS.filter((p) => rev < p.current);
+  if (due.length === 0) return merged;
+
+  const promoted = { ...merged };
+  for (const p of due) p.apply(promoted);
+  if (Object.keys(stored).length > 0) persist(STORAGE_KEYS.shortcuts, promoted);
+  persist<ShortcutDefaultsState>(STORAGE_KEYS.shortcutDefaults, { shortcutDefaultRev: SHORTCUT_DEFAULT_REV });
+  return promoted;
+}
 
 // ─── Sidebar settings ─────────────────────────────────────────────────────────
 
@@ -1188,7 +1286,8 @@ export interface ImportUndo {
 // ─── Slice creator ────────────────────────────────────────────────────────────
 
 export const createSettingsSlice: StateCreator<SettingsSlice> = (set) => ({
-  shortcuts:         { ...DEFAULT_SHORTCUTS,         ...loadPersisted<Record<ShortcutAction, ShortcutBinding>>(STORAGE_KEYS.shortcuts) },
+  // Brought up to SHORTCUT_DEFAULT_REV on load (#249) — see loadShortcuts.
+  shortcuts:         loadShortcuts(),
   sidebarVisible:    true,
   sidebarPrefs:      { ...DEFAULT_SIDEBAR_PREFS,      ...loadPersisted<SidebarPrefs>(STORAGE_KEYS.sidebarPrefs) },
   workspacePrefs:    { ...DEFAULT_WORKSPACE_PREFS,    ...loadPersisted<WorkspacePrefs>(STORAGE_KEYS.workspacePrefs) },

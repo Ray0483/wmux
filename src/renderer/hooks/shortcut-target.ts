@@ -28,6 +28,11 @@ export const GLOBAL_IN_EDITOR: ReadonlySet<ShortcutAction> = new Set<ShortcutAct
   // without this its toggle stops working the moment the panel it opened takes
   // focus — the one place a user is most likely to press it again.
   'togglePromptOutline',
+  // Tab cycling (#249). Its default is now Ctrl+Tab, which no text field uses,
+  // and a browser switches tabs on it from inside a textarea — which is where a
+  // user editing a code or markdown tab is standing when they reach for it.
+  'nextSurface',
+  'prevSurface',
 ]);
 
 /** The subset of an event target this guard needs; keeps the tests DOM-free. */
