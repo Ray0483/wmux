@@ -74,6 +74,8 @@ function harness(opts: { scope?: RemoteScope; effective?: RemoteScope; hello?: b
   return h;
 }
 
+const flush = (): Promise<void> => new Promise((r) => { setTimeout(r, 0); });
+
 async function greeted(opts: Parameters<typeof harness>[0] = {}): Promise<Harness> {
   const h = harness(opts);
   await h.frame({ t: 'hello', v: 1 });
@@ -356,6 +358,8 @@ describe('session: nonce dedupe (rule 3)', () => {
     const n = nonce();
     const first = h.frame({ t: 'send', s: S, nonce: n, text: 'x', submit: false });
     const second = h.frame({ t: 'send', s: S, nonce: n, text: 'x', submit: false });
+    // The action starts on the device queue, one microtask later.
+    await flush();
     release();
     await Promise.all([first, second]);
     expect(h.calls.filter((c) => c.startsWith('write'))).toHaveLength(1);
@@ -509,5 +513,74 @@ describe('session: frame rate (rule 7)', () => {
     await h.frame({ t: 'ping' });
     expect(h.sent).toEqual([]);
     expect(h.deps.onDetach).toHaveBeenCalled();
+  });
+});
+
+describe('session: review fixes, round 3 (#254)', () => {
+  it('Shift+Tab on a blocked pane confirms: its CSI bytes are not navigation there', async () => {
+    const h = await greeted();
+    h.state.blocked = true;
+    // The harness's byte check says no to ESC [ Z, exactly like the real one.
+    expect(h.ops.isAnsweringInput('\x1b[Z')).toBe(false);
+    await h.frame({ t: 'key', s: S, nonce: nonce(), key: 'shift-tab' });
+    expect(h.acks()[0]).toMatchObject({ ok: false, code: 'confirm', confirm: 'blocked', prompt: 7 });
+    expect(h.calls).toEqual([]);
+    for (const key of ['tab', 'backspace', 'esc'] as const) {
+      await h.frame({ t: 'key', s: S, nonce: nonce(), key });
+    }
+    expect(h.acks().slice(1).map((a) => a.confirm)).toEqual(['blocked', 'blocked', 'blocked']);
+    expect(h.calls).toEqual([]);
+  });
+
+  it('a key tapped while a send awaits the desktop modes waits for it: text, then its Enter, then the key', async () => {
+    const h = await greeted();
+    let release: () => void = () => undefined;
+    h.deps.queryModes = () => new Promise((r) => { release = () => r({ bracketedPaste: false }); });
+    const send = h.frame({ t: 'send', s: S, nonce: nonce(), text: 'hi', submit: true });
+    const key = h.frame({ t: 'key', s: S, nonce: nonce(), key: 'up' });
+    await flush();
+    expect(h.calls).toEqual([]);
+    release();
+    await Promise.all([send, key]);
+    expect(h.calls).toEqual([
+      'note:"hi"', 'write:"hi"', `sleep:${SUBMIT_GAP_MS}`, 'note:"\\r"', 'write:"\\r"',
+      'note:"\\u001b[A"', 'write:"\\u001b[A"',
+    ]);
+  });
+
+  it('a queued action whose session was disposed while it waited writes nothing', async () => {
+    const h = await greeted();
+    let release: () => void = () => undefined;
+    h.deps.queryModes = () => new Promise((r) => { release = () => r({ bracketedPaste: true }); });
+    const send = h.frame({ t: 'send', s: S, nonce: nonce(), text: 'x', submit: false });
+    const key = h.frame({ t: 'key', s: S, nonce: nonce(), key: 'up' });
+    h.session.dispose();
+    release();
+    await Promise.all([send, key]);
+    expect(h.calls).toEqual([]);
+  });
+
+  it('accepting a confirm does not charge the byte budget twice', async () => {
+    const h = await greeted();
+    h.state.bracketed = false;
+    // 36 KB of three-byte characters, on two lines: a multiline confirm first.
+    const text = '字'.repeat(6000) + '\n' + '字'.repeat(6000);
+    expect(Buffer.byteLength(text)).toBeGreaterThan(32768);
+    const n = nonce();
+    await h.frame({ t: 'send', s: S, nonce: n, text, submit: true });
+    expect(h.acks()[0]).toMatchObject({ code: 'confirm', confirm: 'multiline' });
+    await h.frame({ t: 'send', s: S, nonce: n, text, submit: true, force: ['multiline'] });
+    expect(h.acks()[1]).toEqual({ t: 'ack', nonce: n, ok: true });
+  });
+
+  it('attach is limited per device: a viewer cannot make the desktop serialize 50 buffers a second', async () => {
+    const h = await greeted({ scope: 'viewer' });
+    for (let i = 0; i < 6; i++) await h.frame({ t: 'attach', s: S });
+    expect(h.deps.onAttach).toHaveBeenCalledTimes(4);
+    expect(h.sent.filter((m) => m.t === 'error' && m.code === 'rate')).toHaveLength(2);
+    expect(h.closed).toEqual([]);
+    h.advance(1000);
+    await h.frame({ t: 'attach', s: S });
+    expect(h.deps.onAttach).toHaveBeenCalledTimes(5);
   });
 });

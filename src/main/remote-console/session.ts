@@ -9,8 +9,9 @@
  * that call them.
  *
  * The ordering rule that matters most, and that a refactor would most easily
- * break: `wasBlocked` is read as the FIRST statement of `send` and `key`,
- * before any await and before any `noteHumanInput`. `noteHumanInput` is what
+ * break: `wasBlocked` is read as the FIRST statement of a `send` or `key` once
+ * it starts running, before any await of its own and before any
+ * `noteHumanInput`. `noteHumanInput` is what
  * tells agent-state a human typed — and typing into a blocked pane is how a
  * human answers, so it can CLEAR blocked. Read afterwards, the check would ask
  * "is the pane blocked now that I have told it someone answered?" and always
@@ -77,22 +78,50 @@ export interface DeviceSessionState {
   nonces: NonceLru;
   /** Acks still being computed, so a resend of an in-flight nonce waits for the original's answer. */
   inFlight: Map<string, Promise<AckMsg>>;
+  /**
+   * The tail of this device's operator actions. A `send` awaits the desktop's
+   * modes (up to 2 s) and a 40 ms gap before its Enter; a `key` does not. Run
+   * side by side, an Enter tapped right after an Insert reached the PTY BEFORE
+   * the inserted text, a key tapped inside the gap landed between a Send's text
+   * and its Enter, and the frames ws-client replays in order after a reconnect
+   * executed in any order. Each action starts once the previous one has written
+   * or refused — per device, because both of a device's sockets type into the
+   * same panes.
+   */
+  queue: Promise<void>;
   send: TokenBucket;
   sendBytes: TokenBucket;
   key: TokenBucket;
   answer: TokenBucket;
+  /**
+   * `attach`, which makes the DESKTOP renderer serialize a whole terminal
+   * buffer. Viewer scope, so it is the one expensive thing a least-privileged
+   * device can ask for; the frame bucket alone let it ask 50 times a second.
+   */
+  attach: TokenBucket;
 }
 
 export function createDeviceSessionState(now: () => number): DeviceSessionState {
   return {
     nonces: new NonceLru(now),
     inFlight: new Map(),
+    queue: Promise.resolve(),
     send: new TokenBucket(LIMITS.send.rate, LIMITS.send.burst, now),
     sendBytes: new TokenBucket(LIMITS.sendBytes.rate, LIMITS.sendBytes.burst, now),
     key: new TokenBucket(LIMITS.key.rate, LIMITS.key.burst, now),
     answer: new TokenBucket(LIMITS.answer.rate, LIMITS.answer.burst, now),
+    attach: new TokenBucket(LIMITS.attach.rate, LIMITS.attach.burst, now),
   };
 }
+
+/**
+ * Keys that answer a declared-blocked prompt, whatever their bytes look like.
+ * `isAnsweringInput` was written for desktop keystroke attribution and skips
+ * every CSI sequence as navigation — so it reads Shift+Tab (`ESC [ Z`) as a
+ * scroll, while Claude Code's edit-permission prompt reads it as "Yes, allow
+ * all edits during this session". The byte check still runs beside this list.
+ */
+export const REMOTE_ANSWERING_KEYS: ReadonlySet<string> = new Set(['enter', 'y', 'n', 'esc', 'tab', 'shift-tab', 'backspace']);
 
 export type SessionOps = Pick<ConsoleOps,
   'isLivePty' | 'isBlocked' | 'promptId' | 'runDepth' | 'isAnsweringInput' | 'noteHumanInput' | 'write' | 'deliverAnswer' | 'log'>;
@@ -270,6 +299,11 @@ export class ConsoleSession {
   }
 
   private handleAttach(s: string): void {
+    if (!this.d.deviceState.attach.take()) {
+      this.d.send({ t: 'error', code: 'rate', message: 'Too many messages.' });
+      this.trip(this.rateTrips);
+      return;
+    }
     if (!this.d.ops.isLivePty(s)) {
       this.d.send({ t: 'term.error', s, code: 'no-terminal', message: 'No such terminal.' });
       return;
@@ -279,10 +313,14 @@ export class ConsoleSession {
 
   /**
    * The nonce protocol around one operator action. A nonce already EXECUTED
-   * answers `duplicate` with no effect; one still in flight answers with the
-   * original's ack when it lands (a resend after a reconnect). Only executed
-   * actions are recorded, so a refusal — `confirm` above all — can be resent
-   * with the same nonce and `force`.
+   * answers `duplicate` with no effect; one still queued or in flight answers
+   * with the original's ack when it lands (a resend after a reconnect). Only
+   * executed actions are recorded, so a refusal — `confirm` above all — can be
+   * resent with the same nonce and `force`.
+   *
+   * `run` starts only after the device's previous action settled (see
+   * `DeviceSessionState.queue`), and a session closed while it waited runs
+   * nothing: a revoked phone's queued key must not type after the revoke.
    */
   private async guarded(nonce: string, bucket: TokenBucket, run: () => Promise<AckMsg>): Promise<void> {
     const st = this.d.deviceState;
@@ -301,7 +339,10 @@ export class ConsoleSession {
       this.trip(this.rateTrips);
       return;
     }
-    const p = run().catch((): AckMsg => refuse(nonce, 'write-failed'));
+    const p = st.queue
+      .then(() => (this.closed ? refuse(nonce, 'gone') : run()))
+      .catch((): AckMsg => refuse(nonce, 'write-failed'));
+    st.queue = p.then(() => undefined);
     st.inFlight.set(nonce, p);
     try {
       const ack = await p;
@@ -329,14 +370,15 @@ export class ConsoleSession {
   }
 
   private async handleSend(m: Extract<ClientMessage, { t: 'send' }>): Promise<void> {
-    const wasBlocked = this.d.ops.isBlocked(m.s);
-    const prompt = this.d.ops.promptId(m.s);
-    await this.guarded(m.nonce, this.d.deviceState.send, () => this.runSend(m, wasBlocked, prompt));
+    await this.guarded(m.nonce, this.d.deviceState.send, () => {
+      const wasBlocked = this.d.ops.isBlocked(m.s);
+      const prompt = this.d.ops.promptId(m.s);
+      return this.runSend(m, wasBlocked, prompt);
+    });
   }
 
   private async runSend(m: Extract<ClientMessage, { t: 'send' }>, wasBlocked: boolean, prompt: number | null): Promise<AckMsg> {
     if (m.text.length > MAX_TEXT) return refuse(m.nonce, 'too-long');
-    if (!this.d.deviceState.sendBytes.take(Buffer.byteLength(m.text, 'utf8'))) return refuse(m.nonce, 'rate');
     const clean = sanitizeComposerText(m.text);
     if (clean === '' && !m.submit) return ok(m.nonce);
     if (!this.d.ops.isLivePty(m.s)) return refuse(m.nonce, 'gone');
@@ -355,6 +397,10 @@ export class ConsoleSession {
     const refusal = multilineRefusal(m, clean, bracketed);
     if (refusal) return refusal;
     if (!this.d.ops.isLivePty(m.s)) return refuse(m.nonce, 'gone');
+    // Charged only now, once nothing is left to refuse or confirm: a confirm is
+    // answered by resending the SAME text with `force`, and charging both
+    // halves turned one accepted 36 KB paste into `rate`.
+    if (!this.d.deviceState.sendBytes.take(Buffer.byteLength(m.text, 'utf8'))) return refuse(m.nonce, 'rate');
     return this.deliverComposer(m, clean, bracketed);
   }
 
@@ -396,9 +442,11 @@ export class ConsoleSession {
   }
 
   private async handleKey(m: Extract<ClientMessage, { t: 'key' }>): Promise<void> {
-    const wasBlocked = this.d.ops.isBlocked(m.s);
-    const prompt = this.d.ops.promptId(m.s);
-    await this.guarded(m.nonce, this.d.deviceState.key, async () => this.runKey(m, wasBlocked, prompt));
+    await this.guarded(m.nonce, this.d.deviceState.key, async () => {
+      const wasBlocked = this.d.ops.isBlocked(m.s);
+      const prompt = this.d.ops.promptId(m.s);
+      return this.runKey(m, wasBlocked, prompt);
+    });
   }
 
   private runKey(m: Extract<ClientMessage, { t: 'key' }>, wasBlocked: boolean, prompt: number | null): AckMsg {
@@ -406,8 +454,10 @@ export class ConsoleSession {
     if (bytes === undefined) return refuse(m.nonce, 'bad-key');
     if (!this.d.ops.isLivePty(m.s)) return refuse(m.nonce, 'gone');
     // Arrow keys are not answering input, so a menu can still be navigated
-    // from the phone without a confirm; Enter, y and n are.
-    if (wasBlocked && !waivesBlocked(m, prompt) && this.d.ops.isAnsweringInput(bytes)) return this.confirmBlocked(m.nonce, m.s);
+    // from the phone without a confirm; Enter, y, n, Esc, Tab, Shift+Tab and
+    // Backspace are.
+    const answering = REMOTE_ANSWERING_KEYS.has(m.key) || this.d.ops.isAnsweringInput(bytes);
+    if (wasBlocked && !waivesBlocked(m, prompt) && answering) return this.confirmBlocked(m.nonce, m.s);
     // A bare ESC or ^C ends an agent's run (and clears blocked) — one stray
     // tap on a phone must not cancel twenty minutes of work.
     if ((m.key === 'esc' || m.key === 'ctrl-c') && !waives(m, 'interrupt') && this.d.ops.runDepth(m.s) > 0) return confirm(m.nonce, 'interrupt');
