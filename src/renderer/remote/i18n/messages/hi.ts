@@ -29,6 +29,8 @@ export const hi: Readonly<Record<string, string>> = {
   'incompatible.body': 'यह पेज आपके कंप्यूटर के wmux की तुलना में पुराना है। मौजूदा संस्करण पाने के लिए फिर से लोड करें।',
   'unreachable.title': 'wmux तक नहीं पहुँच पा रहे',
   'unreachable.body': 'रिमोट कंसोल ने जवाब नहीं दिया। जाँचें कि wmux चल रहा है और कंसोल चालू है।',
+  'tooMany.title': 'दूसरे टैब में खुला है',
+  'tooMany.body': 'इस डिवाइस पर कंसोल पहले से दूसरे टैब या विंडो में खुला है। उनमें से एक बंद करें, फिर दोबारा कोशिश करें।',
 
   'conn.ready': 'कनेक्ट है',
   'conn.connecting': 'कनेक्ट हो रहा है…',
@@ -44,6 +46,7 @@ export const hi: Readonly<Record<string, string>> = {
   'console.empty': 'अभी कोई एजेंट नहीं चल रहा है।',
   'console.waiting': 'आपके कंप्यूटर का इंतज़ार…',
   'console.viewerNotice': 'केवल देखें — यह कनेक्शन न टाइप कर सकता है न जवाब दे सकता है।',
+  'console.controlLimited': 'यहाँ केवल देखें — यह डिवाइस नियंत्रण के साथ पेयर है, लेकिन आपका कंप्यूटर बिना एन्क्रिप्शन वाले HTTP कनेक्शन पर नियंत्रण बंद रखता है।',
   'console.needsYouCount_one': '{n} एजेंट को आपकी ज़रूरत है',
   'console.needsYouCount_other': '{n} एजेंटों को आपकी ज़रूरत है',
 
@@ -125,6 +128,7 @@ export const hi: Readonly<Record<string, string>> = {
   'prefs.themeLight': 'हल्की',
   'prefs.themeDark': 'गहरी',
   'prefs.fontScale': 'टेक्स्ट का आकार',
+  'prefs.fontScaleN': 'टेक्स्ट का आकार {pct}%',
   'prefs.alerts': 'अलर्ट',
   'prefs.enableAlerts': 'अलर्ट चालू करें',
   'prefs.alertsOn': 'अलर्ट चालू हैं।',

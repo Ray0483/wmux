@@ -29,6 +29,8 @@ export const nl: Readonly<Record<string, string>> = {
   'incompatible.body': 'Deze pagina is verouderd ten opzichte van wmux op je computer. Laad opnieuw voor de huidige versie.',
   'unreachable.title': 'wmux niet bereikbaar',
   'unreachable.body': 'De externe console reageerde niet. Controleer of wmux draait en de console aan staat.',
+  'tooMany.title': 'Open in een ander tabblad',
+  'tooMany.body': 'De console is op dit apparaat al open in andere tabbladen of vensters. Sluit er een en probeer het opnieuw.',
 
   'conn.ready': 'Verbonden',
   'conn.connecting': 'Verbinden…',
@@ -44,6 +46,7 @@ export const nl: Readonly<Record<string, string>> = {
   'console.empty': 'Er draaien nu geen agents.',
   'console.waiting': 'Wachten op je computer…',
   'console.viewerNotice': 'Alleen bekijken — deze verbinding kan niet typen of antwoorden.',
+  'console.controlLimited': 'Hier alleen bekijken — dit apparaat is gekoppeld met besturing, maar je computer zet besturing uit voor onversleutelde HTTP-verbindingen.',
   'console.needsYouCount_one': '{n} agent wacht op jou',
   'console.needsYouCount_other': '{n} agents wachten op jou',
 
@@ -125,6 +128,7 @@ export const nl: Readonly<Record<string, string>> = {
   'prefs.themeLight': 'Licht',
   'prefs.themeDark': 'Donker',
   'prefs.fontScale': 'Tekstgrootte',
+  'prefs.fontScaleN': 'Tekstgrootte {pct}%',
   'prefs.alerts': 'Meldingen',
   'prefs.enableAlerts': 'Meldingen inschakelen',
   'prefs.alertsOn': 'Meldingen staan aan.',

@@ -29,6 +29,8 @@ export const de: Readonly<Record<string, string>> = {
   'incompatible.body': 'Diese Seite passt nicht mehr zum wmux auf deinem Computer. Lade neu, um die aktuelle Version zu erhalten.',
   'unreachable.title': 'wmux nicht erreichbar',
   'unreachable.body': 'Die Fernkonsole hat nicht geantwortet. Prüfe, ob wmux läuft und die Konsole eingeschaltet ist.',
+  'tooMany.title': 'In einem anderen Tab geöffnet',
+  'tooMany.body': 'Die Konsole ist auf diesem Gerät bereits in anderen Tabs oder Fenstern offen. Schließe eines davon und versuche es dann erneut.',
 
   'conn.ready': 'Verbunden',
   'conn.connecting': 'Verbinde…',
@@ -44,6 +46,7 @@ export const de: Readonly<Record<string, string>> = {
   'console.empty': 'Gerade laufen keine Agenten.',
   'console.waiting': 'Warte auf deinen Computer…',
   'console.viewerNotice': 'Nur ansehen – diese Verbindung kann weder tippen noch antworten.',
+  'console.controlLimited': 'Hier nur ansehen – dieses Gerät ist mit Steuerung gekoppelt, aber dein Computer schaltet die Steuerung bei unverschlüsselten HTTP-Verbindungen ab.',
   'console.needsYouCount_one': '{n} Agent braucht dich',
   'console.needsYouCount_other': '{n} Agenten brauchen dich',
 
@@ -54,7 +57,7 @@ export const de: Readonly<Record<string, string>> = {
   'attach.fit': 'Einpassen',
   'attach.pan': 'Lesbar',
   'attach.jumpBottom': 'Zum Ende',
-  'attach.altHint': 'Vollbild-App: Mit Bild↑ / Bild↓ unter ⋯ blättern.',
+  'attach.altHint': 'Vollbild-App: Mit PgUp / PgDn unter ⋯ blättern.',
   'attach.altHintViewer': 'Vollbild-App: Von diesem Gerät aus kann nicht geblättert werden.',
   'attach.loading': 'Bildschirm wird geladen…',
   'attach.exited': 'Prozess beendet ({code})',
@@ -125,6 +128,7 @@ export const de: Readonly<Record<string, string>> = {
   'prefs.themeLight': 'Hell',
   'prefs.themeDark': 'Dunkel',
   'prefs.fontScale': 'Textgröße',
+  'prefs.fontScaleN': 'Textgröße {pct} %',
   'prefs.alerts': 'Benachrichtigungen',
   'prefs.enableAlerts': 'Benachrichtigungen aktivieren',
   'prefs.alertsOn': 'Benachrichtigungen sind aktiv.',

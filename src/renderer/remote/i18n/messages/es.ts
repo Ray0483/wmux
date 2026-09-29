@@ -29,6 +29,8 @@ export const es: Readonly<Record<string, string>> = {
   'incompatible.body': 'Esta página está desactualizada respecto al wmux de tu ordenador. Recarga para obtener la versión actual.',
   'unreachable.title': 'No se puede contactar con wmux',
   'unreachable.body': 'La consola remota no ha respondido. Comprueba que wmux está en marcha y que la consola está activada.',
+  'tooMany.title': 'Abierta en otra pestaña',
+  'tooMany.body': 'La consola ya está abierta en otras pestañas o ventanas de este dispositivo. Cierra una y vuelve a intentarlo.',
 
   'conn.ready': 'Conectado',
   'conn.connecting': 'Conectando…',
@@ -44,6 +46,7 @@ export const es: Readonly<Record<string, string>> = {
   'console.empty': 'Ahora mismo no hay agentes en marcha.',
   'console.waiting': 'Esperando a tu ordenador…',
   'console.viewerNotice': 'Solo lectura: esta conexión no puede escribir ni responder.',
+  'console.controlLimited': 'Aquí solo lectura: este dispositivo está vinculado con control, pero tu ordenador desactiva el control en conexiones HTTP sin cifrar.',
   'console.needsYouCount_one': '{n} agente te necesita',
   'console.needsYouCount_other': '{n} agentes te necesitan',
 
@@ -54,7 +57,7 @@ export const es: Readonly<Record<string, string>> = {
   'attach.fit': 'Ajustar',
   'attach.pan': 'Legible',
   'attach.jumpBottom': 'Ir al final',
-  'attach.altHint': 'Aplicación a pantalla completa: desplázate con RePág / AvPág en ⋯.',
+  'attach.altHint': 'Aplicación a pantalla completa: desplázate con PgUp / PgDn en ⋯.',
   'attach.altHintViewer': 'Aplicación a pantalla completa: no se puede desplazar desde este dispositivo.',
   'attach.loading': 'Cargando pantalla…',
   'attach.exited': 'El proceso terminó ({code})',
@@ -125,6 +128,7 @@ export const es: Readonly<Record<string, string>> = {
   'prefs.themeLight': 'Claro',
   'prefs.themeDark': 'Oscuro',
   'prefs.fontScale': 'Tamaño del texto',
+  'prefs.fontScaleN': 'Tamaño del texto {pct} %',
   'prefs.alerts': 'Alertas',
   'prefs.enableAlerts': 'Activar alertas',
   'prefs.alertsOn': 'Las alertas están activadas.',

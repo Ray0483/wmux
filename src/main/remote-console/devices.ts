@@ -15,6 +15,16 @@
  * Pairing secrets are hashed too, for the same reason: the offer lives for
  * 120 s in memory only, but there is no cost to comparing hashes and it keeps
  * one comparison routine for both credentials.
+ *
+ * A device holds TWO credentials, and needs both. The cookie is host-scoped,
+ * not port-scoped: on plain http (ssh -L, a LAN bind) the browser sends it to
+ * every other server on that host, which can read it and replay it from a
+ * non-browser client with any Host/Origin it likes. So pairing also mints a
+ * page KEY that the phone keeps in localStorage — scoped to the exact origin,
+ * port included — and presents on `/api/session` and on the WebSocket
+ * upgrade. A stolen cookie alone opens nothing. Only its hash is stored, like
+ * the token's. A record from before the key existed has `keyHash: null` and
+ * can never connect again: re-pairing replaces it.
  */
 import { timingSafeEqual } from 'crypto';
 import type { RemoteDeviceView } from '../../shared/remote-console-config';
@@ -34,6 +44,8 @@ export interface DeviceRecord {
   name: string;
   scope: RemoteScope;
   tokenHash: string;
+  /** Hash of the page key (see the header); null for a record paired before it existed. */
+  keyHash: string | null;
   createdAt: number;
   lastSeenAt: number;
 }
@@ -64,7 +76,7 @@ interface Offer {
 }
 
 export type ConsumeResult =
-  | { ok: true; device: DeviceRecord; token: string }
+  | { ok: true; device: DeviceRecord; token: string; key: string }
   | { ok: false; reason: 'expired' | 'invalid' | 'device-cap' };
 
 /** Strip controls and bidi, trim, cap; empty becomes the default. Names are rendered in Settings and on the phone. */
@@ -91,13 +103,14 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 function parseDevice(v: unknown): DeviceRecord | null {
   if (!isRecord(v)) return null;
-  const { id, name, scope, tokenHash, createdAt, lastSeenAt } = v;
+  const { id, name, scope, tokenHash, keyHash, createdAt, lastSeenAt } = v;
   if (typeof id !== 'string' || !/^dev-[0-9a-f-]{36}$/.test(id)) return null;
   if (scope !== 'viewer' && scope !== 'operator') return null;
   if (typeof tokenHash !== 'string' || !/^[0-9a-f]{64}$/.test(tokenHash)) return null;
   if (typeof createdAt !== 'number' || typeof lastSeenAt !== 'number') return null;
   if (!Number.isFinite(createdAt) || !Number.isFinite(lastSeenAt)) return null;
-  return { id, name: cleanDeviceName(name), scope, tokenHash, createdAt, lastSeenAt };
+  const key = typeof keyHash === 'string' && /^[0-9a-f]{64}$/.test(keyHash) ? keyHash : null;
+  return { id, name: cleanDeviceName(name), scope, tokenHash, keyHash: key, createdAt, lastSeenAt };
 }
 
 function uuidFrom(bytes: Buffer): string {
@@ -230,7 +243,7 @@ export class DeviceRegistry {
    * it too — 32 random bytes are not guessable, so five misses mean somebody
    * is trying rather than mistyping, and a fresh QR is one click away.
    */
-  consumePairing(secret: unknown, name: unknown): ConsumeResult {
+  consumePairing(secret: unknown, name: unknown, replaces?: string | null): ConsumeResult {
     const offer = this.offer;
     if (!offer || this.deps.now() >= offer.expiresAt) {
       this.offer = null;
@@ -243,20 +256,37 @@ export class DeviceRegistry {
       return { ok: false, reason: 'invalid' };
     }
     this.offer = null;
-    if (this.devices.size >= MAX_DEVICES) return { ok: false, reason: 'device-cap' };
+    // Re-pairing THIS browser (to change its access, or after it lost its
+    // page key) replaces its old record rather than leaving a dead duplicate
+    // in Settings — and so does not count against the cap it frees.
+    const old = replaces ? this.devices.get(replaces) ?? null : null;
+    if (this.devices.size - (old ? 1 : 0) >= MAX_DEVICES) return { ok: false, reason: 'device-cap' };
     const token = this.deps.randomBytes(32).toString('base64url');
+    const key = this.deps.randomBytes(32).toString('base64url');
     const now = this.deps.now();
     const device: DeviceRecord = {
       id: `dev-${uuidFrom(this.deps.randomBytes(16))}`,
       name: cleanDeviceName(name, offer.name),
       scope: offer.scope,
       tokenHash: this.deps.sha256(token),
+      keyHash: this.deps.sha256(key),
       createdAt: now,
       lastSeenAt: now,
     };
+    if (old) {
+      this.devices.delete(old.id);
+      this.tombstones.add(old.id);
+    }
     this.devices.set(device.id, device);
     this.persist();
-    return { ok: true, device: { ...device }, token };
+    if (old) this.emitRevoked([old.id]);
+    return { ok: true, device: { ...device }, token, key };
+  }
+
+  /** The page key a device must present beside its cookie (see the header). Constant-time. */
+  verifyKey(device: DeviceRecord, key: string | null | undefined): boolean {
+    if (!device.keyHash || !key || key.length > 128) return false;
+    return hashesEqual(this.deps.sha256(key), device.keyHash);
   }
 
   // ── Devices ────────────────────────────────────────────────────────

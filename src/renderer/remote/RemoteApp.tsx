@@ -4,11 +4,13 @@
  *   pairing secret in the fragment ─▶ PairScreen ─POST /api/pair─▶ 200: reload · 410: Expired
  *   otherwise ─GET /api/session─▶ 401: Unpaired · 200: connect ─▶ Console ⇄ Attach ⇄ Prefs
  *   close 4401 or a `revoked` frame ─▶ Revoked      close 4400 ─▶ Incompatible (reload)
+ *   close 4409 ─▶ Too many (another tab holds the slots; Retry)
  *
- * The cookie is HttpOnly, so this page never sees its own credential — it
- * learns whether it is paired only by asking `/api/session`, and pairing ends
- * in a RELOAD rather than a state change so the next page load starts from
- * that same single source of truth.
+ * The cookie is HttpOnly, so this page never sees that half of its credential
+ * — it learns whether it is paired only by asking `/api/session`, and pairing
+ * ends in a RELOAD rather than a state change so the next page load starts
+ * from that same single source of truth. The other half, the page key
+ * (device-key.ts), it keeps itself and presents with every check.
  *
  * Roster and toasts are React state (they change at human speed, coalesced by
  * the server). Terminal bytes are not: TermView subscribes to the client
@@ -16,7 +18,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { MAX_TEXT, type RemoteRosterEntry, type RemoteScope, type ServerMessage } from '../../shared/remote-console-protocol';
+import { DEVICE_KEY_HEADER, MAX_TEXT, type RemoteRosterEntry, type RemoteScope, type ServerMessage } from '../../shared/remote-console-protocol';
+import { forgetDeviceKey, loadDeviceKey, saveDeviceKey } from './device-key';
 import { ackMessageKey, createT, matchLanguage, type RemoteT } from './i18n';
 import { createBrowserWsClient, isUnconfirmed, newNonce, type WelcomeMessage, type WsClient, type WsStatus } from './ws-client';
 import { NoticeScreen, PairScreen, pairFailureKey, type PairFailure } from './screens/PairScreen';
@@ -41,6 +44,7 @@ type Phase =
   | { kind: 'revoked' }
   | { kind: 'incompatible' }
   | { kind: 'unreachable' }
+  | { kind: 'tooMany' }
   | { kind: 'console'; session: SessionInfo };
 
 type View = { screen: 'list' } | { screen: 'attach'; s: string } | { screen: 'prefs' };
@@ -48,8 +52,11 @@ type View = { screen: 'list' } | { screen: 'attach'; s: string } | { screen: 'pr
 type SessionResult = { kind: 'ok'; session: SessionInfo } | { kind: 'unpaired' } | { kind: 'error' };
 
 async function fetchSession(): Promise<SessionResult> {
+  // No page key: the desktop cannot say yes, so there is nothing to ask.
+  const key = loadDeviceKey();
+  if (!key) return { kind: 'unpaired' };
   try {
-    const res = await fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' });
+    const res = await fetch('/api/session', { credentials: 'same-origin', cache: 'no-store', headers: { [DEVICE_KEY_HEADER]: key } });
     if (res.status === 401) return { kind: 'unpaired' };
     if (!res.ok) return { kind: 'error' };
     const body = (await res.json()) as Partial<SessionInfo>;
@@ -88,6 +95,12 @@ const withoutToast = (id: number) => (list: Toast[]): Toast[] => list.filter((x)
 
 /** Phases in which this browser is no longer paired (or must reload): forget what it kept. */
 const UNPAIRED_PHASES: ReadonlySet<string> = new Set(['unpaired', 'revoked', 'incompatible']);
+/**
+ * Phases in which the page key is dead too. Not `incompatible`: that is a
+ * page older than the desktop, still paired, and a reload must not cost a
+ * re-pair.
+ */
+const KEYLESS_PHASES: ReadonlySet<string> = new Set(['unpaired', 'revoked']);
 
 export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: string | null; laterSecrets?: PairSecretSource }>) {
   const [prefs, setPrefsState] = useState<RemotePrefs>(loadPrefs);
@@ -145,6 +158,7 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
   // and per-surface keys must not outlive the pairing on this browser.
   useEffect(() => {
     if (UNPAIRED_PHASES.has(phase.kind)) forgetDeviceStorage(browserStorages());
+    if (KEYLESS_PHASES.has(phase.kind)) forgetDeviceKey();
   }, [phase.kind]);
 
   // ── No pairing secret: ask the server who we are.
@@ -166,6 +180,9 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
     try {
       const res = await postJson('/api/pair', { secret: phase.secret, name });
       if (res.ok) {
+        // The page key arrives once, here; the reload then presents it.
+        const body: unknown = await res.json().catch(() => null);
+        saveDeviceKey(typeof body === 'object' && body !== null ? (body as { key?: unknown }).key : null);
         globalThis.location.reload();
         return;
       }
@@ -207,7 +224,7 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
   const consoleActive = phase.kind === 'console';
   useEffect(() => {
     if (!consoleActive) return;
-    const c = createBrowserWsClient(async () => (await fetchSession()).kind !== 'unpaired');
+    const c = createBrowserWsClient(async () => (await fetchSession()).kind !== 'unpaired', loadDeviceKey());
     const offState = c.onState((st) => {
       setStatus(st.status);
       setWelcome(st.welcome);
@@ -215,6 +232,7 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
       if (st.stopReason === 'revoked') setPhase({ kind: 'revoked' });
       else if (st.stopReason === 'incompatible') setPhase({ kind: 'incompatible' });
       else if (st.stopReason === 'unauthorized') setPhase({ kind: 'unpaired' });
+      else if (st.stopReason === 'too-many') setPhase({ kind: 'tooMany' });
     });
     const offFrames = c.subscribe((msg) => onFrameRef.current(msg));
     setClient(c);
@@ -283,9 +301,33 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
     case 'loading':
       return <NoticeScreen title={t.t('loading')} body="" />;
     case 'pair':
-      return <PairScreen t={t} busy={phase.busy} failed={phase.failed} onPair={(n) => { pair(n).catch(() => undefined); }} />;
+      // Declining re-asks /api/session: an already-paired browser lands back
+      // on its console, an unpaired one on "Not paired". No dead end.
+      return (
+        <PairScreen
+          t={t}
+          busy={phase.busy}
+          failed={phase.failed}
+          onPair={(n) => { pair(n).catch(() => undefined); }}
+          onCancel={() => setPhase({ kind: 'loading' })}
+        />
+      );
     case 'expired':
-      return <NoticeScreen title={t.t('expired.title')} body={t.t('expired.body')} />;
+      return (
+        <NoticeScreen
+          title={t.t('expired.title')}
+          body={t.t('expired.body')}
+          action={{ label: t.t('common.back'), onClick: () => setPhase({ kind: 'loading' }) }}
+        />
+      );
+    case 'tooMany':
+      return (
+        <NoticeScreen
+          title={t.t('tooMany.title')}
+          body={t.t('tooMany.body')}
+          action={{ label: t.t('common.retry'), onClick: () => setPhase({ kind: 'loading' }) }}
+        />
+      );
     case 'unpaired':
       return <NoticeScreen title={t.t('unpaired.title')} body={t.t('unpaired.body')} />;
     case 'revoked':
@@ -359,6 +401,7 @@ export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: s
         status={status}
         host={host}
         operator={operator}
+        pairedScope={welcome?.device.scope ?? phase.session.scope}
         onOpen={open}
         onAnswer={answer}
         onSeen={(s) => client.seen(s)}

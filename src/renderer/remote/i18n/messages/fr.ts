@@ -29,6 +29,8 @@ export const fr: Readonly<Record<string, string>> = {
   'incompatible.body': 'Cette page n’est plus à jour par rapport au wmux de votre ordinateur. Rechargez pour obtenir la version actuelle.',
   'unreachable.title': 'wmux injoignable',
   'unreachable.body': 'La console distante n’a pas répondu. Vérifiez que wmux est lancé et que la console est activée.',
+  'tooMany.title': 'Ouverte dans un autre onglet',
+  'tooMany.body': 'La console est déjà ouverte dans d’autres onglets ou fenêtres de cet appareil. Fermez-en un, puis réessayez.',
 
   'conn.ready': 'Connecté',
   'conn.connecting': 'Connexion…',
@@ -44,12 +46,13 @@ export const fr: Readonly<Record<string, string>> = {
   'console.empty': 'Aucun agent ne tourne pour l’instant.',
   'console.waiting': 'En attente de votre ordinateur…',
   'console.viewerNotice': 'Lecture seule — cette connexion ne peut ni écrire ni répondre.',
+  'console.controlLimited': 'Lecture seule ici — cet appareil est associé avec le contrôle, mais votre ordinateur désactive le contrôle pour les connexions HTTP non chiffrées.',
   'console.needsYouCount_one': '{n} agent vous attend',
   'console.needsYouCount_other': '{n} agents vous attendent',
 
   'card.openToAnswer': 'Vous attend — ouvrir pour répondre',
   'card.answerPending': 'Envoyé — en attente de l’agent',
-  'card.answerOnComputer': 'A besoin de vous — répondez sur votre ordinateur',
+  'card.answerOnComputer': 'Vous attend — répondez sur votre ordinateur',
 
   'attach.fit': 'Ajuster',
   'attach.pan': 'Lisible',
@@ -125,6 +128,7 @@ export const fr: Readonly<Record<string, string>> = {
   'prefs.themeLight': 'Clair',
   'prefs.themeDark': 'Sombre',
   'prefs.fontScale': 'Taille du texte',
+  'prefs.fontScaleN': 'Taille du texte {pct} %',
   'prefs.alerts': 'Alertes',
   'prefs.enableAlerts': 'Activer les alertes',
   'prefs.alertsOn': 'Les alertes sont activées.',
@@ -135,5 +139,5 @@ export const fr: Readonly<Record<string, string>> = {
   'prefs.forgetTitle': 'Oublier cet appareil ?',
   'prefs.forgetBody': 'Il vous faudra un nouveau code de votre ordinateur pour vous reconnecter.',
   'prefs.forgetFailed': 'Impossible de joindre votre ordinateur : cet appareil est toujours associé. Réessayez, ou retirez-le dans wmux sur votre ordinateur.',
-  'prefs.limits': 'Les alertes n’arrivent que si cette page est ouverte et à l’écran. Téléphone verrouillé ou onglet en arrière-plan : rien peut ne pas arriver, et iOS ne peut pas vibrer.',
+  'prefs.limits': 'Les alertes n’arrivent que si cette page est ouverte et à l’écran. Si le téléphone est verrouillé ou l’onglet en arrière-plan, il se peut que rien n’arrive, et iOS ne peut pas vibrer.',
 };

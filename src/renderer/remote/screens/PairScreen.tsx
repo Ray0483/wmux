@@ -57,6 +57,12 @@ interface PairProps {
   busy: boolean;
   failed: PairFailure | null;
   onPair(name: string): void;
+  /**
+   * Decline. The screen tells the user to continue ONLY if they scanned the
+   * code themselves, so it must offer the other answer: without it, a user
+   * who heeded the warning had one button, and it paired.
+   */
+  onCancel(): void;
 }
 
 /**
@@ -65,7 +71,7 @@ interface PairProps {
  * the server falls back to it (`cleanDeviceName(name, offer.name)`). Prefilling
  * "Phone" here overrode the desktop's choice on every single pairing.
  */
-export function PairScreen({ t, busy, failed, onPair }: Readonly<PairProps>) {
+export function PairScreen({ t, busy, failed, onPair, onCancel }: Readonly<PairProps>) {
   const [name, setName] = useState('');
   const trimmed = name.trim();
   return (
@@ -94,6 +100,9 @@ export function PairScreen({ t, busy, failed, onPair }: Readonly<PairProps>) {
         {failed && <p className="rc-full__error" role="alert">{t.t(failed)}</p>}
         <button type="submit" className="rc-btn rc-btn--primary rc-full__action" disabled={busy}>
           {busy ? t.t('pair.pairing') : t.t('pair.confirm')}
+        </button>
+        <button type="button" className="rc-btn rc-full__action" disabled={busy} onClick={onCancel}>
+          {t.t('common.cancel')}
         </button>
       </form>
     </main>

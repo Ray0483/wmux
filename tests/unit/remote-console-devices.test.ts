@@ -257,3 +257,44 @@ describe('cleanDeviceName', () => {
     expect(cleanDeviceName('x'.repeat(200)).length).toBe(64);
   });
 });
+
+describe('DeviceRegistry: page key and re-pairing (#254)', () => {
+  it('pairing mints a page key; only its hash is stored, and verifyKey checks it', () => {
+    const { reg, saves } = harness();
+    const r = pair(reg);
+    expect(r.key).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(JSON.stringify(saves.at(-1))).not.toContain(r.key);
+    const dev = reg.get(r.device.id)!;
+    expect(reg.verifyKey(dev, r.key)).toBe(true);
+    expect(reg.verifyKey(dev, r.token)).toBe(false);
+    expect(reg.verifyKey(dev, null)).toBe(false);
+  });
+
+  it('a record from before the key existed loads, and can never connect', () => {
+    const { reg } = harness({
+      version: 1,
+      devices: [{ id: 'dev-00000000-0000-4000-8000-000000000001', name: 'Old', scope: 'operator', tokenHash: 'a'.repeat(64), createdAt: 1, lastSeenAt: 1_700_000_000_000 }],
+    });
+    const dev = reg.get('dev-00000000-0000-4000-8000-000000000001')!;
+    expect(dev.keyHash).toBeNull();
+    expect(reg.verifyKey(dev, 'anything-at-all-000000')).toBe(false);
+  });
+
+  it('re-pairing the same browser replaces its record instead of leaving a dead duplicate', () => {
+    const { reg } = harness();
+    const revoked: string[][] = [];
+    reg.onRevoked((ids) => revoked.push(ids));
+    const first = pair(reg, 'viewer');
+    pair(reg);
+    const offer = reg.mintPairing({ scope: 'operator', name: 'Phone' });
+    if ('error' in offer) throw new Error();
+    const again = reg.consumePairing(offer.secret, 'Phone', first.device.id);
+    if (!again.ok) throw new Error(again.reason);
+    expect(reg.get(first.device.id)).toBeNull();
+    expect(reg.count()).toBe(2);
+    expect(again.device.scope).toBe('operator');
+    expect(revoked.at(-1)).toEqual([first.device.id]);
+    // The old cookie is dead for good (tombstoned), even across a reload.
+    expect(reg.verify(`${first.device.id}.${first.token}`)).toBeNull();
+  });
+});

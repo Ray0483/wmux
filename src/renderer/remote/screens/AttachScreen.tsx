@@ -25,7 +25,7 @@ import { attachTitle } from './attach-title';
 import { Composer } from '../components/Composer';
 import { ConfirmSheet } from '../components/ConfirmSheet';
 import { KeyBar } from '../components/KeyBar';
-import { TermView } from '../components/TermView';
+import { TermView, type TermStatus } from '../components/TermView';
 import { connKey } from './ConsoleScreen';
 
 function safeStorage(): Storage | null {
@@ -53,6 +53,24 @@ function useVisualViewport(): { height: number; top: number } | null {
   return box;
 }
 
+/**
+ * Which chips the header shows. The CONNECTION chip whenever the socket is not
+ * ready, beside the agent's state: the mirror keeps its last frame across a
+ * drop, so "Working" over a frozen terminal read as live while every Send hung
+ * on "Sending…". This is the screen the user types on.
+ */
+export function attachHeaderChips(hasStateWord: boolean, status: WsStatus): ('state' | 'conn')[] {
+  const chips: ('state' | 'conn')[] = [];
+  if (hasStateWord) chips.push('state');
+  if (status !== 'ready') chips.push('conn');
+  return chips;
+}
+
+/** Composer, keys and choices only while there is a live terminal to type into. */
+export function acceptsInput(operator: boolean, termStatus: TermStatus): boolean {
+  return operator && termStatus !== 'exit' && termStatus !== 'error';
+}
+
 interface Props {
   client: WsClient;
   s: string;
@@ -75,6 +93,7 @@ export function AttachScreen({ client, s, entry, status, operator, maxText, font
   // second tap names it, and a pane that moved on in between is asked again.
   const armPrompt = useRef<number | null>(null);
   const [link, setLink] = useState<string | null>(null);
+  const [termStatus, setTermStatus] = useState<TermStatus>('loading');
   const vv = useVisualViewport();
 
   // Disarm when the window lapses, so the red key goes back to normal by itself.
@@ -134,29 +153,30 @@ export function AttachScreen({ client, s, entry, status, operator, maxText, font
 
   const wordKey = entry ? stateWordKey(entry.state) : null;
   const style = vv ? { height: `${vv.height}px`, transform: `translateY(${vv.top}px)` } : undefined;
+  const chips = attachHeaderChips(wordKey !== null, status);
+  const canType = acceptsInput(operator, termStatus);
 
   return (
     <main className="rc-screen rc-attach" style={style}>
       <header className="rc-bar">
         <button type="button" className="rc-bar__btn" onClick={onBack} aria-label={t.t('common.back')}>‹</button>
         <h1 className="rc-bar__title rc-attach__title">{attachTitle(entry?.label, lastLabel, t)}</h1>
-        {wordKey
-          ? <span className={`rc-chip rc-chip--${entry?.state}`}>{t.t(wordKey)}</span>
-          : status !== 'ready' && <span className={`rc-chip rc-chip--${status}`}>{t.t(connKey(status))}</span>}
+        {chips.includes('state') && wordKey && <span className={`rc-chip rc-chip--${entry?.state}`}>{t.t(wordKey)}</span>}
+        {chips.includes('conn') && <span className={`rc-chip rc-chip--${status}`}>{t.t(connKey(status))}</span>}
         <button type="button" className="rc-bar__btn rc-bar__btn--text" onClick={toggleMode} aria-pressed={mode === 'pan'}>
           {mode === 'fit' ? t.t('attach.pan') : t.t('attach.fit')}
         </button>
       </header>
 
-      <TermView client={client} s={s} mode={mode} fontScale={fontScale} dark={dark} t={t} operator={operator} onLink={setLink} />
+      <TermView client={client} s={s} mode={mode} fontScale={fontScale} dark={dark} t={t} operator={operator} onLink={setLink} onStatus={setTermStatus} />
 
       <div className="rc-attach__stack">
-        {operator && blocked && entry && !entry.answerPending && (
+        {canType && blocked && entry && !entry.answerPending && (
           <ChoiceRow choices={entry.choices} onAnswer={(id) => onAnswer(s, id, entry.promptId)} />
         )}
         {blocked && entry?.answerPending && <p className="rc-attach__pending">{t.t('card.answerPending')}</p>}
-        {operator && <KeyBar armed={arm?.key ?? null} armedFor={arm?.force.at(-1) ?? null} t={t} onKey={sendKey} />}
-        {operator && <Composer key={s} client={client} s={s} blocked={blocked} prompt={entry?.promptId ?? null} maxText={maxText} t={t} />}
+        {canType && <KeyBar armed={arm?.key ?? null} armedFor={arm?.force.at(-1) ?? null} t={t} onKey={sendKey} />}
+        {canType && <Composer key={s} client={client} s={s} blocked={blocked} prompt={entry?.promptId ?? null} maxText={maxText} t={t} />}
       </div>
 
       {link && (

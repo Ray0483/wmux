@@ -29,6 +29,8 @@ export const zh: Readonly<Record<string, string>> = {
   'incompatible.body': '此页面相对于你电脑上的 wmux 已过时。请重新加载以获取当前版本。',
   'unreachable.title': '无法连接到 wmux',
   'unreachable.body': '远程控制台没有响应。请检查 wmux 是否正在运行且控制台已开启。',
+  'tooMany.title': '已在另一个标签页中打开',
+  'tooMany.body': '此设备已在其他标签页或窗口中打开了控制台。请关闭其中一个，然后重试。',
 
   'conn.ready': '已连接',
   'conn.connecting': '正在连接…',
@@ -44,6 +46,7 @@ export const zh: Readonly<Record<string, string>> = {
   'console.empty': '当前没有正在运行的代理。',
   'console.waiting': '正在等待你的电脑…',
   'console.viewerNotice': '仅查看 — 此连接无法输入或回答。',
+  'console.controlLimited': '此处仅查看 — 此设备以控制权限配对，但你的电脑对未加密的 HTTP 连接关闭了控制。',
   'console.needsYouCount_other': '{n} 个代理在等你处理',
 
   'card.openToAnswer': '等你处理 — 打开以回答',
@@ -124,6 +127,7 @@ export const zh: Readonly<Record<string, string>> = {
   'prefs.themeLight': '浅色',
   'prefs.themeDark': '深色',
   'prefs.fontScale': '文字大小',
+  'prefs.fontScaleN': '文字大小 {pct}%',
   'prefs.alerts': '提醒',
   'prefs.enableAlerts': '启用提醒',
   'prefs.alertsOn': '提醒已开启。',

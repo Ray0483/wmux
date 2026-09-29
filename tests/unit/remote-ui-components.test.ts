@@ -51,7 +51,7 @@ const entry = (over: Partial<RemoteRosterEntry> = {}): RemoteRosterEntry => ({
 describe('PairScreen (#254)', () => {
   it('starts with an EMPTY name so the name typed on the desktop wins, and pairs with it empty', () => {
     const onPair = vi.fn();
-    const el = render(createElement(PairScreen, { t, busy: false, failed: null, onPair }));
+    const el = render(createElement(PairScreen, { t, busy: false, failed: null, onPair, onCancel: vi.fn() }));
     const input = el.querySelector('input')!;
     expect(input.value).toBe('');
     expect(input.placeholder).toBe(t.t('pair.namePlaceholder'));

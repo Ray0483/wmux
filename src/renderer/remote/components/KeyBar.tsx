@@ -94,7 +94,10 @@ export function KeyBar({ armed, armedFor, t, onKey }: Readonly<Props>) {
         <p className="rc-keybar__armed" role="status">{`${keyName(armedDef, t)} — ${armedLabel}`}</p>
       )}
       <div className="rc-keybar__row">
-        {PRIMARY.map((d) => <KeyButton key={d.key} def={d} armed={armed === d.key} armedLabel={armedLabel} t={t} onKey={onKey} />)}
+        {/* Only the keys scroll; ⋯ stays on screen (the full-screen hint points at it). */}
+        <div className="rc-keybar__scroll">
+          {PRIMARY.map((d) => <KeyButton key={d.key} def={d} armed={armed === d.key} armedLabel={armedLabel} t={t} onKey={onKey} />)}
+        </div>
         <button
           type="button"
           className={more ? 'rc-key rc-key--on' : 'rc-key'}
@@ -106,7 +109,7 @@ export function KeyBar({ armed, armedFor, t, onKey }: Readonly<Props>) {
         </button>
       </div>
       {more && (
-        <div className="rc-keybar__row">
+        <div className="rc-keybar__row rc-keybar__row--wrap">
           {EXTRA.map((d) => <KeyButton key={d.key} def={d} armed={armed === d.key} armedLabel={armedLabel} t={t} onKey={onKey} />)}
         </div>
       )}

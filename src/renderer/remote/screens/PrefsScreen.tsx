@@ -139,6 +139,10 @@ export function PrefsScreen({ t, prefs, host, device, effectiveScope, onChange, 
           <p className="rc-prefs__line rc-prefs__muted">
             {effectiveScope === 'operator' ? t.t('prefs.scopeOperator') : t.t('prefs.scopeViewer')}
           </p>
+          {/* Paired with Control, narrowed by a plain-HTTP bind: say why. */}
+          {device?.scope === 'operator' && effectiveScope !== 'operator' && (
+            <p className="rc-prefs__line">{t.t('console.controlLimited')}</p>
+          )}
         </section>
 
         <label className="rc-field">
@@ -179,6 +183,9 @@ export function PrefsScreen({ t, prefs, host, device, effectiveScope, onChange, 
               type="button"
               className={prefs.fontScale === sc ? 'rc-seg__btn rc-seg__btn--on' : 'rc-seg__btn'}
               aria-pressed={prefs.fontScale === sc}
+              // The visible "A" differs only in size, which a screen reader
+              // cannot hear: four buttons all named "A" told nothing apart.
+              aria-label={t.t('prefs.fontScaleN', { pct: Math.round(sc * 100) })}
               style={{ fontSize: `${Math.round(14 * sc)}px` }}
               onClick={() => onChange({ ...prefs, fontScale: sc })}
             >

@@ -35,8 +35,9 @@
  *
  *  5. A frame over MAX_FRAME bytes is never sent or queued (see `request`).
  *
- * Close codes decide whether to come back: 4401 (revoked) and 4400 (protocol
- * mismatch — the page is older than the desktop) are final; everything else,
+ * Close codes decide whether to come back: 4401 (revoked), 4400 (protocol
+ * mismatch — the page is older than the desktop) and 4409 (another tab of this
+ * device holds the connection slots) are final; everything else,
  * 1001 "stopping or reconfigured" included, reconnects with backoff.
  */
 
@@ -44,6 +45,8 @@ import {
   CLOSE_CODES,
   MAX_FRAME,
   PROTOCOL_VERSION,
+  WS_KEY_PROTOCOL_PREFIX,
+  WS_SUBPROTOCOL,
   type ClientMessage,
   type ServerMessage,
 } from '../../shared/remote-console-protocol';
@@ -135,7 +138,7 @@ export interface WsClientDeps {
 }
 
 export type WsStatus = 'idle' | 'connecting' | 'handshake' | 'ready' | 'waiting' | 'stopped';
-export type WsStopReason = 'revoked' | 'incompatible' | 'unauthorized' | 'closed';
+export type WsStopReason = 'revoked' | 'incompatible' | 'unauthorized' | 'too-many' | 'closed';
 
 export type AckMessage = Extract<ServerMessage, { t: 'ack' }>;
 export type WelcomeMessage = Extract<ServerMessage, { t: 'welcome' }>;
@@ -198,6 +201,8 @@ export function frameBytes(msg: ClientMessage): number {
 function finalReasonFor(code: number): WsStopReason | null {
   if (code === CLOSE_CODES.REVOKED) return 'revoked';
   if (code === CLOSE_CODES.HELLO) return 'incompatible';
+  // Another tab of this phone holds the slot; retrying would only fight it.
+  if (code === CLOSE_CODES.TOO_MANY) return 'too-many';
   return null;
 }
 
@@ -431,11 +436,20 @@ export function createWsClient(deps: WsClientDeps, now: () => number = Date.now)
 
 // ── Browser adapter ───────────────────────────────────────────────────────
 
+/**
+ * The subprotocols the socket offers: `wmux`, plus the page key as
+ * `wmux-key.<key>` (remote-console-protocol.ts). The server selects `wmux`
+ * only, so the key is never echoed back.
+ */
+export function socketProtocols(key: string | null): string[] {
+  return key ? [WS_SUBPROTOCOL, WS_KEY_PROTOCOL_PREFIX + key] : [WS_SUBPROTOCOL];
+}
+
 /** Wires the state machine to the real page: its own origin, real timers, real visibility. */
-export function createBrowserWsClient(verifySession: () => Promise<boolean>): WsClient {
+export function createBrowserWsClient(verifySession: () => Promise<boolean>, key: string | null): WsClient {
   return createWsClient({
     url: wsUrlFor(location.protocol, location.host),
-    createSocket: (url) => new WebSocket(url) as unknown as WsLike,
+    createSocket: (url) => new WebSocket(url, socketProtocols(key)) as unknown as WsLike,
     setTimeout: (fn, ms) => window.setTimeout(fn, ms),
     clearTimeout: (h) => window.clearTimeout(h as number),
     setInterval: (fn, ms) => window.setInterval(fn, ms),

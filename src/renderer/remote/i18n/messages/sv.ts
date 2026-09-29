@@ -29,6 +29,8 @@ export const sv: Readonly<Record<string, string>> = {
   'incompatible.body': 'Den här sidan är inaktuell jämfört med wmux på datorn. Ladda om för att få den aktuella versionen.',
   'unreachable.title': 'Kan inte nå wmux',
   'unreachable.body': 'Fjärrkonsolen svarade inte. Kontrollera att wmux körs och att konsolen är påslagen.',
+  'tooMany.title': 'Öppen i en annan flik',
+  'tooMany.body': 'Konsolen är redan öppen i andra flikar eller fönster på den här enheten. Stäng en av dem och försök igen.',
 
   'conn.ready': 'Ansluten',
   'conn.connecting': 'Ansluter…',
@@ -44,6 +46,7 @@ export const sv: Readonly<Record<string, string>> = {
   'console.empty': 'Inga agenter körs just nu.',
   'console.waiting': 'Väntar på datorn…',
   'console.viewerNotice': 'Endast visning – den här anslutningen kan inte skriva eller svara.',
+  'console.controlLimited': 'Endast visning här – enheten är parkopplad med kontroll, men datorn stänger av kontroll för okrypterade HTTP-anslutningar.',
   'console.needsYouCount_one': '{n} agent behöver dig',
   'console.needsYouCount_other': '{n} agenter behöver dig',
 
@@ -125,6 +128,7 @@ export const sv: Readonly<Record<string, string>> = {
   'prefs.themeLight': 'Ljust',
   'prefs.themeDark': 'Mörkt',
   'prefs.fontScale': 'Textstorlek',
+  'prefs.fontScaleN': 'Textstorlek {pct} %',
   'prefs.alerts': 'Aviseringar',
   'prefs.enableAlerts': 'Aktivera aviseringar',
   'prefs.alertsOn': 'Aviseringar är på.',

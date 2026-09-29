@@ -29,6 +29,8 @@ export const ko: Readonly<Record<string, string>> = {
   'incompatible.body': '이 페이지는 컴퓨터의 wmux보다 오래되었습니다. 새로고침하여 최신 버전을 받으세요.',
   'unreachable.title': 'wmux에 연결할 수 없음',
   'unreachable.body': '원격 콘솔이 응답하지 않았습니다. wmux가 실행 중이고 콘솔이 켜져 있는지 확인하세요.',
+  'tooMany.title': '다른 탭에서 열려 있음',
+  'tooMany.body': '이 기기에서 이미 다른 탭이나 창에 콘솔이 열려 있습니다. 하나를 닫은 뒤 다시 시도하세요.',
 
   'conn.ready': '연결됨',
   'conn.connecting': '연결 중…',
@@ -44,6 +46,7 @@ export const ko: Readonly<Record<string, string>> = {
   'console.empty': '지금 실행 중인 에이전트가 없습니다.',
   'console.waiting': '컴퓨터를 기다리는 중…',
   'console.viewerNotice': '보기 전용 — 이 연결은 입력하거나 응답할 수 없습니다.',
+  'console.controlLimited': '여기서는 보기 전용 — 이 기기는 제어 권한으로 페어링되었지만, 컴퓨터가 암호화되지 않은 HTTP 연결에서는 제어를 끕니다.',
   'console.needsYouCount_other': '에이전트 {n}개가 확인을 기다립니다',
 
   'card.openToAnswer': '확인 필요 — 열어서 응답',
@@ -124,6 +127,7 @@ export const ko: Readonly<Record<string, string>> = {
   'prefs.themeLight': '라이트',
   'prefs.themeDark': '다크',
   'prefs.fontScale': '글자 크기',
+  'prefs.fontScaleN': '글자 크기 {pct}%',
   'prefs.alerts': '알림',
   'prefs.enableAlerts': '알림 켜기',
   'prefs.alertsOn': '알림이 켜져 있습니다.',

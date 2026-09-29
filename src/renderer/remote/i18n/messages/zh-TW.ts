@@ -29,6 +29,8 @@ export const zhTW: Readonly<Record<string, string>> = {
   'incompatible.body': '此頁面相較於你電腦上的 wmux 已過時。請重新載入以取得目前版本。',
   'unreachable.title': '無法連線到 wmux',
   'unreachable.body': '遠端主控台沒有回應。請確認 wmux 正在執行且主控台已開啟。',
+  'tooMany.title': '已在另一個分頁中開啟',
+  'tooMany.body': '此裝置已在其他分頁或視窗中開啟主控台。請關閉其中一個，然後再試一次。',
 
   'conn.ready': '已連線',
   'conn.connecting': '正在連線…',
@@ -44,6 +46,7 @@ export const zhTW: Readonly<Record<string, string>> = {
   'console.empty': '目前沒有正在執行的代理程式。',
   'console.waiting': '正在等候你的電腦…',
   'console.viewerNotice': '僅檢視 — 此連線無法輸入或回答。',
+  'console.controlLimited': '此處僅檢視 — 此裝置以控制權限配對，但你的電腦對未加密的 HTTP 連線關閉了控制。',
   'console.needsYouCount_other': '{n} 個代理程式在等你處理',
 
   'card.openToAnswer': '等你處理 — 開啟以回答',
@@ -124,6 +127,7 @@ export const zhTW: Readonly<Record<string, string>> = {
   'prefs.themeLight': '淺色',
   'prefs.themeDark': '深色',
   'prefs.fontScale': '文字大小',
+  'prefs.fontScaleN': '文字大小 {pct}%',
   'prefs.alerts': '提醒',
   'prefs.enableAlerts': '啟用提醒',
   'prefs.alertsOn': '提醒已開啟。',

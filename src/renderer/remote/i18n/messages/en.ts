@@ -39,6 +39,8 @@ export const en = {
   'incompatible.body': 'This page is out of date for the wmux on your computer. Reload to get the current version.',
   'unreachable.title': 'Can’t reach wmux',
   'unreachable.body': 'The Remote Console did not answer. Check that wmux is running and the console is turned on.',
+  'tooMany.title': 'Open in another tab',
+  'tooMany.body': 'The console is already open in other tabs or windows on this device. Close one of them, then try again.',
 
   'conn.ready': 'Connected',
   'conn.connecting': 'Connecting…',
@@ -54,6 +56,7 @@ export const en = {
   'console.empty': 'No agents are running right now.',
   'console.waiting': 'Waiting for your computer…',
   'console.viewerNotice': 'View only — this connection cannot type or answer.',
+  'console.controlLimited': 'View only here — this device is paired with Control, but your computer turns Control off for plain-HTTP connections.',
   'console.needsYouCount_one': '{n} agent needs you',
   'console.needsYouCount_other': '{n} agents need you',
 
@@ -135,6 +138,7 @@ export const en = {
   'prefs.themeLight': 'Light',
   'prefs.themeDark': 'Dark',
   'prefs.fontScale': 'Text size',
+  'prefs.fontScaleN': 'Text size {pct}%',
   'prefs.alerts': 'Alerts',
   'prefs.enableAlerts': 'Enable alerts',
   'prefs.alertsOn': 'Alerts are on.',

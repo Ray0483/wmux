@@ -184,12 +184,30 @@ export type ServerMessage =
   | { t: 'revoked' }
   | { t: 'pong' };
 
+/**
+ * The page key (devices.ts header): kept by the phone in origin-scoped
+ * storage and presented beside the host-scoped cookie. On the WebSocket it
+ * rides as a second offered subprotocol, `wmux-key.<key>`, so it is checked in
+ * the upgrade gate before ws ever sees the request and never sits in a URL;
+ * the server only ever SELECTS `wmux`, so the key is not echoed back. On
+ * `/api/session` it is a request header.
+ */
+export const WS_SUBPROTOCOL = 'wmux';
+export const WS_KEY_PROTOCOL_PREFIX = 'wmux-key.';
+export const DEVICE_KEY_HEADER = 'x-wmux-key';
+
 export const CLOSE_CODES = {
   /** First frame was not `hello`, or its version is not ours. */
   HELLO: 4400,
   /** Device revoked, or the cookie no longer verifies. */
   REVOKED: 4401,
   HEARTBEAT: 4408,
+  /**
+   * This device already has its maximum of live sockets (or the server all of
+   * its). Final for the tab that gets it: another tab of the same phone is
+   * holding the slot, and retrying would only fight it for it.
+   */
+  TOO_MANY: 4409,
   RATE: 4429,
   /** Server stopping or reconfigured; the client should reconnect. */
   STOPPING: 1001,

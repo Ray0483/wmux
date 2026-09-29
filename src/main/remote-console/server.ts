@@ -10,8 +10,11 @@
  * effect — and a WebSocket upgrade passes a stricter version of the same
  * sequence before `handleUpgrade` is ever reached: Host, Origin, `/ws`,
  * cookie (then, only for a cookie that does not verify, the penalty box),
- * device still paired, connection caps. A failure there is a bare status line
- * and a destroyed socket; ws never sees the request.
+ * device still paired, page key (devices.ts). A failure there is a bare
+ * status line and a destroyed socket; ws never sees the request. The
+ * connection caps are the one refusal that is ACCEPTED and then closed 4409:
+ * a bare 403 reaches the page as 1006, which it cannot tell from a network
+ * blip, and a third tab sat on "Reconnecting…" forever.
  *
  * The penalty box is keyed by PEER ADDRESS, and behind `tailscale serve` or
  * `ssh -L` every phone arrives from 127.0.0.1 — so there the per-peer limits
@@ -19,7 +22,9 @@
  * failed on its own merits: a valid cookie is checked first and never boxed
  * (a 32-byte token is not guessable, so the box buys nothing against it), and
  * the global pairing budget is only spent while an offer is live, so junk
- * POSTs with no code on screen cannot lock pairing out for an hour.
+ * POSTs with no code on screen cannot lock pairing out for an hour. The
+ * per-peer HTTP limiter follows the same rule: a request with a valid device
+ * cookie is not counted, or a flood through the proxy would 429 every phone.
  *
  * Binding is one address, never `0.0.0.0` and never a port walk (I3): the user
  * picked a port and an interface, and silently listening somewhere else would
@@ -35,7 +40,7 @@ import fs from 'fs';
 import type { Duplex } from 'stream';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { RemoteConsoleConfig } from '../../shared/remote-console-config';
-import { CLOSE_CODES } from '../../shared/remote-console-protocol';
+import { CLOSE_CODES, DEVICE_KEY_HEADER, WS_SUBPROTOCOL } from '../../shared/remote-console-protocol';
 import type { RemoteScope, ServerMessage } from '../../shared/remote-console-protocol';
 import type { DeviceRecord, DeviceRegistry } from './devices';
 import {
@@ -45,6 +50,8 @@ import {
   isAllowedHost,
   isAllowedOrigin,
   isHttpsRequest,
+  keyFromProtocols,
+  offersAsPublicUrl,
   readCookie,
   rejectedOriginValue,
   routeOf,
@@ -52,6 +59,7 @@ import {
 } from './guards';
 import type { Allowlists } from './guards';
 import { KeyedWindowLimiter, LIMITS, PenaltyBox, WindowCounter } from './rate-limit';
+import { refusedPage } from './refused-page';
 import type { AssetEntry } from './static-assets';
 
 export const MAX_CONNECTIONS = 8;
@@ -65,13 +73,11 @@ export type ListenError = 'port-busy' | 'bind-failed';
 
 /**
  * What a phone sees when it opens an address wmux does not recognise, most
- * often a Tailscale URL not yet saved as the Public URL. Static on purpose:
- * nothing from the request is echoed back.
+ * often a Tailscale URL not yet saved as the Public URL — in English. The
+ * served page picks the phone's language (refused-page.ts). Static on
+ * purpose: nothing from the request is echoed back.
  */
-export const HOST_REFUSED_PAGE =
-  '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-  '<title>wmux</title><p style="font:16px system-ui,sans-serif;margin:24px">' +
-  'wmux refused this address. On your computer, open Settings &rarr; Remote and use it as the Public URL if you recognise it.</p>';
+export const HOST_REFUSED_PAGE = refusedPage(undefined);
 
 /** One authenticated socket, as the runtime sees it. */
 export interface ConsoleClient {
@@ -98,6 +104,8 @@ export interface ServerDeps {
   log(event: string, fields: Record<string, unknown>): void;
   onConnection(client: ConsoleClient): ClientHandlers;
   onPaired(device: DeviceRecord): void;
+  /** A live offer was voided by wrong guesses (or expired under a POST): Settings must drop its QR. */
+  onPairingChanged?(): void;
   onRejectedOrigin(value: string): void;
   onUiNotBuilt(): void;
   /** Heartbeat/timer injection for tests; real timers by default. */
@@ -269,7 +277,14 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
   // a session, and its PTY writes, alive after the console is off.
   let stopping = false;
 
-  const wss = new WebSocketServer({ noServer: true, maxPayload: WS_MAX_PAYLOAD, perMessageDeflate: false });
+  // Always select `wmux`, never whatever came first: the other offered
+  // protocol is the page key, and a selected protocol is echoed back.
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: WS_MAX_PAYLOAD,
+    perMessageDeflate: false,
+    handleProtocols: (protocols) => (protocols.has(WS_SUBPROTOCOL) ? WS_SUBPROTOCOL : false),
+  });
   const server = http.createServer();
   server.headersTimeout = 10_000;
   server.requestTimeout = 15_000;
@@ -278,7 +293,11 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
 
   const reject = (req: IncomingMessage): void => {
     const v = rejectedOriginValue(header(req, 'origin'), header(req, 'host'));
-    if (v) deps.onRejectedOrigin(v);
+    if (!v) return;
+    // Only a plausible proxy of the user's own is offered for one-click
+    // adoption (guards.ts); anything else is a line in main.log.
+    if (offersAsPublicUrl(v, req.socket.remoteAddress)) deps.onRejectedOrigin(v);
+    else deps.log('remote-origin-refused', { value: v });
   };
 
   function send(res: ServerResponse, status: number, body?: unknown, extra: Record<string, string | string[]> = {}): void {
@@ -345,12 +364,17 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
       return;
     }
     const offerLive = deps.devices.pairing() !== null;
-    const r = deps.devices.consumePairing(v.secret, v.name);
+    // A browser that is already paired and pairs again (to change its access,
+    // or because it lost its page key) replaces its own record.
+    const prior = deps.devices.verify(readCookie(header(req, 'cookie')));
+    const r = deps.devices.consumePairing(v.secret, v.name, prior?.id ?? null);
     if (!r.ok) {
       // Only a miss against a LIVE offer is a guess; with none there is
       // nothing to guess, and boxing 127.0.0.1 for it would lock out the
       // real phone behind a proxy.
       if (offerLive) penalty.fail(peer);
+      // Five misses void the offer: Settings must stop showing its QR.
+      if (offerLive && deps.devices.pairing() === null) deps.onPairingChanged?.();
       // A voided, expired or mistyped code all read the same to the phone:
       // "make a new one". Telling them apart would only help a guesser.
       if (r.reason === 'device-cap') send(res, 400, { error: 'device-cap' });
@@ -358,7 +382,9 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
       return;
     }
     const secure = isHttpsRequest(header(req, 'host'), lists);
-    send(res, 200, { ok: true, device: { id: r.device.id, name: r.device.name, scope: r.device.scope } }, {
+    // The page key goes in the BODY, once: the page keeps it in origin-scoped
+    // storage, which is exactly what the cookie is not (devices.ts).
+    send(res, 200, { ok: true, device: { id: r.device.id, name: r.device.name, scope: r.device.scope }, key: r.key }, {
       'Set-Cookie': cookieHeader(`${r.device.id}.${r.token}`, secure),
     });
     deps.log('remote-paired', { device: r.device.id, scope: r.device.scope });
@@ -368,7 +394,9 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
   function handleSession(req: IncomingMessage, res: ServerResponse): void {
     const cookie = readCookie(header(req, 'cookie'));
     const device = deps.devices.verify(cookie);
-    if (!device || !cookie) {
+    // Cookie AND page key: a cookie lifted by another server on this host
+    // reads as "not paired" here, as it does on the socket.
+    if (!device || !cookie || !deps.devices.verifyKey(device, header(req, DEVICE_KEY_HEADER))) {
       send(res, 401, { paired: false });
       return;
     }
@@ -394,13 +422,15 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
   const POST_ROUTES = new Set(['/api/pair', '/api/logout']);
 
   /** A fixed page for a refused Host: the phone gets a hint instead of a blank 403. Echoes nothing from the request. */
-  function sendHostRefused(res: ServerResponse): void {
+  function sendHostRefused(req: IncomingMessage, res: ServerResponse): void {
+    const page = refusedPage(header(req, 'accept-language'));
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
     res.statusCode = 403;
     res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Vary', 'Accept-Language');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Content-Length', String(Buffer.byteLength(HOST_REFUSED_PAGE)));
-    res.end(HOST_REFUSED_PAGE);
+    res.setHeader('Content-Length', String(Buffer.byteLength(page)));
+    res.end(page);
   }
 
   /** The gates every request passes before its route is looked at; true when it was answered. */
@@ -410,7 +440,10 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
       send(res, 503, undefined, { Connection: 'close' });
       return true;
     }
-    if (!unauth.hit(peerOf(req))) {
+    // Only requests WITHOUT a valid device cookie share the per-peer budget:
+    // behind a proxy every client is 127.0.0.1, and junk from one must not
+    // 429 every paired phone's page load and session check.
+    if (deps.devices.verify(readCookie(header(req, 'cookie'))) === null && !unauth.hit(peerOf(req))) {
       req.resume();
       send(res, 429, { error: 'rate' });
       return true;
@@ -418,7 +451,7 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
     if (!isAllowedHost(header(req, 'host'), lists)) {
       reject(req);
       req.resume();
-      sendHostRefused(res);
+      sendHostRefused(req, res);
       return true;
     }
     return false;
@@ -461,8 +494,12 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
     else serveStatic(req, res, route);
   }
 
-  /** Steps 1-7 of the upgrade sequence; the device on success, or the status to refuse with. */
-  function authorizeUpgrade(req: IncomingMessage): { device: DeviceRecord } | { status: 401 | 403 | 404 } {
+  /**
+   * Steps 1-7 of the upgrade sequence; the device on success, or the status to
+   * refuse with. `full`: a genuine device over a connection cap — accepted, so
+   * it can be told why (4409), rather than refused into a silent 1006.
+   */
+  function authorizeUpgrade(req: IncomingMessage): { device: DeviceRecord; full: boolean } | { status: 401 | 403 | 404 } {
     if (!isAllowedHost(header(req, 'host'), lists) || !isAllowedOrigin(header(req, 'origin'), lists)) {
       reject(req);
       return { status: 403 };
@@ -477,10 +514,13 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
       penalty.fail(peer);
       return { status: 401 };
     }
+    // A valid cookie without its page key is a cookie some other server on
+    // this host was handed (devices.ts). Not boxed: behind a proxy that would
+    // lock out every real phone, and 32 random bytes are not guessable anyway.
+    if (!deps.devices.verifyKey(device, keyFromProtocols(header(req, 'sec-websocket-protocol')))) return { status: 401 };
     let perDevice = 0;
     for (const c of live.values()) if (c.client.device.id === device.id) perDevice++;
-    if (live.size >= MAX_CONNECTIONS || perDevice >= MAX_PER_DEVICE) return { status: 403 };
-    return { device };
+    return { device, full: live.size >= MAX_CONNECTIONS || perDevice >= MAX_PER_DEVICE };
   }
 
   function onUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
@@ -492,6 +532,14 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
     const auth = authorizeUpgrade(req);
     if ('status' in auth) {
       writeBare(socket, auth.status);
+      return;
+    }
+    if (auth.full) {
+      // Never adopted: no session, no slot taken. Only told why, and closed.
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        ws.on('error', () => undefined);
+        ws.close(CLOSE_CODES.TOO_MANY, 'too-many');
+      });
       return;
     }
     wss.handleUpgrade(req, socket, head, (ws) => adopt(ws, auth.device));

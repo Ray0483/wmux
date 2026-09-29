@@ -164,6 +164,9 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
   private lastRejectedOrigin: string | null = null;
   /** When it was refused: the card ages out rather than haunting the session. */
   private lastRejectedAt = 0;
+  /** The origin whose card the user dismissed; its refusals no longer bring the card back. */
+  private dismissedOrigin: string | null = null;
+  private rejectedTimer: Timer | null = null;
   private assets: Map<string, AssetEntry> | null = null;
   private readonly tap: TerminalTap;
   private readonly sessions = new Map<string, LiveSession>();
@@ -288,6 +291,8 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     // A new listener (enable, rebind, port change) starts with a clean slate:
     // an origin refused by the previous configuration says nothing about this one.
     this.lastRejectedOrigin = null;
+    this.dismissedOrigin = null;
+    this.clearRejectedTimer();
     if (!this.config.enabled) {
       this.emitStatus();
       return;
@@ -371,6 +376,7 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     this.expireTimer = null;
     if (this.pairTimer) clearTimeout(this.pairTimer);
     this.pairTimer = null;
+    this.clearRejectedTimer();
     for (const p of this.pendingModes.values()) {
       clearTimeout(p.timer);
       p.resolve({ error: 'no-terminal' });
@@ -407,12 +413,8 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
       log: (e, f) => this.ops.log(e, f),
       onConnection: (client) => this.onConnection(client),
       onPaired: (device) => this.onPaired(device),
-      onRejectedOrigin: (v) => {
-        this.lastRejectedAt = Date.now();
-        if (v === this.lastRejectedOrigin) return;
-        this.lastRejectedOrigin = v;
-        this.emitStatus();
-      },
+      onPairingChanged: () => this.emitStatus(),
+      onRejectedOrigin: (v) => this.onRejectedOrigin(v),
       onUiNotBuilt: () => {
         if (this.lastError === 'ui-not-built') return;
         this.lastError = 'ui-not-built';
@@ -473,9 +475,36 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     return saved ? undefined : { error: 'write-failed' };
   }
 
+  /**
+   * Hidden until ANOTHER origin is refused (the bridge contract): the phone
+   * that caused the card keeps reloading the same URL, and each reload used
+   * to bring the dismissed card straight back.
+   */
   dismissRejectedOrigin(): void {
+    this.dismissedOrigin = this.lastRejectedOrigin;
     this.lastRejectedOrigin = null;
+    this.clearRejectedTimer();
     this.emitStatus();
+  }
+
+  private onRejectedOrigin(v: string): void {
+    if (v === this.dismissedOrigin) return;
+    this.lastRejectedAt = Date.now();
+    // The card ages out after the TTL; push that to an open Settings rather
+    // than leave it on screen until some unrelated status change.
+    this.clearRejectedTimer();
+    this.rejectedTimer = unrefTimeout(() => {
+      this.rejectedTimer = null;
+      this.emitStatus();
+    }, REJECTED_ORIGIN_TTL_MS + 50);
+    if (v === this.lastRejectedOrigin) return;
+    this.lastRejectedOrigin = v;
+    this.emitStatus();
+  }
+
+  private clearRejectedTimer(): void {
+    if (this.rejectedTimer) clearTimeout(this.rejectedTimer);
+    this.rejectedTimer = null;
   }
 
   rename(id: string, name: string): void {

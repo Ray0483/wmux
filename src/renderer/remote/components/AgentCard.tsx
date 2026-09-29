@@ -32,11 +32,24 @@ function blockedLine(entry: RemoteRosterEntry, operator: boolean, t: RemoteT): s
   return null;
 }
 
+/**
+ * Whether the card's age is a fact about THIS agent. A blocked card's dwell is
+ * stamped by main (blockedSince), and a declared agent's comes from its last
+ * report. An agent with no declared record has no timestamp at all: the
+ * rollup falls back to "now", so its dwell is always 0 and the age shown was
+ * merely the time since the last roster frame — which any OTHER agent's change
+ * resets. No age beats a wrong one.
+ */
+export function hasRealAge(entry: Pick<RemoteRosterEntry, 'state' | 'stateSource'>): boolean {
+  if (entry.state === 'unknown') return false;
+  return entry.state === 'blocked' || entry.stateSource === 'declared';
+}
+
 export function AgentCard({ entry, sinceRoster, operator, t, onOpen, onAnswer }: Readonly<Props>) {
   const wordKey = stateWordKey(entry.state);
   const hint = blockedLine(entry, operator, t);
   const showChoices = operator && entry.state === 'blocked' && !entry.answerPending && entry.choices.length > 0;
-  const age = entry.state === 'unknown' ? '' : t.ago(entry.dwellMs + sinceRoster);
+  const age = hasRealAge(entry) ? t.ago(entry.dwellMs + sinceRoster) : '';
 
   return (
     <article className={`rc-card rc-card--${entry.state}${entry.done ? ' rc-card--done' : ''}`}>

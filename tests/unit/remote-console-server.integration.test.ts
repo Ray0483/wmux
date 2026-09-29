@@ -17,7 +17,7 @@ import { LIMITS } from '../../src/main/remote-console/rate-limit';
 import type { ConsoleClient, ConsoleServer } from '../../src/main/remote-console/server';
 import { loadAllowedAssets } from '../../src/main/remote-console/static-assets';
 import type { RemoteConsoleConfig } from '../../src/shared/remote-console-config';
-import { CLOSE_CODES } from '../../src/shared/remote-console-protocol';
+import { CLOSE_CODES, DEVICE_KEY_HEADER, WS_KEY_PROTOCOL_PREFIX, WS_SUBPROTOCOL } from '../../src/shared/remote-console-protocol';
 import type { RemoteScope } from '../../src/shared/remote-console-protocol';
 
 let root: string;
@@ -53,6 +53,9 @@ interface Rig {
 }
 
 const rigs: Rig[] = [];
+/** cookie → the page key minted with it (the second half of the credential, devices.ts). */
+const keys = new Map<string, string>();
+const keyed = (cookie: string): Record<string, string> => ({ Cookie: `wmux_rc=${cookie}`, [DEVICE_KEY_HEADER]: keys.get(cookie) ?? '' });
 afterEach(async () => {
   for (const r of rigs.splice(0)) await r.server.close();
 });
@@ -128,15 +131,19 @@ function pairDevice(r: Rig, scope: RemoteScope = 'operator'): string {
   if ('error' in offer) throw new Error(offer.error);
   const res = r.devices.consumePairing(offer.secret, 'Phone');
   if (!res.ok) throw new Error(res.reason);
-  return `${res.device.id}.${res.token}`;
+  const cookie = `${res.device.id}.${res.token}`;
+  keys.set(cookie, res.key);
+  return cookie;
 }
 
-function connect(r: Rig, headers: { origin?: string | null; cookie?: string; host?: string; path?: string } = {}): Promise<{ ws: WebSocket; status: number | 'open' }> {
+function connect(r: Rig, headers: { origin?: string | null; cookie?: string; host?: string; path?: string; key?: string | null } = {}): Promise<{ ws: WebSocket; status: number | 'open' }> {
   return new Promise((resolve) => {
     const h: Record<string, string> = { Host: headers.host ?? r.host };
     if (headers.cookie) h.Cookie = `wmux_rc=${headers.cookie}`;
     const origin = headers.origin === undefined ? r.origin : headers.origin;
-    const ws = new WebSocket(`ws://127.0.0.1:${r.port}${headers.path ?? '/ws'}`, { headers: h, ...(origin ? { origin } : {}) });
+    const key = headers.key === undefined ? (headers.cookie ? keys.get(headers.cookie) ?? null : null) : headers.key;
+    const protocols = key ? [WS_SUBPROTOCOL, WS_KEY_PROTOCOL_PREFIX + key] : [WS_SUBPROTOCOL];
+    const ws = new WebSocket(`ws://127.0.0.1:${r.port}${headers.path ?? '/ws'}`, protocols, { headers: h, ...(origin ? { origin } : {}) });
     ws.on('open', () => resolve({ ws, status: 'open' }));
     ws.on('unexpected-response', (_req, res) => resolve({ ws, status: res.statusCode ?? 0 }));
     ws.on('error', () => resolve({ ws, status: -1 }));
@@ -176,7 +183,10 @@ describe('remote-console server: upgrade gate (#254)', () => {
     expect((await connect(r, { cookie, origin: null })).status).toBe(403);
     expect((await connect(r, { cookie, host: `evil.example:${r.port}` })).status).toBe(403);
     expect((await connect(r, { cookie, path: '/nope' })).status).toBe(404);
-    expect(r.rejected).toContain('http://evil.example');
+    // Refused, but never OFFERED as a Public URL: only a loopback https
+    // *.ts.net refusal is (guards.ts offersAsPublicUrl).
+    expect(r.rejected).not.toContain('http://evil.example');
+    expect(r.rejected).toEqual([]);
     expect(r.clients).toHaveLength(0);
   });
 
@@ -208,14 +218,19 @@ describe('remote-console server: upgrade gate (#254)', () => {
     const a = pairDevice(r);
     expect((await connect(r, { cookie: a })).status).toBe('open');
     expect((await connect(r, { cookie: a })).status).toBe('open');
-    expect((await connect(r, { cookie: a })).status).toBe(403);
+    // Over the cap: accepted and closed 4409, so the page can say why.
+    const third = await connect(r, { cookie: a });
+    expect(third.status).toBe('open');
+    expect(await closeCode(third.ws)).toBe(CLOSE_CODES.TOO_MANY);
     for (let i = 0; i < 3; i++) {
       const c = pairDevice(r);
       expect((await connect(r, { cookie: c })).status).toBe('open');
       expect((await connect(r, { cookie: c })).status).toBe('open');
     }
     expect(r.clients).toHaveLength(MAX_CONNECTIONS);
-    expect((await connect(r, { cookie: pairDevice(r) })).status).toBe(403);
+    const ninth = await connect(r, { cookie: pairDevice(r) });
+    expect(await closeCode(ninth.ws)).toBe(CLOSE_CODES.TOO_MANY);
+    expect(r.clients).toHaveLength(MAX_CONNECTIONS);
   });
 
   it('revoke closes the device\'s sockets with 4401 after a revoked frame', async () => {
@@ -245,7 +260,7 @@ describe('remote-console server: upgrade gate (#254)', () => {
     sock.write([
       'GET /ws HTTP/1.1', `Host: ${r.host}`, `Origin: ${r.origin}`, 'Upgrade: websocket', 'Connection: Upgrade',
       `Sec-WebSocket-Key: ${crypto.randomBytes(16).toString('base64')}`, 'Sec-WebSocket-Version: 13',
-      `Cookie: wmux_rc=${cookie}`, '', '',
+      `Cookie: wmux_rc=${cookie}`, `Sec-WebSocket-Protocol: ${WS_SUBPROTOCOL}, ${WS_KEY_PROTOCOL_PREFIX}${keys.get(cookie)}`, '', '',
     ].join('\r\n'));
     await until(() => received.toString('latin1').includes('\r\n\r\n') && r.clients.length === 1);
     expect(received.toString('latin1')).toMatch(/^HTTP\/1\.1 101/);
@@ -266,7 +281,7 @@ describe('remote-console server: upgrade gate (#254)', () => {
     const cookie = pairDevice(r, 'operator');
     await connect(r, { cookie });
     expect(r.clients[0].effectiveScope).toBe('viewer');
-    const s = await request(r, 'GET', '/api/session', { Cookie: `wmux_rc=${cookie}` });
+    const s = await request(r, 'GET', '/api/session', keyed(cookie));
     expect(JSON.parse(s.body)).toEqual({ paired: true, scope: 'operator', effectiveScope: 'viewer' });
   });
 
@@ -277,7 +292,7 @@ describe('remote-console server: upgrade gate (#254)', () => {
     r.config.bind = 'loopback';
     await connect(r, { cookie });
     expect(r.clients[0].effectiveScope).toBe('viewer');
-    const s = await request(r, 'GET', '/api/session', { Cookie: `wmux_rc=${cookie}` });
+    const s = await request(r, 'GET', '/api/session', keyed(cookie));
     expect(JSON.parse(s.body).effectiveScope).toBe('viewer');
   });
 
@@ -359,7 +374,7 @@ describe('remote-console server: HTTP', () => {
     const r = await rig();
     expect((await request(r, 'GET', '/api/session')).status).toBe(401);
     const cookie = pairDevice(r, 'viewer');
-    const res = await request(r, 'GET', '/api/session', { Cookie: `wmux_rc=${cookie}` });
+    const res = await request(r, 'GET', '/api/session', keyed(cookie));
     expect(res.status).toBe(200);
     expect(JSON.parse(res.body)).toEqual({ paired: true, scope: 'viewer', effectiveScope: 'viewer' });
     expect(String(res.headers['set-cookie'])).toContain('Max-Age=2592000');
@@ -479,7 +494,7 @@ describe('remote-console server: binding and shutdown', () => {
     sock.write([
       'GET /ws HTTP/1.1', `Host: ${r.host}`, `Origin: ${r.origin}`, 'Upgrade: websocket', 'Connection: Upgrade',
       `Sec-WebSocket-Key: ${crypto.randomBytes(16).toString('base64')}`, 'Sec-WebSocket-Version: 13',
-      `Cookie: wmux_rc=${cookie}`, '', '',
+      `Cookie: wmux_rc=${cookie}`, `Sec-WebSocket-Protocol: ${WS_SUBPROTOCOL}, ${WS_KEY_PROTOCOL_PREFIX}${keys.get(cookie)}`, '', '',
     ].join('\r\n'));
     await until(() => received.includes('\r\n\r\n') && r.clients.length === 1);
 
@@ -502,5 +517,54 @@ describe('remote-console server: binding and shutdown', () => {
     const closed = closeCode(ws);
     await r.server.close();
     expect(await closed).toBe(CLOSE_CODES.STOPPING);
+  });
+});
+
+describe('remote-console server: review fixes, round 3 (#254)', () => {
+  it('a cookie without its page key opens nothing: no socket, and /api/session says not paired', async () => {
+    const r = await rig();
+    const cookie = pairDevice(r);
+    expect((await connect(r, { cookie, key: null })).status).toBe(401);
+    expect((await connect(r, { cookie, key: 'x'.repeat(43) })).status).toBe(401);
+    expect((await request(r, 'GET', '/api/session', { Cookie: `wmux_rc=${cookie}` })).status).toBe(401);
+    expect((await request(r, 'GET', '/api/session', keyed(cookie))).status).toBe(200);
+    const { ws, status } = await connect(r, { cookie });
+    expect(status).toBe('open');
+    // The server selects `wmux`, never echoing the key-bearing protocol.
+    expect(ws.protocol).toBe(WS_SUBPROTOCOL);
+    ws.close();
+  });
+
+  it('a request with a valid cookie does not spend the per-peer budget (the proxy case)', async () => {
+    const r = await rig();
+    const cookie = pairDevice(r);
+    for (let i = 0; i < LIMITS.unauth.limit; i++) await request(r, 'GET', '/nope');
+    expect((await request(r, 'GET', '/nope')).status).toBe(429);
+    // Everyone is 127.0.0.1 here, as behind tailscale serve; the phone still gets in.
+    expect((await request(r, 'GET', '/api/session', keyed(cookie))).status).toBe(200);
+    expect((await request(r, 'GET', '/', { Cookie: `wmux_rc=${cookie}` })).status).toBe(200);
+  });
+
+  it('a refused address is explained in the phone\'s language, naming the desktop\'s own menus', async () => {
+    const r = await rig();
+    const fr = await request(r, 'GET', '/', { Host: 'box.tail1234.ts.net', 'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8' });
+    expect(fr.status).toBe(403);
+    expect(fr.body).toContain('Paramètres → Distant');
+    expect(fr.body).toContain('lang="fr"');
+    expect(fr.headers.vary).toBe('Accept-Language');
+    const en = await request(r, 'GET', '/', { Host: 'box.tail1234.ts.net' });
+    expect(en.body).toBe(HOST_REFUSED_PAGE);
+  });
+
+  it('only a loopback https *.ts.net refusal is offered as a Public URL', async () => {
+    const r = await rig();
+    await request(r, 'GET', '/', { Host: `evil.example:${r.port}` });
+    // A bare host reads as https, but is not a Tailscale name.
+    await request(r, 'GET', '/', { Host: 'evil.example' });
+    // A Tailscale-looking name on a port is a plain-http reach, not a proxy.
+    await request(r, 'GET', '/', { Host: `evil.ts.net:${r.port}` });
+    expect(r.rejected).toEqual([]);
+    await request(r, 'GET', '/', { Host: 'box.tail1234.ts.net' });
+    expect(r.rejected).toEqual(['https://box.tail1234.ts.net']);
   });
 });

@@ -21,10 +21,15 @@
  *   than a pass — `null` is exactly what a sandboxed iframe or a file:// page
  *   sends.
  *
+ * The cookie is host-scoped, not port-scoped, so on plain http every other
+ * server on the same host receives it; it is therefore never enough on its
+ * own — see the page key in devices.ts.
+ *
  * `X-Forwarded-*` is never read. The console sits behind `tailscale serve` or
  * `ssh -L` at most, and both forward the Host header untouched; a header any
  * client can set is not evidence of anything.
  */
+import { WS_KEY_PROTOCOL_PREFIX } from '../../shared/remote-console-protocol';
 
 export interface AllowlistInput {
   port: number;
@@ -173,4 +178,47 @@ export function rejectedOriginValue(origin: string | undefined, host: string | u
   if (value === null) return null;
   if (!/^[\x21-\x7e]+$/.test(value)) return null;
   return value.slice(0, 200);
+}
+
+/** The page key offered as `wmux-key.<key>` in Sec-WebSocket-Protocol, or null. */
+export function keyFromProtocols(header: string | undefined): string | null {
+  if (!header) return null;
+  for (const raw of header.split(',')) {
+    const p = raw.trim();
+    if (p.startsWith(WS_KEY_PROTOCOL_PREFIX)) {
+      const key = p.slice(WS_KEY_PROTOCOL_PREFIX.length);
+      return key === '' ? null : key;
+    }
+  }
+  return null;
+}
+
+/** A socket peer on this machine: IPv6 loopback, or 127/8 (bare or IPv4-mapped). */
+export function isLoopbackPeer(peer: string | undefined): boolean {
+  if (!peer) return false;
+  const v4 = peer.startsWith('::ffff:') ? peer.slice('::ffff:'.length) : peer;
+  return peer === '::1' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v4);
+}
+
+/**
+ * Whether a refused origin may be OFFERED as a one-click "Use as Public URL".
+ * A refusal is recorded before any authentication, so anything that can make
+ * one — a DNS-rebinding page in any browser on this machine, any peer on the
+ * LAN — could otherwise plant a name of its choosing on that card; one click
+ * then allowlists it AND points the pairing QR at it. So only the shape the
+ * card exists for qualifies: arriving from loopback (the proxy runs on this
+ * machine), over https (a rebinding page reaches the plain-http listener and
+ * cannot present one), on a Tailscale name. Anything else is only logged; a
+ * user with another proxy types the Public URL in Settings.
+ */
+export function offersAsPublicUrl(value: string, peer: string | undefined): boolean {
+  if (!isLoopbackPeer(peer)) return false;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return url.protocol === 'https:' && url.port === '' && url.hostname.endsWith('.ts.net')
+    && url.username === '' && url.password === '' && (url.pathname === '/' || url.pathname === '');
 }

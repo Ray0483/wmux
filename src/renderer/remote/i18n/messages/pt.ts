@@ -29,6 +29,8 @@ export const pt: Readonly<Record<string, string>> = {
   'incompatible.body': 'Esta página está desatualizada em relação ao wmux do seu computador. Recarregue para obter a versão atual.',
   'unreachable.title': 'Não foi possível acessar o wmux',
   'unreachable.body': 'O console remoto não respondeu. Verifique se o wmux está em execução e se o console está ativado.',
+  'tooMany.title': 'Aberto em outra aba',
+  'tooMany.body': 'O console já está aberto em outras abas ou janelas deste dispositivo. Feche uma delas e tente de novo.',
 
   'conn.ready': 'Conectado',
   'conn.connecting': 'Conectando…',
@@ -44,6 +46,7 @@ export const pt: Readonly<Record<string, string>> = {
   'console.empty': 'Nenhum agente em execução agora.',
   'console.waiting': 'Aguardando o computador…',
   'console.viewerNotice': 'Somente leitura — esta conexão não pode digitar nem responder.',
+  'console.controlLimited': 'Somente leitura aqui — este dispositivo foi pareado com controle, mas o computador desativa o controle em conexões HTTP sem criptografia.',
   'console.needsYouCount_one': '{n} agente precisa de você',
   'console.needsYouCount_other': '{n} agentes precisam de você',
 
@@ -125,6 +128,7 @@ export const pt: Readonly<Record<string, string>> = {
   'prefs.themeLight': 'Claro',
   'prefs.themeDark': 'Escuro',
   'prefs.fontScale': 'Tamanho do texto',
+  'prefs.fontScaleN': 'Tamanho do texto {pct}%',
   'prefs.alerts': 'Alertas',
   'prefs.enableAlerts': 'Ativar alertas',
   'prefs.alertsOn': 'Os alertas estão ativados.',

@@ -29,6 +29,8 @@ export const tr: Readonly<Record<string, string>> = {
   'incompatible.body': 'Bu sayfa bilgisayarınızdaki wmux’a göre eski. Güncel sürümü almak için yeniden yükleyin.',
   'unreachable.title': 'wmux’a ulaşılamıyor',
   'unreachable.body': 'Uzak konsol yanıt vermedi. wmux’un çalıştığını ve konsolun açık olduğunu kontrol edin.',
+  'tooMany.title': 'Başka bir sekmede açık',
+  'tooMany.body': 'Konsol bu cihazda zaten başka sekmelerde veya pencerelerde açık. Birini kapatıp yeniden deneyin.',
 
   'conn.ready': 'Bağlandı',
   'conn.connecting': 'Bağlanıyor…',
@@ -44,6 +46,7 @@ export const tr: Readonly<Record<string, string>> = {
   'console.empty': 'Şu anda çalışan ajan yok.',
   'console.waiting': 'Bilgisayarınız bekleniyor…',
   'console.viewerNotice': 'Yalnızca görüntüleme — bu bağlantı yazamaz ve yanıt veremez.',
+  'console.controlLimited': 'Burada yalnızca görüntüleme — bu cihaz kontrol erişimiyle eşleştirildi, ancak bilgisayarınız şifrelenmemiş HTTP bağlantılarında kontrolü kapatıyor.',
   'console.needsYouCount_one': '{n} ajan sizi bekliyor',
   'console.needsYouCount_other': '{n} ajan sizi bekliyor',
 
@@ -125,6 +128,7 @@ export const tr: Readonly<Record<string, string>> = {
   'prefs.themeLight': 'Açık',
   'prefs.themeDark': 'Koyu',
   'prefs.fontScale': 'Metin boyutu',
+  'prefs.fontScaleN': 'Metin boyutu %{pct}',
   'prefs.alerts': 'Uyarılar',
   'prefs.enableAlerts': 'Uyarıları etkinleştir',
   'prefs.alertsOn': 'Uyarılar açık.',

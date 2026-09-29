@@ -5,7 +5,7 @@ import type {
   RemoteConsoleStatus,
   RemoteDeviceView,
 } from '../../../shared/remote-console-config';
-import { useT, type Translator } from '../../i18n';
+import { useT, type Translator, type TranslationKey } from '../../i18n';
 import { normalizePublicUrl } from '../../../shared/remote-console-config';
 import PairDeviceDialog, { RemoteRecipes, fillTemplate, isBridgeError, remoteBridge, remoteErrorText } from './PairDeviceDialog';
 import '../../styles/remote-settings.css';
@@ -268,9 +268,14 @@ function StatusLine({ t, status, busy, apply }: RowProps) {
         <div className="remote-settings__card remote-settings__card--warn">
           <p>{fillTemplate(t('settings.remote.rejectedOrigin'), { origin: rejected })}</p>
           <p className="settings-hint">{t('settings.remote.rejectedOriginCaution')}</p>
-          <button className="settings-button" disabled={busy} onClick={() => { apply({ publicUrl: rejected }); }}>
-            {t('settings.remote.useAsPublicUrl')}
-          </button>
+          {/* Not on a LAN bind: the Public URL row is hidden there and pairing
+              ignores it, so this would save a trusted origin the user can no
+              longer see, edit or clear. */}
+          {showsProxySetup(config.bind) && (
+            <button className="settings-button" disabled={busy} onClick={() => { apply({ publicUrl: rejected }); }}>
+              {t('settings.remote.useAsPublicUrl')}
+            </button>
+          )}
           <button className="settings-button" onClick={() => { remoteBridge()?.dismissRejectedOrigin().catch(() => undefined); }}>
             {t('settings.remote.dismiss')}
           </button>
@@ -469,9 +474,25 @@ function formatDate(ms: number, withTime: boolean): string {
   return withTime ? at.toLocaleString() : at.toLocaleDateString();
 }
 
+/**
+ * The Access column. A Control device on a plain-HTTP LAN bind (without the
+ * override) can only watch — main narrows it (server.ts effectiveScopeFor) —
+ * so the table says so rather than "Control" beside a phone that cannot type.
+ */
+export function deviceScopeKey(
+  scope: RemoteDeviceView['scope'],
+  config: Pick<RemoteConsoleStatus['config'], 'bind' | 'allowInsecureControl'>,
+): TranslationKey {
+  if (scope !== 'operator') return 'settings.remote.scope.viewer';
+  return config.bind === 'lan' && !config.allowInsecureControl ? 'settings.remote.scope.operatorLimited' : 'settings.remote.scope.operator';
+}
+
 function DevicesTable({ t, status }: { t: Translator; status: RemoteConsoleStatus }) {
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
   const [confirmAll, setConfirmAll] = useState(false);
+  // One device revoke asks first too: it signs the phone out at once and costs
+  // a full re-pair, and the button sits right beside Rename.
+  const [confirmOne, setConfirmOne] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const devices = status.devices;
 
@@ -497,6 +518,8 @@ function DevicesTable({ t, status }: { t: Translator; status: RemoteConsoleStatu
   };
 
   const connectedOf = (d: RemoteDeviceView) => status.connected.find((c) => c.deviceId === d.id)?.count ?? 0;
+  // Looked up live: a device revoked elsewhere meanwhile closes the question.
+  const confirmOneDevice = confirmOne ? devices.find((d) => d.id === confirmOne) ?? null : null;
 
   return (
     <>
@@ -533,7 +556,7 @@ function DevicesTable({ t, status }: { t: Translator; status: RemoteConsoleStatu
                       />
                     ) : d.name}
                   </td>
-                  <td>{d.scope === 'operator' ? t('settings.remote.scope.operator') : t('settings.remote.scope.viewer')}</td>
+                  <td>{t(deviceScopeKey(d.scope, status.config))}</td>
                   <td>{formatDate(d.createdAt, false)}</td>
                   <td>{formatDate(d.lastSeenAt, true) || t('settings.remote.never')}</td>
                   <td>{connectedOf(d) || '—'}</td>
@@ -546,7 +569,7 @@ function DevicesTable({ t, status }: { t: Translator; status: RemoteConsoleStatu
                     ) : (
                       <>
                         <button className="settings-button" onClick={() => setEditing({ id: d.id, name: d.name })}>{t('settings.remote.rename')}</button>
-                        <button className="settings-button settings-button--danger" onClick={() => { run((b) => b.revoke(d.id)); }}>
+                        <button className="settings-button settings-button--danger" onClick={() => setConfirmOne(d.id)}>
                           {t('settings.remote.revoke')}
                         </button>
                       </>
@@ -556,6 +579,20 @@ function DevicesTable({ t, status }: { t: Translator; status: RemoteConsoleStatu
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {confirmOneDevice && (
+        <div className="remote-settings__card remote-settings__card--danger">
+          <p>{fillTemplate(t('settings.remote.revokeOneConfirm'), { name: confirmOneDevice.name })}</p>
+          <div className="remote-settings__actions">
+            <button
+              className="settings-button settings-button--danger"
+              onClick={() => { run((b) => b.revoke(confirmOneDevice.id)).then(() => setConfirmOne(null)); }}
+            >
+              {t('settings.remote.revoke')}
+            </button>
+            <button className="settings-button" onClick={() => setConfirmOne(null)}>{t('settings.remote.cancel')}</button>
+          </div>
         </div>
       )}
       {devices.length > 0 && !confirmAll && (

@@ -28,7 +28,7 @@ describe('SCOPE_OF (#254)', () => {
 
 describe('CLOSE_CODES', () => {
   it('pins the wire values', () => {
-    expect(CLOSE_CODES).toEqual({ HELLO: 4400, REVOKED: 4401, HEARTBEAT: 4408, RATE: 4429, STOPPING: 1001 });
+    expect(CLOSE_CODES).toEqual({ HELLO: 4400, REVOKED: 4401, HEARTBEAT: 4408, TOO_MANY: 4409, RATE: 4429, STOPPING: 1001 });
   });
 });
 

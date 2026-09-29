@@ -29,6 +29,8 @@ export const ja: Readonly<Record<string, string>> = {
   'incompatible.body': 'このページはコンピューターの wmux より古くなっています。再読み込みして最新版を取得してください。',
   'unreachable.title': 'wmux に接続できません',
   'unreachable.body': 'リモートコンソールが応答しませんでした。wmux が起動していて、コンソールがオンになっているか確認してください。',
+  'tooMany.title': '別のタブで開いています',
+  'tooMany.body': 'この端末では、すでに他のタブまたはウィンドウでコンソールが開いています。どれかを閉じてから、もう一度お試しください。',
 
   'conn.ready': '接続済み',
   'conn.connecting': '接続中…',
@@ -44,6 +46,7 @@ export const ja: Readonly<Record<string, string>> = {
   'console.empty': '現在実行中のエージェントはありません。',
   'console.waiting': 'コンピューターを待っています…',
   'console.viewerNotice': '閲覧のみ — この接続では入力も回答もできません。',
+  'console.controlLimited': 'ここでは閲覧のみ — この端末は操作ありでペアリングされていますが、コンピューターが暗号化されていない HTTP 接続での操作をオフにしています。',
   'console.needsYouCount_other': '{n} 件のエージェントが対応を待っています',
 
   'card.openToAnswer': '対応が必要 — 開いて回答',
@@ -124,6 +127,7 @@ export const ja: Readonly<Record<string, string>> = {
   'prefs.themeLight': 'ライト',
   'prefs.themeDark': 'ダーク',
   'prefs.fontScale': '文字サイズ',
+  'prefs.fontScaleN': '文字サイズ {pct}%',
   'prefs.alerts': '通知',
   'prefs.enableAlerts': '通知を有効にする',
   'prefs.alertsOn': '通知はオンです。',

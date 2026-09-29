@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { RemoteRosterEntry } from '../../../shared/remote-console-protocol';
+import type { RemoteRosterEntry, RemoteScope } from '../../../shared/remote-console-protocol';
 import type { RemoteMessageKey, RemoteT } from '../i18n';
 import { AgentCard } from '../components/AgentCard';
 import type { WsStatus } from '../ws-client';
@@ -49,6 +49,17 @@ export function emptyListKey(rosterReceived: boolean, status: WsStatus): RemoteM
   return rosterReceived && status === 'ready' ? 'console.empty' : 'console.waiting';
 }
 
+/**
+ * Why this device cannot type, or null when it can. A device paired with
+ * Control that a plain-HTTP LAN bind demotes to view-only is told THAT, not
+ * the generic line: otherwise it looks broken, and the fix (Tailscale, or the
+ * desktop's "allow control over plain HTTP") is nowhere in sight.
+ */
+export function viewerNoticeKey(pairedScope: RemoteScope, effectiveScope: RemoteScope): RemoteMessageKey | null {
+  if (effectiveScope === 'operator') return null;
+  return pairedScope === 'operator' ? 'console.controlLimited' : 'console.viewerNotice';
+}
+
 interface Props {
   t: RemoteT;
   roster: readonly RemoteRosterEntry[];
@@ -58,13 +69,16 @@ interface Props {
   status: WsStatus;
   host: string;
   operator: boolean;
+  /** The scope this device was PAIRED with, which the bind may have narrowed. */
+  pairedScope: RemoteScope;
   onOpen(s: string): void;
   onAnswer(s: string, choiceId: string, prompt: number | null): void;
   onSeen(s: string): void;
   onPrefs(): void;
 }
 
-export function ConsoleScreen({ t, roster, rosterReceived, rosterAt, status, host, operator, onOpen, onAnswer, onSeen, onPrefs }: Readonly<Props>) {
+export function ConsoleScreen({ t, roster, rosterReceived, rosterAt, status, host, operator, pairedScope, onOpen, onAnswer, onSeen, onPrefs }: Readonly<Props>) {
+  const notice = viewerNoticeKey(pairedScope, operator ? 'operator' : 'viewer');
   // Ages tick without a new roster frame; 15 s is finer than any age shows.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -89,7 +103,7 @@ export function ConsoleScreen({ t, roster, rosterReceived, rosterAt, status, hos
         <button type="button" className="rc-bar__btn" onClick={onPrefs} aria-label={t.t('common.settings')}>⚙</button>
       </header>
 
-      {!operator && <p className="rc-banner">{t.t('console.viewerNotice')}</p>}
+      {notice && <p className="rc-banner">{t.t(notice)}</p>}
 
       <div className="rc-console__list">
         {roster.length === 0 && <p className="rc-empty">{t.t(emptyListKey(rosterReceived, status))}</p>}

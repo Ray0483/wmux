@@ -29,6 +29,8 @@ export const it: Readonly<Record<string, string>> = {
   'incompatible.body': 'Questa pagina non è aggiornata rispetto al wmux del tuo computer. Ricarica per ottenere la versione attuale.',
   'unreachable.title': 'Impossibile raggiungere wmux',
   'unreachable.body': 'La console remota non ha risposto. Verifica che wmux sia in esecuzione e che la console sia attiva.',
+  'tooMany.title': 'Aperta in un’altra scheda',
+  'tooMany.body': 'La console è già aperta in altre schede o finestre di questo dispositivo. Chiudine una e riprova.',
 
   'conn.ready': 'Connesso',
   'conn.connecting': 'Connessione…',
@@ -44,6 +46,7 @@ export const it: Readonly<Record<string, string>> = {
   'console.empty': 'Nessun agente in esecuzione al momento.',
   'console.waiting': 'In attesa del computer…',
   'console.viewerNotice': 'Sola lettura: questa connessione non può scrivere né rispondere.',
+  'console.controlLimited': 'Qui sola lettura: questo dispositivo è associato con il controllo, ma il computer disattiva il controllo sulle connessioni HTTP non cifrate.',
   'console.needsYouCount_one': '{n} agente ti aspetta',
   'console.needsYouCount_other': '{n} agenti ti aspettano',
 
@@ -54,7 +57,7 @@ export const it: Readonly<Record<string, string>> = {
   'attach.fit': 'Adatta',
   'attach.pan': 'Leggibile',
   'attach.jumpBottom': 'Vai in fondo',
-  'attach.altHint': 'App a schermo intero: scorri con PagSu / PagGiù sotto ⋯.',
+  'attach.altHint': 'App a schermo intero: scorri con PgUp / PgDn sotto ⋯.',
   'attach.altHintViewer': 'App a schermo intero: non si può scorrere da questo dispositivo.',
   'attach.loading': 'Caricamento schermata…',
   'attach.exited': 'Processo terminato ({code})',
@@ -125,6 +128,7 @@ export const it: Readonly<Record<string, string>> = {
   'prefs.themeLight': 'Chiaro',
   'prefs.themeDark': 'Scuro',
   'prefs.fontScale': 'Dimensione del testo',
+  'prefs.fontScaleN': 'Dimensione del testo {pct}%',
   'prefs.alerts': 'Avvisi',
   'prefs.enableAlerts': 'Attiva gli avvisi',
   'prefs.alertsOn': 'Gli avvisi sono attivi.',

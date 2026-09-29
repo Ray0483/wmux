@@ -17,6 +17,10 @@ import { remoteTaps, resetRemoteTaps } from '../../src/main/remote-console/taps'
 import { __resetRemoteConsoleForTests, getRemoteConsole, initRemoteConsole } from '../../src/main/remote-console';
 import type { RemoteRendererRequest } from '../../src/shared/remote-console-config';
 import type { ServerMessage } from '../../src/shared/remote-console-protocol';
+import { WS_KEY_PROTOCOL_PREFIX, WS_SUBPROTOCOL } from '../../src/shared/remote-console-protocol';
+
+/** cookie → page key, as the phone keeps it (devices.ts). */
+const pageKeys = new Map<string, string>();
 
 const S = 'surf-00000001-0000-4000-8000-000000000000';
 
@@ -127,14 +131,16 @@ async function pairViaHttp(rt: ConsoleRuntime, port: number, scope: 'viewer' | '
   const secret = offer.url.split('#pair=')[1];
   const res = await post(port, '/api/pair', { secret, name: 'Pixel' });
   expect(res.status).toBe(200);
-  return /wmux_rc=([^;]+)/.exec(res.cookie)?.[1] as string;
+  const cookie = /wmux_rc=([^;]+)/.exec(res.cookie)?.[1] as string;
+  pageKeys.set(cookie, (JSON.parse(res.body) as { key: string }).key);
+  return cookie;
 }
 
 interface Phone { ws: WebSocket; inbox: ServerMessage[]; next(t: string): Promise<ServerMessage> }
 
 function openPhone(port: number, cookie: string): Promise<Phone> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { origin: `http://127.0.0.1:${port}`, headers: { Cookie: `wmux_rc=${cookie}` } });
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, [WS_SUBPROTOCOL, WS_KEY_PROTOCOL_PREFIX + (pageKeys.get(cookie) ?? '')], { origin: `http://127.0.0.1:${port}`, headers: { Cookie: `wmux_rc=${cookie}` } });
     const inbox: ServerMessage[] = [];
     const waiters: { t: string; resolve: (m: ServerMessage) => void }[] = [];
     ws.on('message', (d) => {
@@ -315,8 +321,8 @@ describe('ConsoleRuntime pairing and devices', () => {
 
   it('the refused-origin suggestion can be dismissed, clears on reconfigure, and ages out', async () => {
     const { rt, port } = await enabledRuntime();
-    const refuse = () => new Promise<void>((resolve) => {
-      const req = http.request({ host: '127.0.0.1', port, method: 'GET', path: '/', headers: { Host: 'my-pc.tailnet.ts.net' } }, (res) => {
+    const refuse = (host = 'my-pc.tailnet.ts.net') => new Promise<void>((resolve) => {
+      const req = http.request({ host: '127.0.0.1', port, method: 'GET', path: '/', headers: { Host: host } }, (res) => {
         res.resume();
         res.on('end', () => resolve());
       });
@@ -327,8 +333,12 @@ describe('ConsoleRuntime pairing and devices', () => {
     expect(rt.getStatus().lastRejectedOrigin).not.toBeNull();
     rt.dismissRejectedOrigin();
     expect(rt.getStatus().lastRejectedOrigin).toBeNull();
+    // Dismissed until ANOTHER origin is refused: the phone reloading the same
+    // URL does not bring the card back (#254).
     await refuse();
-    expect(rt.getStatus().lastRejectedOrigin).not.toBeNull();
+    expect(rt.getStatus().lastRejectedOrigin).toBeNull();
+    await refuse('other-pc.tailnet.ts.net');
+    expect(rt.getStatus().lastRejectedOrigin).toBe('https://other-pc.tailnet.ts.net');
     await rt.reconfigure();
     expect(rt.getStatus().lastRejectedOrigin).toBeNull();
     await refuse();
@@ -339,6 +349,58 @@ describe('ConsoleRuntime pairing and devices', () => {
     } finally {
       Date.now = realNow;
     }
+  });
+
+  it('the refused-origin card ageing out is PUSHED to an open Settings, not left until an unrelated change', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    try {
+      const rt = make(fakeOps());
+      const seen: (string | null)[] = [];
+      rt.onStatus((s) => seen.push(s.lastRejectedOrigin));
+      (rt as unknown as { onRejectedOrigin(v: string): void }).onRejectedOrigin('https://pc.tailnet.ts.net');
+      expect(seen.at(-1)).toBe('https://pc.tailnet.ts.net');
+      vi.advanceTimersByTime(REJECTED_ORIGIN_TTL_MS + 1000);
+      expect(seen.at(-1)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('five wrong guesses void the offer AND tell Settings, so its QR goes (#254)', async () => {
+    const { rt, port } = await enabledRuntime();
+    const statuses: (unknown | null)[] = [];
+    rt.onStatus((s) => statuses.push(s.pairing));
+    const offer = rt.pairStart({ name: 'Phone', scope: 'viewer' });
+    if ('error' in offer) throw new Error(offer.error);
+    for (let i = 0; i < 5; i++) expect((await post(port, '/api/pair', { secret: `wrong-${i}` })).status).toBe(410);
+    expect(rt.getStatus().pairing).toBeNull();
+    expect(statuses.at(-1)).toBeNull();
+  });
+
+  it('pairing again from a paired browser replaces its record, key minted and required (#254)', async () => {
+    const { rt, port } = await enabledRuntime();
+    const first = await pairViaHttp(rt, port, 'viewer');
+    const offer = rt.pairStart({ name: 'Phone', scope: 'operator' });
+    if ('error' in offer) throw new Error(offer.error);
+    const text = JSON.stringify({ secret: offer.url.split('#pair=')[1] });
+    const res = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const req = http.request({
+        host: '127.0.0.1', port, method: 'POST', path: '/api/pair',
+        headers: { 'Content-Type': 'application/json', Origin: `http://127.0.0.1:${port}`, Cookie: `wmux_rc=${first}`, 'Content-Length': Buffer.byteLength(text) },
+      }, (r) => {
+        let data = '';
+        r.on('data', (c) => { data += c; });
+        r.on('end', () => resolve({ status: r.statusCode ?? 0, body: data }));
+      });
+      req.on('error', reject);
+      req.end(text);
+    });
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body).key).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const devices = rt.getStatus().devices;
+    expect(devices).toHaveLength(1);
+    expect(devices[0]).toMatchObject({ scope: 'operator' });
+    expect(devices[0].id).not.toBe(first.split('.')[0]);
   });
 
   it('publicUrl is the pairing base when set', async () => {

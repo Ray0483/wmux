@@ -367,12 +367,13 @@ button { cursor: pointer; }
   right: 8px;
   top: 8px;
   padding: 6px 10px;
+  border: 0;
   border-radius: 8px;
   background: var(--surface-2);
   color: var(--muted);
+  font: inherit;
   font-size: 12px;
   text-align: center;
-  pointer-events: none;
   opacity: 0.92;
 }
 
@@ -388,13 +389,24 @@ button { cursor: pointer; }
 .rc-attach__pending { margin: 0; font-size: 13px; color: var(--muted); font-style: italic; }
 
 .rc-keybar { display: flex; flex-direction: column; gap: 4px; }
-.rc-keybar__row {
+/* The primary keys (12 × 44 px) are wider than a phone. They scroll, with a
+   fade on the right edge that says so; ⋯ sits OUTSIDE the scroller, pinned,
+   because the full-screen hint sends the user to it. */
+.rc-keybar__row { display: flex; gap: 4px; }
+.rc-keybar__scroll {
   display: flex;
+  flex: 1;
+  min-width: 0;
   gap: 4px;
+  /* Scrolled to the end, the last key clears the faded edge. */
+  padding-right: 24px;
   overflow-x: auto;
   scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
 }
-.rc-keybar__row::-webkit-scrollbar { display: none; }
+.rc-keybar__scroll::-webkit-scrollbar { display: none; }
+.rc-keybar__row--wrap { flex-wrap: wrap; }
 .rc-key {
   flex: none;
   min-width: var(--tap);

@@ -51,7 +51,25 @@ const LIGHT: ITheme = {
   white: '#6e7781', brightWhite: '#8c959f', yellow: '#9a6700', brightYellow: '#7d4e00',
 };
 
-type TermStatus = 'loading' | 'live' | 'lag' | 'exit' | 'error';
+export type TermStatus = 'loading' | 'live' | 'lag' | 'exit' | 'error';
+
+/** How long the full-screen hint stays up (it also goes on a tap). */
+export const ALT_HINT_MS = 6000;
+
+/**
+ * Surfaces whose full-screen hint was already shown on this page. The hint sat
+ * over the top row of the mirrored app for as long as it stayed on the
+ * alternate screen — for opencode and friends, the whole session — hiding its
+ * header. So it shows ONCE per surface, briefly.
+ */
+const altHintShown = new Set<string>();
+
+/** Show the hint now? Records the surface when it says yes. */
+export function claimAltHint(shown: Set<string>, s: string): boolean {
+  if (shown.has(s)) return false;
+  shown.add(s);
+  return true;
+}
 type TermError = Extract<ServerMessage, { t: 'term.error' }>['code'];
 
 interface Props {
@@ -64,6 +82,8 @@ interface Props {
   /** Whether the key bar (and so PgUp / PgDn) is on screen at all. */
   operator: boolean;
   onLink(url: string): void;
+  /** The mirror's state, so the attach screen can stop offering input into an exited terminal. */
+  onStatus?(status: TermStatus): void;
 }
 
 /**
@@ -81,12 +101,14 @@ function errorKey(code: TermError) {
   return 'attach.errNoTerminal' as const;
 }
 
-export function TermView({ client, s, mode, fontScale, dark, t, operator, onLink }: Readonly<Props>) {
+export function TermView({ client, s, mode, fontScale, dark, t, operator, onLink, onStatus }: Readonly<Props>) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const onLinkRef = useRef(onLink);
   onLinkRef.current = onLink;
+  const onStatusRef = useRef(onStatus);
+  onStatusRef.current = onStatus;
   const layoutRef = useRef({ mode, fontScale });
   layoutRef.current = { mode, fontScale };
 
@@ -95,6 +117,18 @@ export function TermView({ client, s, mode, fontScale, dark, t, operator, onLink
   const [error, setError] = useState<TermError | null>(null);
   const [alt, setAlt] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
+  const [hint, setHint] = useState(false);
+
+  useEffect(() => { onStatusRef.current?.(status); }, [status]);
+
+  // The full-screen hint: once per surface, for ALT_HINT_MS, or until tapped.
+  const altLive = alt && status === 'live';
+  useEffect(() => {
+    if (!altLive || !claimAltHint(altHintShown, s)) return;
+    setHint(true);
+    const id = globalThis.setTimeout(() => setHint(false), ALT_HINT_MS);
+    return () => globalThis.clearTimeout(id);
+  }, [altLive, s]);
 
   // ── Terminal lifetime + stream ──────────────────────────────────────────
   useEffect(() => {
@@ -288,7 +322,9 @@ export function TermView({ client, s, mode, fontScale, dark, t, operator, onLink
       </div>
       {overlay && <div className="rc-term__overlay" role="status">{overlay}</div>}
       {status === 'lag' && <div className="rc-term__pill rc-term__pill--lag" role="status">{t.t('attach.lag')}</div>}
-      {alt && status === 'live' && <div className="rc-term__hint">{t.t(altHintKey(operator))}</div>}
+      {altLive && hint && (
+        <button type="button" className="rc-term__hint" onClick={() => setHint(false)}>{t.t(altHintKey(operator))}</button>
+      )}
       {!atBottom && !alt && (
         <button type="button" className="rc-term__pill rc-term__jump" onClick={() => termRef.current?.scrollToBottom()}>
           {t.t('attach.jumpBottom')} ↓
