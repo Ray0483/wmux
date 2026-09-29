@@ -158,6 +158,52 @@ describe('PtyManager', { timeout: 60_000 }, () => {
     expect(received.length).toBeGreaterThan(0);
   });
 
+  // #251: a shell with no init seam (cmd here) used to get its startup
+  // commands typed by the RENDERER on a blind 600 ms timer. PtyManager now
+  // types them itself once the cmd integration's OSC 133 prompt mark arrives,
+  // and says it has taken them so no caller types them again.
+  it('runs startup commands in cmd once, after the prompt, and reports them consumed', async () => {
+    const manager = makeManager();
+    const { id, startupCommandsConsumed } = manager.create({
+      shell: TEST_SHELL,
+      cwd: process.env.USERPROFILE || 'C:\\',
+      env: TEST_ENV,
+      // %WMUX% only expands if cmd EXECUTES the line; the echoed keystrokes
+      // still read `%WMUX%`, so the expanded form proves it ran.
+      startupCommands: ['echo STARTUP_%WMUX%_RAN'],
+    });
+    expect(startupCommandsConsumed).toBe(true);
+
+    let out = '';
+    const unsub = manager.onData(id, (d) => { out += d; });
+    const deadline = Date.now() + 15_000;
+    while (!out.includes('STARTUP_1_RAN') && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    // Room for a second, duplicate delivery to show up if there were one.
+    await new Promise((r) => setTimeout(r, 1000));
+    unsub();
+    // cmd also puts the running command line, expanded, into the window title
+    // (OSC 0) — strip those before counting what was actually printed.
+    const ESC = String.fromCharCode(0x1b);
+    const BEL = String.fromCharCode(0x07);
+    const osc = new RegExp(String.raw`${ESC}\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\)`, 'g');
+    const printed = out.replace(osc, '');
+    expect(printed.split('STARTUP_1_RAN').length - 1).toBe(1);
+  });
+
+  it('reports the requested shell when it fell back to the default (#252)', () => {
+    const manager = makeManager();
+    const created = manager.create({
+      shell: 'definitely-not-a-shell-252.exe',
+      cwd: process.env.USERPROFILE || 'C:\\',
+      env: TEST_ENV,
+    });
+    expect(created.shellFallbackFrom).toBe('definitely-not-a-shell-252.exe');
+    const ok = manager.create({ shell: TEST_SHELL, cwd: process.env.USERPROFILE || 'C:\\', env: TEST_ENV });
+    expect(ok.shellFallbackFrom).toBeUndefined();
+  });
+
   it('kill removes the PTY from the manager', () => {
     const manager = makeManager();
     const { id } = manager.create({

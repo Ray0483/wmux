@@ -5,7 +5,7 @@ import { IPC_CHANNELS, type InsertionResult, type UpdateTriggerResult } from '..
 contextBridge.exposeInMainWorld('wmux', {
   pty: {
     create: (options: { shell: string; cwd: string; env: Record<string, string>; surfaceId?: string; startupCommands?: string[]; cols?: number; rows?: number }) =>
-      ipcRenderer.invoke(IPC_CHANNELS.PTY_CREATE, options) as Promise<{ id: string; shell: string; startupCommandsConsumed?: boolean }>,
+      ipcRenderer.invoke(IPC_CHANNELS.PTY_CREATE, options) as Promise<{ id: string; shell: string; startupCommandsConsumed?: boolean; shellFallbackFrom?: string }>,
     write: (id: string, data: string) =>
       ipcRenderer.send(IPC_CHANNELS.PTY_WRITE, id, data),
     resize: (id: string, cols: number, rows: number) =>

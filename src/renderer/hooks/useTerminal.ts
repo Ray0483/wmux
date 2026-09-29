@@ -1486,24 +1486,21 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
       cleanupFnsRef.current.push(() => clearTimeout(deferredResizeId));
     };
 
-    // Fallback path for quick-launch startup commands on shells where the main
-    // process couldn't bake them into the shell's own init (anything other than
-    // PowerShell — see PtyManager.create). PowerShell runs them via the
-    // integration script before the first prompt, which avoids a keystroke race
-    // against the shell's init-time terminal queries (a ConPTY DA1 response
-    // leaking onto the prompt as `\x1b[?62;4;9;22c` and merging with an injected
-    // `<cmd>\r` into a bogus line like `62;4;9;22ccls`). When `consumed` is true
-    // we MUST NOT also inject, or the commands would run twice.
-    const runStartupCommands = (id: string, consumed: boolean, cmds: string[] | undefined) => {
-      if (consumed) return;
-      if (!cmds || cmds.length === 0) return;
-      setTimeout(() => {
-        for (const cmd of cmds) {
-          if (typeof cmd === 'string' && cmd.length > 0) {
-            window.wmux.pty.write(id, cmd + '\r');
-          }
-        }
-      }, 600);
+    // Startup commands (quick-launch profiles, restore's `claude --resume`)
+    // are delivered by the MAIN process for every shell — baked into
+    // PowerShell's integration, or typed once the shell has drawn a prompt
+    // (src/main/startup-commands.ts). This used to type them itself on a
+    // blind 600 ms timer for any shell main had not consumed them for, which
+    // is exactly the "pty created = shell listening" assumption #251 is about:
+    // cmd took 372 ms to be ready on the reporter's machine, pwsh 1.5 s.
+
+    // A shell spec that could not be resolved used to fall back to the default
+    // shell with nothing but a console.warn in main (#252): a Settings choice
+    // wmux could not honour looked exactly like one it ignored. Say so in the
+    // pane, once, before the shell's own output.
+    const noteShellFallback = (created: { shell: string; shellFallbackFrom?: string }) => {
+      if (!created.shellFallbackFrom) return;
+      terminal.writeln(`\x1b[33m[wmux] shell "${created.shellFallbackFrom}" was not found; started ${created.shell} instead.\x1b[0m`);
     };
 
     // Resolve effective shell: explicit (workspace) > user default preference > main-process fallback.
@@ -1550,12 +1547,12 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
             enabled: useStore.getState().workspacePrefs.restoreClaudeSessions,
           });
           window.wmux.pty.create({ shell: effectiveShell, cwd: effectiveCwd, env: {}, surfaceId, startupCommands: spawnCommands, cols: initialCols, rows: initialRows })
-            .then((created: { id: string; shell: string; startupCommandsConsumed?: boolean }) => {
+            .then((created: { id: string; shell: string; shellFallbackFrom?: string }) => {
               // PTY persists (keep-alive); a remount re-attaches via pty.has.
               if (disposed) return;
               setResolvedShellForSurface(surfaceId, created.shell);
+              noteShellFallback(created);
               attachToPty(created.id);
-              runStartupCommands(created.id, !!created.startupCommandsConsumed, spawnCommands);
             })
             .catch((err: unknown) => terminal.writeln(`\r\n\x1b[31m[failed to create PTY: ${err}]\x1b[0m`));
         }
@@ -1563,11 +1560,11 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
     } else {
       // No surfaceId hint — always create new PTY
       window.wmux.pty.create({ shell: effectiveShell, cwd: effectiveCwd, env: {}, startupCommands: startupCommandsRef.current, cols: initialCols, rows: initialRows })
-        .then((created: { id: string; shell: string; startupCommandsConsumed?: boolean }) => {
+        .then((created: { id: string; shell: string; shellFallbackFrom?: string }) => {
           if (disposed) return;
           setResolvedShellForSurface(surfaceId, created.shell);
+          noteShellFallback(created);
           attachToPty(created.id);
-          runStartupCommands(created.id, !!created.startupCommandsConsumed, startupCommandsRef.current);
         })
         .catch((err: unknown) => terminal.writeln(`\r\n\x1b[31m[failed to create PTY: ${err}]\x1b[0m`));
     }

@@ -4,8 +4,7 @@ import { distributeAgents, AgentManager } from '../../src/main/agent-manager';
 /**
  * Minimal PtyManager stand-in. Captures the data and exit callbacks per
  * surface so a test can feed shell output / exits by hand. `consumed` is what
- * create() reports as `startupCommandsConsumed` — false by default so the
- * older tests keep exercising the prompt-detection path.
+ * create() reports as `startupCommandsConsumed`.
  */
 function fakePtyManager(consumed = false) {
   const exitCallbacks = new Map<string, (code: number) => void>();
@@ -53,68 +52,18 @@ describe('Agent Manager', () => {
       expect(pty.write).not.toHaveBeenCalled();
     });
 
-    it('still offers the cmd as a startup command when the shell cannot consume it', () => {
+    it('never types the cmd itself, whatever the PTY reports — PtyManager owns delivery (#251)', () => {
+      // The prompt sniff that used to live here (and its tests) moved to
+      // startup-commands.ts, where PtyManager applies it for every caller. A
+      // second, independent delivery from this class is how a command runs
+      // twice, so even a PTY answering "not consumed" gets no keystrokes here.
+      vi.useFakeTimers();
       const pty = fakePtyManager(false);
       spawnOne(pty);
       expect((pty.create.mock.calls[0] as any[])[0]).toMatchObject({ startupCommands: ['echo hi'] });
-      expect(pty.onData).toHaveBeenCalledTimes(1);
-    });
-
-    it('recognises a PowerShell prompt wrapped in OSC 133 marks without waiting for the debounce', () => {
-      vi.useFakeTimers();
-      const pty = fakePtyManager(false);
-      const { surfaceId } = spawnOne(pty);
-
-      // Since #207 the prompt ENDS with the OSC 133;B mark, after the "> ".
-      pty.dataCallbacks.get(surfaceId)!('PS C:\\x> \x1b]133;B\x1b\\');
-      // The 150 ms settle pause, and nothing like the 1500 ms debounce.
-      vi.advanceTimersByTime(200);
-      expect(pty.write).toHaveBeenCalledTimes(1);
-      expect(pty.write).toHaveBeenCalledWith(surfaceId, 'echo hi\r');
-    });
-
-    it('recognises a prompt followed by trailing CSI sequences (cursor show, SGR reset)', () => {
-      vi.useFakeTimers();
-      const pty = fakePtyManager(false);
-      const { surfaceId } = spawnOne(pty);
-
-      pty.dataCallbacks.get(surfaceId)!('user@host:~$ \x1b[0m\x1b[?25h');
-      vi.advanceTimersByTime(200);
-      expect(pty.write).toHaveBeenCalledWith(surfaceId, 'echo hi\r');
-    });
-
-    it('waits out the debounce when output carries no prompt yet', () => {
-      vi.useFakeTimers();
-      const pty = fakePtyManager(false);
-      const { surfaceId } = spawnOne(pty);
-
-      pty.dataCallbacks.get(surfaceId)!('Loading personal and system profiles took 812ms.\r\n');
-      vi.advanceTimersByTime(200);
+      expect(pty.onData).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(10_000);
       expect(pty.write).not.toHaveBeenCalled();
-      vi.advanceTimersByTime(1500);
-      expect(pty.write).toHaveBeenCalledWith(surfaceId, 'echo hi\r');
-    });
-
-    it('sends after the 5 s absolute fallback when the shell never draws a prompt', () => {
-      vi.useFakeTimers();
-      const pty = fakePtyManager(false);
-      const { surfaceId } = spawnOne(pty);
-
-      vi.advanceTimersByTime(5_200);
-      expect(pty.write).toHaveBeenCalledTimes(1);
-      expect(pty.write).toHaveBeenCalledWith(surfaceId, 'echo hi\r');
-    });
-
-    it('sends exactly once even when several prompts arrive', () => {
-      vi.useFakeTimers();
-      const pty = fakePtyManager(false);
-      const { surfaceId } = spawnOne(pty);
-
-      pty.dataCallbacks.get(surfaceId)!('PS C:\\x> \x1b]133;B\x1b\\');
-      vi.advanceTimersByTime(200);
-      pty.dataCallbacks.get(surfaceId)?.('PS C:\\x> ');
-      vi.advanceTimersByTime(6_000);
-      expect(pty.write).toHaveBeenCalledTimes(1);
     });
   });
 

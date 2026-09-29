@@ -12,6 +12,8 @@ import { powerShellShimDir } from './powershell-shim';
 import { getCliBinPath } from './cli-paths';
 import { getNodeRuntime } from './node-runtime';
 import { system32, opensshPath } from './system32';
+import { bashAlias, gitBashCandidates, isWslBashLauncher, isGitBashLauncher, GIT_BASH_LOGIN_ARGS } from './git-bash';
+import { deliverStartupCommandsWhenReady } from './startup-commands';
 
 // Applied once, at load, before any PTY can exist — the exit callback it guards
 // is registered by node-pty inside pty.spawn(), so a later install would leave
@@ -183,6 +185,11 @@ function resolveExistingShellPathUncached(shell: string): string | undefined {
     if (fs.existsSync(native)) return native;
   }
 
+  // A bare `bash` / `git-bash` — what Settings' "Git Bash" option stores
+  // (#252). wmux's own PATH cannot answer that on its own; see git-bash.ts.
+  const alias = win32 ? bashAlias(shell) : null;
+  if (alias) return resolveBashAlias(shell, alias);
+
   const onPath = shellProbe.onPath(shell);
   if (onPath) return onPath;
 
@@ -193,6 +200,28 @@ function resolveExistingShellPathUncached(shell: string): string | undefined {
   if (base === 'pwsh-preview') return findStorePwsh(true);
   if (base === 'pwsh') return findStorePwsh(false);
   return undefined;
+}
+
+/**
+ * Where Git for Windows' bash is. Behind an object for the same reason as
+ * `shellProbe`: a test can answer without Git installed, or with it.
+ */
+export const gitBashProbe = {
+  find: (): string | undefined => {
+    const gitExe = shellProbe.onPath('git.exe');
+    return gitBashCandidates(process.env, gitExe).find((p) => fs.existsSync(p));
+  },
+};
+
+function resolveBashAlias(shell: string, alias: 'bash' | 'git-bash'): string | undefined {
+  // An honest PATH hit wins: an MSYS2 or Cygwin bash the user put on PATH on
+  // purpose is what they mean by `bash`. The WSL launcher is not one — it is
+  // on every PATH that has WSL, and it turns "Git Bash" into a Linux distro.
+  const hit = alias === 'bash' ? shellProbe.onPath(shell) : undefined;
+  if (hit && !isWslBashLauncher(hit, process.env.SystemRoot || 'C:\\Windows')) return hit;
+  // The WSL launcher stays the last resort: it is still a bash, and a miss
+  // falls all the way back to PowerShell, which is further from what was asked.
+  return gitBashProbe.find() ?? hit;
 }
 
 function getDefaultShell(): string {
@@ -409,6 +438,20 @@ function buildShellArgs(
   return [];
 }
 
+/**
+ * Arguments appended after the shell-type args. A spec's own args apply only
+ * when the REQUESTED executable resolved — a fallback to the default shell
+ * must not inherit ssh's destination. A bare "Git Bash" alias that landed on
+ * Git's launcher gets the login flags every other Git Bash entry point uses
+ * (#252, see GIT_BASH_LOGIN_ARGS); a path the user wrote out is left alone.
+ */
+export function extraArgsForSpec(spec: { command: string; args: string[] }, requested: string | undefined): string[] {
+  if (!requested) return [];
+  if (spec.args.length > 0) return spec.args;
+  if (bashAlias(spec.command) && isGitBashLauncher(requested)) return [...GIT_BASH_LOGIN_ARGS];
+  return [];
+}
+
 interface PtyEntry {
   pty: pty.IPty;
   dataListeners: Set<(data: string) => void>;
@@ -438,10 +481,28 @@ export interface CreateOptions {
   /** When provided, use this as the PTY key instead of generating a new one.
    *  This keeps Surface IDs and PTY IDs in sync for reliable re-attachment. */
   surfaceId?: SurfaceId;
-  /** Quick-launch profile commands (issue #32). When the shell type supports it
-   *  they are baked into the shell's own startup (see `startupCommandsConsumed`
-   *  in the return value) rather than injected later as keystrokes. */
+  /** Quick-launch profile commands (issue #32), agent commands, restore's
+   *  `claude --resume`. PtyManager delivers them itself, always — baked into
+   *  PowerShell's integration, or typed once the shell is ready (#251) — so
+   *  `startupCommandsConsumed` is true whenever any were given and a caller
+   *  must never type them a second time. */
   startupCommands?: string[];
+}
+
+/** What `create()` hands back. */
+export interface CreateResult {
+  id: SurfaceId;
+  shell: string;
+  /** True when startup commands were given: PtyManager owns their delivery. */
+  startupCommandsConsumed: boolean;
+  reused: boolean;
+  /**
+   * The spec that was asked for when it did NOT resolve and the default shell
+   * was spawned instead (#252). That fallback used to be a console.warn in a
+   * log nobody reads, so a Settings choice that could not be honoured looked
+   * exactly like a Settings choice that was ignored.
+   */
+  shellFallbackFrom?: string;
 }
 
 // Primary Device Attributes (DA1). oh-my-posh / PSReadLine probe the terminal
@@ -485,7 +546,7 @@ export class PtyManager {
   private static readonly CHUNK_THRESHOLD = 1024;
   private static readonly CHUNK_SIZE = 1024;
 
-  create(options: CreateOptions): { id: SurfaceId; shell: string; startupCommandsConsumed: boolean; reused: boolean } {
+  create(options: CreateOptions): CreateResult {
     const id: SurfaceId = options.surfaceId ?? `surf-${uuidv4()}` as SurfaceId;
 
     // Idempotent per surfaceId. React StrictMode (dev) double-mounts the terminal
@@ -521,7 +582,7 @@ export class PtyManager {
     // (what we will actually spawn), which is what shellExtraArgs depends on.
     const requested = resolveExistingShellPath(spec.command);
     const shell = resolveShellForCwd(requested ?? resolveShell(spec.command), options.cwd);
-    const shellExtraArgs = requested ? spec.args : [];
+    const shellExtraArgs = extraArgsForSpec(spec, requested);
     const shellType = getShellType(shell);
     const integrationDir = getShellIntegrationPath();
     const cliPath = getCliPath();
@@ -589,13 +650,19 @@ export class PtyManager {
     const startupCommands = (options.startupCommands ?? []).filter(
       (cmd): cmd is string => typeof cmd === 'string' && cmd.trim().length > 0,
     );
-    let startupCommandsConsumed = false;
-    if (startupCommands.length > 0 && shellType === 'powershell' && env.WMUX_PS1_SCRIPT) {
+    //
+    // Every other shell (cmd, bash, WSL, PowerShell without the integration)
+    // has no such seam and gets them TYPED — but by this class, gated on the
+    // shell actually being ready, not by each caller on its own timer (#251,
+    // see startup-commands.ts). Either way PtyManager has taken them, so
+    // `startupCommandsConsumed` is simply "were there any".
+    const bakeIntoInit = startupCommands.length > 0 && shellType === 'powershell' && !!env.WMUX_PS1_SCRIPT;
+    if (bakeIntoInit) {
       // Newlines survive the env block; the integration script trims each line
       // (so a stray CR is harmless) and runs it via Invoke-Expression.
       env.WMUX_STARTUP_COMMANDS = startupCommands.join('\n');
-      startupCommandsConsumed = true;
     }
+    const startupCommandsConsumed = startupCommands.length > 0;
 
     // CreateProcess fails with error 267 (ERROR_DIRECTORY) when the working dir
     // isn't a real directory, and node-pty surfaces that as an opaque "Cannot
@@ -681,7 +748,28 @@ export class PtyManager {
     }
 
     this.ptys.set(id, entry);
-    return { id, shell, startupCommandsConsumed, reused: false };
+    // After the entry is registered (onData/write look it up by id) and before
+    // any output can arrive — node-pty delivers data asynchronously.
+    if (startupCommandsConsumed && !bakeIntoInit) this.typeStartupCommands(id, entry, startupCommands);
+    const fellBack = spec.command !== '' && requested === undefined;
+    return { id, shell, startupCommandsConsumed, reused: false, ...(fellBack ? { shellFallbackFrom: spec.command } : {}) };
+  }
+
+  /** Keystroke delivery for shells with no init seam — see startup-commands.ts. */
+  private typeStartupCommands(id: SurfaceId, entry: PtyEntry, commands: string[]): void {
+    const cancel = deliverStartupCommandsWhenReady(
+      {
+        onData: (cb) => this.onData(id, cb),
+        write: (data) => this.write(id, data),
+        isAlive: () => entry.alive,
+        setTimeout: (fn, ms) => setTimeout(fn, ms),
+        clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+        log: (message) => console.log(`[wmux] pty ${id}: ${message}`),
+      },
+      commands,
+    );
+    // A pane closed before its shell was ready must not leave timers behind.
+    entry.exitListeners.add(() => cancel());
   }
 
   write(id: SurfaceId, data: string): void {
