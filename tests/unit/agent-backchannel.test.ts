@@ -51,6 +51,17 @@ describe('sanitizeChoices', () => {
     expect(sanitizeChoices([{ id: 'x', label: 'Allow' }])).toEqual([]);
   });
 
+  it('drops a choice whose id the remote console could not carry (one id contract everywhere)', () => {
+    const out = sanitizeChoices([
+      { id: 'allow once', label: 'Allow once', key: '1' },
+      { id: '1.', label: 'One', key: '1' },
+      { id: 'a'.repeat(33), label: 'Long', key: '1' },
+      { id: 'deny', label: 'Deny', key: '2' },
+      { id: 'always_allow-2', label: 'Always', key: '3' },
+    ]);
+    expect(out.map((c) => c.id)).toEqual(['deny', 'always_allow-2']);
+  });
+
   it('drops choices missing an id or a label', () => {
     expect(sanitizeChoices([{ label: 'no id', key: '1' }, { id: 'no-label', key: '1' }])).toEqual([]);
   });

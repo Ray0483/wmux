@@ -95,8 +95,9 @@ wmux report-agent --blocked "Run the migration against prod?" --choices '[
 Each choice needs an `id`, a human-readable `label`, and **exactly what to send**
 — either `key` (a key name: `enter`, `esc`, `1`, `y`, …) or `text` (sent
 literally). wmux relays those bytes verbatim; it does not know how to answer
-your prompt and will never guess. A choice with neither is dropped, and the
-reply tells you how many were kept.
+your prompt and will never guess. An `id` is 1-32 characters of letters,
+digits, `_` or `-` (no spaces). A choice with neither `key` nor `text`, or
+with any other id, is dropped, and the reply tells you how many were kept.
 
 Answering does **not** clear your blocked state — report it yourself once you
 have acted on the answer, exactly as you would if the user had typed it:

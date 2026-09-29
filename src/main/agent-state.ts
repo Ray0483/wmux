@@ -30,6 +30,7 @@
 import { BrowserWindow } from 'electron';
 import { IPC_CHANNELS, SurfaceId } from '../shared/types';
 import { isValidClaudeSessionId } from './claude-resume';
+import { CHOICE_ID_RE } from '../shared/remote-console-protocol';
 
 export type AgentRunState = 'blocked' | 'working' | 'idle' | 'unknown';
 
@@ -296,6 +297,11 @@ function toChoice(item: unknown): AgentChoice | null {
   const id = str(c.id)?.trim();
   const label = str(c.label)?.trim();
   if (!id || !label) return null;
+  // One id contract for every surface that answers: the Remote Console's wire
+  // only carries ids of this shape (#254), and an id accepted here but dropped
+  // there showed the sidebar two buttons and the phone one — or none. Refused
+  // at report time instead, so the RPC's kept-count tells the reporter.
+  if (!CHOICE_ID_RE.test(id)) return null;
 
   const key = str(c.key);
   const text = str(c.text);

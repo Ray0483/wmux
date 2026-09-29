@@ -1981,6 +1981,7 @@ const COMMAND_SPECS = {
   'report-agent': {
     usage: [
       'wmux report-agent --blocked [reason] [--choices <json>] | --unblocked',
+      '  --choices: [{"id","label","key"|"text","isDefault"?}], id = 1-32 of A-Z a-z 0-9 _ -',
       'wmux report-agent --run-start | --run-end | --run-depth <N>',
       `  [--seq N] [--surface <id>]   ${SURFACE_NOTE}`,
     ].join('\n'),
