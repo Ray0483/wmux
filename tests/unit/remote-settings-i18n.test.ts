@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { DICTIONARIES, SUPPORTED_LANGUAGES, type TranslationKey } from '../../src/renderer/i18n';
 import { en } from '../../src/renderer/i18n/locales/en';
 import { DEFAULT_REMOTE_CONFIG } from '../../src/shared/remote-console-config';
-import { fillTemplate, offerOutcome, requestOffer } from '../../src/renderer/components/Settings/PairDeviceDialog';
+import { fillTemplate, offerOutcome, remoteErrorText, requestOffer } from '../../src/renderer/components/Settings/PairDeviceDialog';
+import { formatRemoteNotice } from '../../src/renderer/utils/remote-notice';
 import { suggestedPublicUrl } from '../../src/renderer/components/Settings/RemoteConsoleSettings';
 
 // Settings → Remote (#254). This tab is where a user decides whether wmux is
@@ -57,7 +58,10 @@ describe('remote console translations', () => {
     // this catches the one untyped path — a key built as a string.
     const dir = join(__dirname, '../../src/renderer/components/Settings');
     const source = ['RemoteConsoleSettings.tsx', 'PairDeviceDialog.tsx', 'SettingsWindow.tsx']
-      .map((f) => readFileSync(join(dir, f), 'utf8'))
+      .map((f) => join(dir, f))
+      // The desktop bells for pairing/connecting are worded in the renderer too.
+      .concat(join(__dirname, '../../src/renderer/utils/remote-notice.ts'))
+      .map((f) => readFileSync(f, 'utf8'))
       .join('\n');
     const used = new Set(source.match(/'settings\.(?:remote\.[\w.]+|tab\.remote)'/g)?.map((s) => s.slice(1, -1)));
     expect(used.size).toBeGreaterThan(0);
@@ -163,5 +167,42 @@ describe('suggestedPublicUrl', () => {
   it('shows the caution beside the button', () => {
     const src = readFileSync(join(__dirname, '../../src/renderer/components/Settings/RemoteConsoleSettings.tsx'), 'utf8');
     expect(src).toContain("t('settings.remote.rejectedOriginCaution')");
+  });
+});
+
+describe('remoteErrorText (#254 review)', () => {
+  const tr = (lang: string) => (key: TranslationKey) => (DICTIONARIES[lang]?.[key] ?? en[key]) as string;
+
+  it('words every error Settings can receive, never the raw slug', () => {
+    for (const code of ['device-cap', 'not-running', 'write-failed', 'failed', 'bad-port', 'unavailable']) {
+      for (const lang of ['en', 'fr', 'ja']) {
+        const text = remoteErrorText(tr(lang), code);
+        expect(text, `${lang}:${code}`).not.toContain(code);
+        expect(text).not.toBe(tr(lang)('settings.remote.actionFailed'));
+      }
+    }
+    expect(remoteErrorText(tr('en'), 'device-cap')).toMatch(/revoke/i);
+  });
+});
+
+describe('formatRemoteNotice (#254 review)', () => {
+  const tr = (lang: string) => (key: TranslationKey) => (DICTIONARIES[lang]?.[key] ?? en[key]) as string;
+
+  it('words the bell in the UI language and names the scope the way Settings does', () => {
+    const fr = formatRemoteNotice(['paired', 'Pixel', 'operator'], tr('fr'));
+    expect(fr).toContain('Pixel');
+    expect(fr).toContain(tr('fr')('settings.remote.scope.operator'));
+    expect(fr).not.toMatch(/operator|Paired/);
+    expect(formatRemoteNotice(['connected', 'Pixel', 'viewer'], tr('en'))).toBe('Remote console: Pixel connected');
+  });
+
+  it('words nothing for args it does not recognise', () => {
+    expect(formatRemoteNotice(['hacked', 'x', 'operator'], tr('en'))).toBeNull();
+    expect(formatRemoteNotice(['paired', 'x', 'root'], tr('en'))).toBeNull();
+    expect(formatRemoteNotice('paired', tr('en'))).toBeNull();
+  });
+
+  it('keeps a $ pattern in a device name literal', () => {
+    expect(formatRemoteNotice(['connected', "$'x", 'viewer'], tr('en'))).toBe("Remote console: $'x connected");
   });
 });

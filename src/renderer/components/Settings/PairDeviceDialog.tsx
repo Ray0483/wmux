@@ -44,6 +44,10 @@ const CONFIG_ERROR_KEYS: Record<string, TranslationKey> = {
   'bad-port': 'settings.remote.configError.badPort',
   'bad-public-url': 'settings.remote.configError.badPublicUrl',
   'bad-lan-host': 'settings.remote.configError.badLanHost',
+  'device-cap': 'settings.remote.configError.deviceCap',
+  'not-running': 'settings.remote.configError.notRunning',
+  'write-failed': 'settings.remote.configError.writeFailed',
+  failed: 'settings.remote.configError.failed',
   unavailable: 'settings.remote.unavailable',
 };
 

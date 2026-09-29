@@ -10,7 +10,7 @@ import net from 'net';
 import os from 'os';
 import path from 'path';
 import WebSocket from 'ws';
-import { ConsoleRuntime, CONFIG_FILE, createRemoteConsoleRuntime, DEVICES_FILE } from '../../src/main/remote-console/runtime';
+import { ConsoleRuntime, CONFIG_FILE, createRemoteConsoleRuntime, DEVICES_FILE, REJECTED_ORIGIN_TTL_MS } from '../../src/main/remote-console/runtime';
 import type { ConsoleOps } from '../../src/main/remote-console/contract';
 import type { ConsoleServer } from '../../src/main/remote-console/server';
 import { remoteTaps, resetRemoteTaps } from '../../src/main/remote-console/taps';
@@ -286,11 +286,40 @@ describe('ConsoleRuntime pairing and devices', () => {
     const res = await post(port, '/api/pair', { secret, name: 'Pixel' });
     expect(res.status).toBe(200);
     const token = /wmux_rc=[^.]+\.([^;]+)/.exec(res.cookie)?.[1] as string;
-    expect(ops.notifyDesktop).toHaveBeenCalledWith('wmux', 'Paired: Pixel (viewer)');
+    // Facts, not an English sentence: the renderer words it in the UI language.
+    expect(ops.notifyDesktop).toHaveBeenCalledWith({ kind: 'paired', name: 'Pixel', scope: 'viewer' });
     const disk = fs.readFileSync(path.join(dir, DEVICES_FILE), 'utf8');
     expect(disk).not.toContain(token);
     expect(disk).not.toContain(secret);
     expect(rt.getStatus().devices.map((d) => d.name)).toEqual(['Pixel']);
+  });
+
+  it('the refused-origin suggestion can be dismissed, clears on reconfigure, and ages out', async () => {
+    const { rt, port } = await enabledRuntime();
+    const refuse = () => new Promise<void>((resolve) => {
+      const req = http.request({ host: '127.0.0.1', port, method: 'GET', path: '/', headers: { Host: 'my-pc.tailnet.ts.net' } }, (res) => {
+        res.resume();
+        res.on('end', () => resolve());
+      });
+      req.on('error', () => resolve());
+      req.end();
+    });
+    await refuse();
+    expect(rt.getStatus().lastRejectedOrigin).not.toBeNull();
+    rt.dismissRejectedOrigin();
+    expect(rt.getStatus().lastRejectedOrigin).toBeNull();
+    await refuse();
+    expect(rt.getStatus().lastRejectedOrigin).not.toBeNull();
+    await rt.reconfigure();
+    expect(rt.getStatus().lastRejectedOrigin).toBeNull();
+    await refuse();
+    const realNow = Date.now;
+    try {
+      Date.now = () => realNow() + REJECTED_ORIGIN_TTL_MS + 1000;
+      expect(rt.getStatus().lastRejectedOrigin).toBeNull();
+    } finally {
+      Date.now = realNow;
+    }
   });
 
   it('publicUrl is the pairing base when set', async () => {
@@ -338,10 +367,10 @@ describe('ConsoleRuntime sessions, roster, terminal', () => {
     expect(welcome).toMatchObject({ t: 'welcome', effectiveScope: 'operator', host: 'DESKTOP-TEST', limits: { maxText: 16384 } });
     const agents = await phone.next('agents');
     expect(agents).toMatchObject({ t: 'agents', list: [{ s: S, state: 'working', label: 'claude' }] });
-    expect(ops.notifyDesktop).toHaveBeenCalledWith('wmux', 'Remote console: Pixel connected');
+    expect(ops.notifyDesktop).toHaveBeenCalledWith({ kind: 'connected', name: 'Pixel', scope: 'operator' });
     const second = await openPhone(port, cookie);
     second.ws.close();
-    expect(ops.notifyDesktop.mock.calls.filter((c) => String(c[1]).includes('connected'))).toHaveLength(1);
+    expect(ops.notifyDesktop.mock.calls.filter((c) => c[0].kind === 'connected')).toHaveLength(1);
     expect(rt.getStatus().connected[0].deviceId).toBe(cookie.split('.')[0]);
   });
 

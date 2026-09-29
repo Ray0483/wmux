@@ -257,6 +257,9 @@ function StatusLine({ t, status, busy, apply }: RowProps) {
           <button className="settings-button" disabled={busy} onClick={() => { apply({ publicUrl: rejected }); }}>
             {t('settings.remote.useAsPublicUrl')}
           </button>
+          <button className="settings-button" onClick={() => { remoteBridge()?.dismissRejectedOrigin().catch(() => undefined); }}>
+            {t('settings.remote.dismiss')}
+          </button>
         </div>
       )}
     </>

@@ -786,6 +786,7 @@ export const IPC_CHANNELS = {
   REMOTE_CONSOLE_REVOKE: 'remote-console:revoke',
   REMOTE_CONSOLE_REVOKE_ALL: 'remote-console:revoke-all',
   REMOTE_CONSOLE_RENAME: 'remote-console:rename-device',
+  REMOTE_CONSOLE_DISMISS_ORIGIN: 'remote-console:dismiss-rejected-origin',
   REMOTE_CONSOLE_STATE: 'remote-console:state',
   // Terminal snapshot / modes queries, sent on the SAME webContents that
   // receives the surface's PTY_DATA so the snapshot is ordered against it.

@@ -14,6 +14,7 @@ import type { WebContents } from 'electron';
 import type {
   PairOffer,
   RemoteConsoleStatus,
+  RemoteDesktopNotice,
   RemoteModesResult,
   RemoteRendererRequest,
   RemoteSnapshotResult,
@@ -36,7 +37,7 @@ export interface ConsoleOps {
   write(id: string, bytes: string): void;
   /** The `pane.answer_agent` path: blocked-only, declared payload only, never clears blocked. */
   deliverAnswer(id: string, choiceId: string): Promise<{ ok: true } | { ok: false; reason: DeliverAnswerReason }>;
-  notifyDesktop(title: string, body: string): void;
+  notifyDesktop(notice: RemoteDesktopNotice): void;
   lanAddresses(): string[];
   hostname(): string;
   /** main.log. Byte counts only, never typed content (I7). */
@@ -65,6 +66,7 @@ export interface RemoteConsoleRuntime {
   revoke(id: string): { error: 'write-failed' } | undefined;
   revokeAll(): { error: 'write-failed' } | undefined;
   rename(id: string, name: string): void;
+  dismissRejectedOrigin(): void;
   onStatus(cb: (status: RemoteConsoleStatus) => void): () => void;
   notifyAgentStateChanged(): void;
   handleRendererReply(reqId: string, result: RemoteSnapshotResult | RemoteModesResult): void;

@@ -227,6 +227,18 @@ export interface RemoteRosterSource {
   dwellMs: number;
 }
 
+/**
+ * A desktop bell about the console (#254). Sent as FACTS — kind, device name,
+ * scope — and worded by the renderer in the UI language, with the scope named
+ * the way Settings names it ("Control" / "View only"), never the internal
+ * `operator`/`viewer`.
+ */
+export interface RemoteDesktopNotice {
+  kind: 'paired' | 'connected';
+  name: string;
+  scope: RemoteScope;
+}
+
 // ── Preload bridge (`window.wmux.remoteConsole`) ────────────────────────
 
 export type RemoteBridgeError = { error: string };
@@ -239,6 +251,8 @@ export interface RemoteConsoleBridge {
   revoke(id: string): Promise<void | RemoteBridgeError>;
   revokeAll(): Promise<void | RemoteBridgeError>;
   rename(id: string, name: string): Promise<void | RemoteBridgeError>;
+  /** Hide the refused-origin card until another origin is refused. */
+  dismissRejectedOrigin(): Promise<void | RemoteBridgeError>;
   onState(cb: (status: RemoteConsoleStatus) => void): () => void;
   onRendererRequest(cb: (req: RemoteRendererRequest) => void): () => void;
   replyRenderer(reqId: string, result: RemoteSnapshotResult | RemoteModesResult): void;

@@ -52,6 +52,7 @@ import { forgetSurfaceTitle, surfaceTerminalRegistry } from './hooks/useTerminal
 import { forgetSurface as forgetPromptLog, recordAgentPrompt } from './utils/prompt-log';
 import { SURFACE_CLOSED_EVENT } from './store/pty-teardown';
 import { installRemoteRendererHandler } from './utils/remote-snapshot';
+import { formatRemoteNotice } from './utils/remote-notice';
 import { followOutputFor, togglePinnedPromptFor, togglePromptOutlineFor } from './store/prompt-actions';
 import { useT } from './i18n';
 import type { TranslationKey } from './i18n';
@@ -301,6 +302,13 @@ function handleNotifyCommand(cmd: any, addNotification: StoreAction, t: T): void
   const ws = workspaceForSurface(cmd.surfaceId);
   const wsId = ws?.id || useStore.getState().activeWorkspaceId;
   fireNotification(cmd.surfaceId, wsId, text, addNotification);
+}
+
+/** Remote Console bells (#254): main sends the facts, the UI language words them. */
+function handleRemoteNotice(cmd: any, addNotification: StoreAction, t: T): void {
+  const text = formatRemoteNotice(cmd.args, t);
+  if (!text) return;
+  fireNotification('', useStore.getState().activeWorkspaceId, text, addNotification);
 }
 
 /** report_shell_state: notify when a foreground command ran ≥ 5s. */
@@ -902,6 +910,7 @@ export default function App() {
       // ports_update and notify have no (required) surfaceId — handle globally.
       if (cmd.command === 'ports_update') { handlePortsUpdate(cmd, updateWorkspaceMetadata); return; }
       if (cmd.command === 'notify') { handleNotifyCommand(cmd, addNotification, t); return; }
+      if (cmd.command === 'remote_notice') { handleRemoteNotice(cmd, addNotification, t); return; }
       // set_workspace_status is keyed on workspaceId (not surfaceId) — a
       // coordinator setting a named workspace's status via `wmux set-status
       // --workspace`. Handle before the surfaceId guard below.

@@ -142,6 +142,9 @@ interface PendingModes {
   timer: Timer;
 }
 
+/** A refused origin stops being offered as "Use as Public URL" after this long without another refusal. */
+export const REJECTED_ORIGIN_TTL_MS = 10 * 60_000;
+
 export class ConsoleRuntime implements RemoteConsoleRuntime {
   private config: RemoteConsoleConfig = { ...DEFAULT_REMOTE_CONFIG };
   private readonly devices: DeviceRegistry;
@@ -149,6 +152,8 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
   private listening: { host: string; port: number } | null = null;
   private lastError: RemoteLastError | null = null;
   private lastRejectedOrigin: string | null = null;
+  /** When it was refused: the card ages out rather than haunting the session. */
+  private lastRejectedAt = 0;
   private assets: Map<string, AssetEntry> | null = null;
   private readonly tap: TerminalTap;
   private readonly sessions = new Map<string, LiveSession>();
@@ -268,6 +273,9 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     this.devices.reload();
     this.devices.expireIdle();
     this.lastError = null;
+    // A new listener (enable, rebind, port change) starts with a clean slate:
+    // an origin refused by the previous configuration says nothing about this one.
+    this.lastRejectedOrigin = null;
     if (!this.config.enabled) {
       this.emitStatus();
       return;
@@ -388,6 +396,7 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
       onConnection: (client) => this.onConnection(client),
       onPaired: (device) => this.onPaired(device),
       onRejectedOrigin: (v) => {
+        this.lastRejectedAt = Date.now();
         if (v === this.lastRejectedOrigin) return;
         this.lastRejectedOrigin = v;
         this.emitStatus();
@@ -452,6 +461,11 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     return saved ? undefined : { error: 'write-failed' };
   }
 
+  dismissRejectedOrigin(): void {
+    this.lastRejectedOrigin = null;
+    this.emitStatus();
+  }
+
   rename(id: string, name: string): void {
     this.devices.rename(id, name);
     this.emitStatus();
@@ -477,7 +491,7 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
 
   private onPaired(device: DeviceRecord): void {
     this.greeted.delete(device.id);
-    this.ops.notifyDesktop('wmux', `Paired: ${device.name} (${device.scope})`);
+    this.ops.notifyDesktop({ kind: 'paired', name: device.name, scope: device.scope });
     this.emitStatus();
   }
 
@@ -491,7 +505,9 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
       running: this.server !== null,
       listening: this.listening ? { ...this.listening } : null,
       lastError: this.lastError,
-      lastRejectedOrigin: this.lastRejectedOrigin,
+      lastRejectedOrigin: this.lastRejectedAt > 0 && Date.now() - this.lastRejectedAt > REJECTED_ORIGIN_TTL_MS
+        ? null
+        : this.lastRejectedOrigin,
       lanAddresses: this.ops.lanAddresses(),
       devices: this.devices.list(),
       connected: [...counts].map(([deviceId, count]) => ({ deviceId, count })),
@@ -582,7 +598,7 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     this.ops.log('remote-connect', { device: device.id, scope: client.effectiveScope });
     if (!this.greeted.has(device.id)) {
       this.greeted.add(device.id);
-      this.ops.notifyDesktop('wmux', `Remote console: ${device.name} connected`);
+      this.ops.notifyDesktop({ kind: 'connected', name: device.name, scope: device.scope });
     }
     if (this.sessions.size === 1) this.startPump();
     this.emitStatus();

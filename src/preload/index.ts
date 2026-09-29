@@ -15,6 +15,7 @@ const remoteConsole: RemoteConsoleBridge = {
   revoke: (id) => ipcRenderer.invoke(IPC_CHANNELS.REMOTE_CONSOLE_REVOKE, id),
   revokeAll: () => ipcRenderer.invoke(IPC_CHANNELS.REMOTE_CONSOLE_REVOKE_ALL),
   rename: (id, name) => ipcRenderer.invoke(IPC_CHANNELS.REMOTE_CONSOLE_RENAME, id, name),
+  dismissRejectedOrigin: () => ipcRenderer.invoke(IPC_CHANNELS.REMOTE_CONSOLE_DISMISS_ORIGIN),
   onState: (cb) => {
     const handler = (_event: Electron.IpcRendererEvent, status: RemoteConsoleStatus) => cb(status);
     ipcRenderer.on(IPC_CHANNELS.REMOTE_CONSOLE_STATE, handler);

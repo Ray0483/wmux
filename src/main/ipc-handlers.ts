@@ -1575,6 +1575,7 @@ export function registerRemoteConsoleHandlers(): void {
   handle(IPC_CHANNELS.REMOTE_CONSOLE_REVOKE, (rt, id) => rt.revoke(str(id)));
   handle(IPC_CHANNELS.REMOTE_CONSOLE_REVOKE_ALL, rt => rt.revokeAll());
   handle(IPC_CHANNELS.REMOTE_CONSOLE_RENAME, (rt, id, name) => rt.rename(str(id), str(name)));
+  handle(IPC_CHANNELS.REMOTE_CONSOLE_DISMISS_ORIGIN, rt => rt.dismissRejectedOrigin());
 
   // The renderer's answer to a snapshot/modes request. The runtime matches it
   // on `reqId` and ignores anything stale or unknown. The same window gate as

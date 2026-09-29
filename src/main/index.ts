@@ -828,8 +828,9 @@ const remoteConsoleOps: ConsoleOps = {
   // The same path `wmux notify` takes (a V1 `notify` with no surface), which is
   // the one bell notification that already works without a pane to point at.
   // NOTIFICATION_FIRE is not usable here: it needs a real surfaceId.
-  notifyDesktop: (title, body) => {
-    broadcastMetadataUpdate({ command: 'notify', surfaceId: '', args: [body ? `${title}: ${body}` : title] });
+  // Facts, not a sentence: the renderer words it in the UI language (#254).
+  notifyDesktop: (notice) => {
+    broadcastMetadataUpdate({ command: 'remote_notice', surfaceId: '', args: [notice.kind, notice.name, notice.scope] });
   },
   lanAddresses: lanIpv4Addresses,
   hostname: () => os.hostname(),
