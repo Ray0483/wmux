@@ -50,7 +50,7 @@ export interface FitStorage {
   setItem(key: string, value: string): void;
 }
 
-const FIT_PREFIX = 'wmux-remote-fit:';
+export const FIT_PREFIX = 'wmux-remote-fit:';
 
 export function loadFitMode(storage: FitStorage | null, surfaceId: string): FitMode {
   try {

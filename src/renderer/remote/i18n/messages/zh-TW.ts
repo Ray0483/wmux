@@ -5,13 +5,14 @@ export const zhTW: Readonly<Record<string, string>> = {
   'common.reload': '重新載入',
   'common.retry': '重試',
   'common.settings': '設定',
+  'common.dismiss': '關閉',
 
   'loading': '正在連線…',
 
   'pair.title': '配對此裝置',
   'pair.body': '你的電腦要求將此瀏覽器與 wmux 遠端主控台配對。只有在你剛剛親自掃描此代碼時才繼續。',
   'pair.nameLabel': '裝置名稱',
-  'pair.defaultName': '手機',
+  'pair.namePlaceholder': '在電腦上設定的名稱',
   'pair.confirm': '配對',
   'pair.pairing': '正在配對…',
   'pair.failed': '配對失敗。請在電腦上產生新的代碼後再試一次。',
@@ -44,6 +45,7 @@ export const zhTW: Readonly<Record<string, string>> = {
 
   'card.openToAnswer': '等你處理 — 開啟以回答',
   'card.answerPending': '已送出 — 等待代理程式',
+  'card.answerOnComputer': '需要你處理 — 請在電腦上回答',
 
   'attach.fit': '符合寬度',
   'attach.pan': '易讀',
@@ -55,9 +57,21 @@ export const zhTW: Readonly<Record<string, string>> = {
   'attach.errNoTerminal': '此終端機未在任何 wmux 視窗中開啟。',
   'attach.errTimeout': '電腦未能及時回應。',
   'attach.errGone': '此終端機已關閉。',
+  'attach.closedTerminal': '已關閉的終端機',
 
   'keys.more': '更多按鍵',
   'keys.armed': '再點一下即可送出',
+  'keys.up': '上',
+  'keys.down': '下',
+  'keys.left': '左',
+  'keys.right': '右',
+  'keys.enter': 'Enter 鍵',
+  'keys.backspace': '退格',
+  'keys.pageUp': '上一頁',
+  'keys.pageDown': '下一頁',
+  'keys.home': '行首',
+  'keys.end': '行尾',
+  'keys.ctrl': 'Ctrl+{key}',
 
   'composer.placeholder': '傳訊息給代理程式…',
   'composer.send': '送出 ↵',
@@ -108,8 +122,10 @@ export const zhTW: Readonly<Record<string, string>> = {
   'prefs.alertsOn': '提醒已開啟。',
   'prefs.alertsDenied': '提醒已在此瀏覽器的設定中遭到封鎖。',
   'prefs.alertsUnavailable': '系統提醒需要 HTTPS 位址。頁面內提醒仍可使用。',
+  'prefs.alertsUnsupported': '此瀏覽器無法為這類網頁顯示系統通知。頁面內的提醒仍可運作。',
   'prefs.forget': '忘記此裝置',
   'prefs.forgetTitle': '要忘記此裝置嗎？',
   'prefs.forgetBody': '重新連線需要從電腦取得新的代碼。',
+  'prefs.forgetFailed': '無法連線到你的電腦，因此此裝置仍處於配對狀態。請再試一次，或在電腦上的 wmux 中移除它。',
   'prefs.limits': '關閉此頁面後不會收到任何訊息，且 iOS 無法震動。',
 };

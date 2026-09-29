@@ -21,6 +21,7 @@ import { armFromConfirm, tapKey, type KeyArm } from '../composer-state';
 import { loadFitMode, saveFitMode, type FitMode } from '../fit';
 import { isUnconfirmed, newNonce, type WsClient, type WsStatus } from '../ws-client';
 import { ChoiceRow } from '../components/ChoiceRow';
+import { attachTitle } from './attach-title';
 import { Composer } from '../components/Composer';
 import { ConfirmSheet } from '../components/ConfirmSheet';
 import { KeyBar } from '../components/KeyBar';
@@ -81,6 +82,11 @@ export function AttachScreen({ client, s, entry, status, operator, maxText, font
   }, [arm]);
 
   const agentState = entry?.state ?? null;
+  // The roster drops a closed pane's entry; the header keeps the name it had
+  // rather than falling back to a raw surf-<uuid>.
+  const [lastLabel, setLastLabel] = useState<string | null>(entry?.label ?? null);
+  const label = entry?.label;
+  useEffect(() => { if (label) setLastLabel(label); }, [label]);
   const blocked = agentState === 'blocked';
 
   const sendKey = useCallback((key: RemoteKey) => {
@@ -123,7 +129,7 @@ export function AttachScreen({ client, s, entry, status, operator, maxText, font
     <main className="rc-screen rc-attach" style={style}>
       <header className="rc-bar">
         <button type="button" className="rc-bar__btn" onClick={onBack} aria-label={t.t('common.back')}>‹</button>
-        <h1 className="rc-bar__title rc-attach__title">{entry?.label ?? s}</h1>
+        <h1 className="rc-bar__title rc-attach__title">{attachTitle(entry?.label, lastLabel, t)}</h1>
         {wordKey
           ? <span className={`rc-chip rc-chip--${entry?.state}`}>{t.t(wordKey)}</span>
           : status !== 'ready' && <span className={`rc-chip rc-chip--${status}`}>{t.t(connKey(status))}</span>}

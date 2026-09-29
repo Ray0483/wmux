@@ -15,13 +15,14 @@ export const en = {
   'common.reload': 'Reload',
   'common.retry': 'Retry',
   'common.settings': 'Settings',
+  'common.dismiss': 'Dismiss',
 
   'loading': 'Connecting…',
 
   'pair.title': 'Pair this device',
   'pair.body': 'Your computer offered to pair this browser with its wmux Remote Console. Only continue if you just scanned this code yourself.',
   'pair.nameLabel': 'Device name',
-  'pair.defaultName': 'Phone',
+  'pair.namePlaceholder': 'The name set on your computer',
   'pair.confirm': 'Pair',
   'pair.pairing': 'Pairing…',
   'pair.failed': 'Pairing failed. Make a new code on your computer and try again.',
@@ -55,6 +56,7 @@ export const en = {
 
   'card.openToAnswer': 'Needs you — open to answer',
   'card.answerPending': 'Sent — waiting for the agent',
+  'card.answerOnComputer': 'Needs you — answer on your computer',
 
   'attach.fit': 'Fit width',
   'attach.pan': 'Readable',
@@ -66,9 +68,21 @@ export const en = {
   'attach.errNoTerminal': 'This terminal is not open in a wmux window.',
   'attach.errTimeout': 'The computer did not answer in time.',
   'attach.errGone': 'This terminal has closed.',
+  'attach.closedTerminal': 'Closed terminal',
 
   'keys.more': 'More keys',
   'keys.armed': 'Tap again to send',
+  'keys.up': 'Up',
+  'keys.down': 'Down',
+  'keys.left': 'Left',
+  'keys.right': 'Right',
+  'keys.enter': 'Enter',
+  'keys.backspace': 'Backspace',
+  'keys.pageUp': 'Page up',
+  'keys.pageDown': 'Page down',
+  'keys.home': 'Start of line',
+  'keys.end': 'End of line',
+  'keys.ctrl': 'Ctrl+{key}',
 
   'composer.placeholder': 'Message the agent…',
   'composer.send': 'Send ↵',
@@ -119,9 +133,11 @@ export const en = {
   'prefs.alertsOn': 'Alerts are on.',
   'prefs.alertsDenied': 'Alerts are blocked in this browser’s settings.',
   'prefs.alertsUnavailable': 'System alerts need an HTTPS address. In-page alerts still work.',
+  'prefs.alertsUnsupported': 'This browser cannot show system alerts for a web page like this one. In-page alerts still work.',
   'prefs.forget': 'Forget this device',
   'prefs.forgetTitle': 'Forget this device?',
   'prefs.forgetBody': 'You will need a new code from your computer to reconnect.',
+  'prefs.forgetFailed': 'Could not reach your computer, so this device is still paired. Try again, or remove it in wmux on your computer.',
   'prefs.limits': 'With this page closed nothing arrives, and iOS cannot vibrate.',
 } as const;
 

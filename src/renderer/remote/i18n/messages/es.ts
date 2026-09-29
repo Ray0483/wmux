@@ -5,13 +5,14 @@ export const es: Readonly<Record<string, string>> = {
   'common.reload': 'Recargar',
   'common.retry': 'Reintentar',
   'common.settings': 'Ajustes',
+  'common.dismiss': 'Descartar',
 
   'loading': 'Conectando…',
 
   'pair.title': 'Vincular este dispositivo',
   'pair.body': 'Tu ordenador ha ofrecido vincular este navegador con su consola remota de wmux. Continúa solo si acabas de escanear este código tú mismo.',
   'pair.nameLabel': 'Nombre del dispositivo',
-  'pair.defaultName': 'Teléfono',
+  'pair.namePlaceholder': 'El nombre elegido en tu ordenador',
   'pair.confirm': 'Vincular',
   'pair.pairing': 'Vinculando…',
   'pair.failed': 'La vinculación ha fallado. Genera un código nuevo en tu ordenador y vuelve a intentarlo.',
@@ -45,6 +46,7 @@ export const es: Readonly<Record<string, string>> = {
 
   'card.openToAnswer': 'Te necesita: ábrelo para responder',
   'card.answerPending': 'Enviado: esperando al agente',
+  'card.answerOnComputer': 'Te necesita — responde en tu ordenador',
 
   'attach.fit': 'Ajustar',
   'attach.pan': 'Legible',
@@ -56,9 +58,21 @@ export const es: Readonly<Record<string, string>> = {
   'attach.errNoTerminal': 'Este terminal no está abierto en ninguna ventana de wmux.',
   'attach.errTimeout': 'El ordenador no respondió a tiempo.',
   'attach.errGone': 'Este terminal se ha cerrado.',
+  'attach.closedTerminal': 'Terminal cerrado',
 
   'keys.more': 'Más teclas',
   'keys.armed': 'Toca otra vez para enviar',
+  'keys.up': 'Arriba',
+  'keys.down': 'Abajo',
+  'keys.left': 'Izquierda',
+  'keys.right': 'Derecha',
+  'keys.enter': 'Intro',
+  'keys.backspace': 'Retroceso',
+  'keys.pageUp': 'Re Pág',
+  'keys.pageDown': 'Av Pág',
+  'keys.home': 'Inicio de línea',
+  'keys.end': 'Fin de línea',
+  'keys.ctrl': 'Ctrl+{key}',
 
   'composer.placeholder': 'Escribe al agente…',
   'composer.send': 'Enviar ↵',
@@ -109,8 +123,10 @@ export const es: Readonly<Record<string, string>> = {
   'prefs.alertsOn': 'Las alertas están activadas.',
   'prefs.alertsDenied': 'Las alertas están bloqueadas en los ajustes de este navegador.',
   'prefs.alertsUnavailable': 'Las alertas del sistema necesitan una dirección HTTPS. Las alertas dentro de la página siguen funcionando.',
+  'prefs.alertsUnsupported': 'Este navegador no puede mostrar alertas del sistema para una página web como esta. Las alertas en la página siguen funcionando.',
   'prefs.forget': 'Olvidar este dispositivo',
   'prefs.forgetTitle': '¿Olvidar este dispositivo?',
   'prefs.forgetBody': 'Necesitarás un código nuevo de tu ordenador para volver a conectar.',
+  'prefs.forgetFailed': 'No se pudo contactar con tu ordenador, así que este dispositivo sigue vinculado. Inténtalo de nuevo o quítalo en wmux en tu ordenador.',
   'prefs.limits': 'Con esta página cerrada no llega nada, e iOS no puede vibrar.',
 };

@@ -47,7 +47,7 @@ function AgentToast({ toast, entry, operator, t, onOpen, onAnswer, onDismiss }: 
       <button type="button" className="rc-toast__body" onClick={() => { onDismiss(toast.id); onOpen(toast.s); }}>
         {text}
       </button>
-      <button type="button" className="rc-toast__close" aria-label={t.t('common.cancel')} onClick={() => onDismiss(toast.id)}>×</button>
+      <button type="button" className="rc-toast__close" aria-label={t.t('common.dismiss')} onClick={() => onDismiss(toast.id)}>×</button>
       {operator && stillBlocked && entry && (
         <ChoiceRow
           choices={entry.choices}
@@ -66,7 +66,7 @@ export function Toasts({ toasts, roster, operator, t, onOpen, onAnswer, onDismis
         toast.kind === 'error' ? (
           <div key={toast.id} className="rc-toast rc-toast--error" role="alert">
             <span className="rc-toast__body">{toast.text}</span>
-            <button type="button" className="rc-toast__close" aria-label={t.t('common.cancel')} onClick={() => onDismiss(toast.id)}>×</button>
+            <button type="button" className="rc-toast__close" aria-label={t.t('common.dismiss')} onClick={() => onDismiss(toast.id)}>×</button>
           </div>
         ) : (
           <AgentToast

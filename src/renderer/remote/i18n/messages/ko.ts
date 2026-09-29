@@ -5,13 +5,14 @@ export const ko: Readonly<Record<string, string>> = {
   'common.reload': '새로고침',
   'common.retry': '다시 시도',
   'common.settings': '설정',
+  'common.dismiss': '닫기',
 
   'loading': '연결 중…',
 
   'pair.title': '이 기기 페어링',
   'pair.body': '컴퓨터가 이 브라우저를 wmux 원격 콘솔과 페어링하려고 합니다. 이 코드를 방금 직접 스캔한 경우에만 계속하세요.',
   'pair.nameLabel': '기기 이름',
-  'pair.defaultName': '휴대폰',
+  'pair.namePlaceholder': '컴퓨터에서 정한 이름',
   'pair.confirm': '페어링',
   'pair.pairing': '페어링 중…',
   'pair.failed': '페어링에 실패했습니다. 컴퓨터에서 새 코드를 만들고 다시 시도하세요.',
@@ -44,6 +45,7 @@ export const ko: Readonly<Record<string, string>> = {
 
   'card.openToAnswer': '확인 필요 — 열어서 응답',
   'card.answerPending': '보냄 — 에이전트를 기다리는 중',
+  'card.answerOnComputer': '응답 필요 — 컴퓨터에서 답하세요',
 
   'attach.fit': '너비 맞춤',
   'attach.pan': '읽기 쉽게',
@@ -55,9 +57,21 @@ export const ko: Readonly<Record<string, string>> = {
   'attach.errNoTerminal': '이 터미널은 어떤 wmux 창에서도 열려 있지 않습니다.',
   'attach.errTimeout': '컴퓨터가 제시간에 응답하지 않았습니다.',
   'attach.errGone': '이 터미널은 닫혔습니다.',
+  'attach.closedTerminal': '닫힌 터미널',
 
   'keys.more': '키 더 보기',
   'keys.armed': '한 번 더 탭하면 보냅니다',
+  'keys.up': '위',
+  'keys.down': '아래',
+  'keys.left': '왼쪽',
+  'keys.right': '오른쪽',
+  'keys.enter': 'Enter 키',
+  'keys.backspace': '백스페이스',
+  'keys.pageUp': '페이지 위로',
+  'keys.pageDown': '페이지 아래로',
+  'keys.home': '줄 처음',
+  'keys.end': '줄 끝',
+  'keys.ctrl': 'Ctrl+{key}',
 
   'composer.placeholder': '에이전트에게 메시지…',
   'composer.send': '보내기 ↵',
@@ -108,8 +122,10 @@ export const ko: Readonly<Record<string, string>> = {
   'prefs.alertsOn': '알림이 켜져 있습니다.',
   'prefs.alertsDenied': '이 브라우저 설정에서 알림이 차단되어 있습니다.',
   'prefs.alertsUnavailable': '시스템 알림에는 HTTPS 주소가 필요합니다. 페이지 내 알림은 계속 작동합니다.',
+  'prefs.alertsUnsupported': '이 브라우저는 이런 웹 페이지의 시스템 알림을 표시할 수 없습니다. 페이지 내 알림은 계속 작동합니다.',
   'prefs.forget': '이 기기 삭제',
   'prefs.forgetTitle': '이 기기를 삭제할까요?',
   'prefs.forgetBody': '다시 연결하려면 컴퓨터에서 새 코드가 필요합니다.',
+  'prefs.forgetFailed': '컴퓨터에 연결할 수 없어 이 기기는 아직 페어링되어 있습니다. 다시 시도하거나 컴퓨터의 wmux에서 제거하세요.',
   'prefs.limits': '이 페이지를 닫으면 아무것도 도착하지 않으며, iOS는 진동할 수 없습니다.',
 };

@@ -5,13 +5,14 @@ export const hi: Readonly<Record<string, string>> = {
   'common.reload': 'फिर से लोड करें',
   'common.retry': 'फिर से कोशिश करें',
   'common.settings': 'सेटिंग्स',
+  'common.dismiss': 'हटाएँ',
 
   'loading': 'कनेक्ट हो रहा है…',
 
   'pair.title': 'इस डिवाइस को पेयर करें',
   'pair.body': 'आपका कंप्यूटर इस ब्राउज़र को wmux रिमोट कंसोल के साथ पेयर करने का प्रस्ताव दे रहा है। आगे तभी बढ़ें जब आपने अभी-अभी यह कोड ख़ुद स्कैन किया हो।',
   'pair.nameLabel': 'डिवाइस का नाम',
-  'pair.defaultName': 'फ़ोन',
+  'pair.namePlaceholder': 'आपके कंप्यूटर पर दिया गया नाम',
   'pair.confirm': 'पेयर करें',
   'pair.pairing': 'पेयर हो रहा है…',
   'pair.failed': 'पेयरिंग विफल रही। अपने कंप्यूटर पर नया कोड बनाएँ और फिर से कोशिश करें।',
@@ -45,6 +46,7 @@ export const hi: Readonly<Record<string, string>> = {
 
   'card.openToAnswer': 'आपकी ज़रूरत है — जवाब देने के लिए खोलें',
   'card.answerPending': 'भेजा गया — एजेंट का इंतज़ार',
+  'card.answerOnComputer': 'आपकी ज़रूरत है — अपने कंप्यूटर पर जवाब दें',
 
   'attach.fit': 'चौड़ाई में फ़िट',
   'attach.pan': 'पढ़ने योग्य',
@@ -56,9 +58,21 @@ export const hi: Readonly<Record<string, string>> = {
   'attach.errNoTerminal': 'यह टर्मिनल किसी भी wmux विंडो में खुला नहीं है।',
   'attach.errTimeout': 'कंप्यूटर ने समय पर जवाब नहीं दिया।',
   'attach.errGone': 'यह टर्मिनल बंद हो गया है।',
+  'attach.closedTerminal': 'बंद टर्मिनल',
 
   'keys.more': 'और कुंजियाँ',
   'keys.armed': 'भेजने के लिए फिर से टैप करें',
+  'keys.up': 'ऊपर',
+  'keys.down': 'नीचे',
+  'keys.left': 'बाएँ',
+  'keys.right': 'दाएँ',
+  'keys.enter': 'एंटर',
+  'keys.backspace': 'बैकस्पेस',
+  'keys.pageUp': 'पेज ऊपर',
+  'keys.pageDown': 'पेज नीचे',
+  'keys.home': 'पंक्ति की शुरुआत',
+  'keys.end': 'पंक्ति का अंत',
+  'keys.ctrl': 'Ctrl+{key}',
 
   'composer.placeholder': 'एजेंट को संदेश…',
   'composer.send': 'भेजें ↵',
@@ -109,8 +123,10 @@ export const hi: Readonly<Record<string, string>> = {
   'prefs.alertsOn': 'अलर्ट चालू हैं।',
   'prefs.alertsDenied': 'इस ब्राउज़र की सेटिंग्स में अलर्ट ब्लॉक हैं।',
   'prefs.alertsUnavailable': 'सिस्टम अलर्ट के लिए HTTPS पता चाहिए। पेज के भीतर अलर्ट अब भी काम करते हैं।',
+  'prefs.alertsUnsupported': 'यह ब्राउज़र इस तरह के वेब पेज के लिए सिस्टम अलर्ट नहीं दिखा सकता। पेज के भीतर के अलर्ट काम करते रहेंगे।',
   'prefs.forget': 'इस डिवाइस को भूल जाएँ',
   'prefs.forgetTitle': 'इस डिवाइस को भूल जाएँ?',
   'prefs.forgetBody': 'फिर से कनेक्ट करने के लिए आपको अपने कंप्यूटर से नया कोड चाहिए होगा।',
+  'prefs.forgetFailed': 'आपके कंप्यूटर तक नहीं पहुँच सके, इसलिए यह डिवाइस अभी भी पेयर है। फिर से कोशिश करें, या अपने कंप्यूटर पर wmux में इसे हटाएँ।',
   'prefs.limits': 'यह पेज बंद होने पर कुछ नहीं आता, और iOS वाइब्रेट नहीं कर सकता।',
 };

@@ -165,7 +165,7 @@ export interface DraftStorage {
   removeItem(key: string): void;
 }
 
-const DRAFT_PREFIX = 'wmux-remote-draft:';
+export const DRAFT_PREFIX = 'wmux-remote-draft:';
 
 /**
  * Every access in try/catch: private browsing, a full quota, or blocked site

@@ -5,13 +5,14 @@ export const pt: Readonly<Record<string, string>> = {
   'common.reload': 'Recarregar',
   'common.retry': 'Tentar novamente',
   'common.settings': 'Configurações',
+  'common.dismiss': 'Dispensar',
 
   'loading': 'Conectando…',
 
   'pair.title': 'Parear este dispositivo',
   'pair.body': 'Seu computador ofereceu parear este navegador com o console remoto do wmux. Só continue se você acabou de escanear este código.',
   'pair.nameLabel': 'Nome do dispositivo',
-  'pair.defaultName': 'Telefone',
+  'pair.namePlaceholder': 'O nome definido no computador',
   'pair.confirm': 'Parear',
   'pair.pairing': 'Pareando…',
   'pair.failed': 'O pareamento falhou. Gere um novo código no computador e tente de novo.',
@@ -45,6 +46,7 @@ export const pt: Readonly<Record<string, string>> = {
 
   'card.openToAnswer': 'Precisa de você — abra para responder',
   'card.answerPending': 'Enviado — aguardando o agente',
+  'card.answerOnComputer': 'Precisa de você — responda no computador',
 
   'attach.fit': 'Ajustar',
   'attach.pan': 'Legível',
@@ -56,9 +58,21 @@ export const pt: Readonly<Record<string, string>> = {
   'attach.errNoTerminal': 'Este terminal não está aberto em nenhuma janela do wmux.',
   'attach.errTimeout': 'O computador não respondeu a tempo.',
   'attach.errGone': 'Este terminal foi fechado.',
+  'attach.closedTerminal': 'Terminal fechado',
 
   'keys.more': 'Mais teclas',
   'keys.armed': 'Toque de novo para enviar',
+  'keys.up': 'Para cima',
+  'keys.down': 'Para baixo',
+  'keys.left': 'Para a esquerda',
+  'keys.right': 'Para a direita',
+  'keys.enter': 'Enter (confirmar)',
+  'keys.backspace': 'Apagar',
+  'keys.pageUp': 'Página acima',
+  'keys.pageDown': 'Página abaixo',
+  'keys.home': 'Início da linha',
+  'keys.end': 'Fim da linha',
+  'keys.ctrl': 'Ctrl+{key}',
 
   'composer.placeholder': 'Mensagem para o agente…',
   'composer.send': 'Enviar ↵',
@@ -109,8 +123,10 @@ export const pt: Readonly<Record<string, string>> = {
   'prefs.alertsOn': 'Os alertas estão ativados.',
   'prefs.alertsDenied': 'Os alertas estão bloqueados nas configurações deste navegador.',
   'prefs.alertsUnavailable': 'Alertas do sistema exigem um endereço HTTPS. Os alertas na página continuam funcionando.',
+  'prefs.alertsUnsupported': 'Este navegador não consegue mostrar alertas do sistema para uma página como esta. Os alertas na página continuam funcionando.',
   'prefs.forget': 'Esquecer este dispositivo',
   'prefs.forgetTitle': 'Esquecer este dispositivo?',
   'prefs.forgetBody': 'Você precisará de um novo código do computador para reconectar.',
+  'prefs.forgetFailed': 'Não foi possível contactar o computador, então este dispositivo continua pareado. Tente de novo ou remova-o no wmux do computador.',
   'prefs.limits': 'Com esta página fechada nada chega, e o iOS não consegue vibrar.',
 };

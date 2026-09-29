@@ -20,6 +20,8 @@ export const SURFACE_ID_RE = /^surf-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 export const NONCE_RE = /^[A-Za-z0-9-]{8,64}$/;
 /** A declared choice id that may travel to the phone and back. */
 export const CHOICE_ID_RE = /^[A-Za-z0-9_-]{1,32}$/;
+/** A device name's cap, applied by the server (devices.ts) and mirrored by the phone's pair field. */
+export const DEVICE_NAME_MAX = 64;
 /** Composer text cap. Enforced by the session as an ack (`too-long`), NOT by the validator. */
 export const MAX_TEXT = 16384;
 /** Mirrors the server's ws `maxPayload`; a string frame over it is `bad-frame`. */

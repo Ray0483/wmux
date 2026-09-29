@@ -28,8 +28,13 @@ import { ackMessageKey, type RemoteT } from '../i18n';
 import { isUnconfirmed, newNonce, type WsClient } from '../ws-client';
 import { ConfirmSheet } from './ConfirmSheet';
 
+/**
+ * sessionStorage, not localStorage: a draft may be a password typed for a
+ * sudo or ssh prompt, and it should not outlive the tab. It still survives a
+ * reload, which is the case a draft exists for (see device-storage.ts).
+ */
 function safeStorage(): Storage | null {
-  try { return globalThis.localStorage ?? null; } catch { return null; }
+  try { return globalThis.sessionStorage ?? null; } catch { return null; }
 }
 
 interface Props {

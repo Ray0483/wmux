@@ -18,7 +18,7 @@
  */
 import { timingSafeEqual } from 'crypto';
 import type { RemoteDeviceView } from '../../shared/remote-console-config';
-import type { RemoteScope } from '../../shared/remote-console-protocol';
+import { DEVICE_NAME_MAX, type RemoteScope } from '../../shared/remote-console-protocol';
 import { capText, stripBidi } from '../../shared/remote-input';
 
 export const PAIR_TTL_MS = 120_000;
@@ -26,7 +26,7 @@ export const PAIR_MAX_FAILURES = 5;
 export const MAX_DEVICES = 10;
 export const IDLE_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
 export const TOUCH_PERSIST_MS = 60_000;
-const NAME_MAX = 64;
+const NAME_MAX = DEVICE_NAME_MAX;
 const DEFAULT_NAME = 'Phone';
 
 export interface DeviceRecord {

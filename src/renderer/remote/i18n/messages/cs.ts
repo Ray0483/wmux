@@ -5,13 +5,14 @@ export const cs: Readonly<Record<string, string>> = {
   'common.reload': 'Znovu načíst',
   'common.retry': 'Zkusit znovu',
   'common.settings': 'Nastavení',
+  'common.dismiss': 'Zavřít',
 
   'loading': 'Připojování…',
 
   'pair.title': 'Spárovat toto zařízení',
   'pair.body': 'Váš počítač nabízí spárování tohoto prohlížeče se vzdálenou konzolí wmux. Pokračujte, jen pokud jste tento kód právě sami naskenovali.',
   'pair.nameLabel': 'Název zařízení',
-  'pair.defaultName': 'Telefon',
+  'pair.namePlaceholder': 'Název zadaný na počítači',
   'pair.confirm': 'Spárovat',
   'pair.pairing': 'Párování…',
   'pair.failed': 'Párování selhalo. Vytvořte na počítači nový kód a zkuste to znovu.',
@@ -46,6 +47,7 @@ export const cs: Readonly<Record<string, string>> = {
 
   'card.openToAnswer': 'Čeká na vás — otevřete a odpovězte',
   'card.answerPending': 'Odesláno — čeká se na agenta',
+  'card.answerOnComputer': 'Potřebuje vás — odpovězte na počítači',
 
   'attach.fit': 'Na šířku',
   'attach.pan': 'Čitelné',
@@ -57,9 +59,21 @@ export const cs: Readonly<Record<string, string>> = {
   'attach.errNoTerminal': 'Tento terminál není otevřen v žádném okně wmux.',
   'attach.errTimeout': 'Počítač neodpověděl včas.',
   'attach.errGone': 'Tento terminál byl zavřen.',
+  'attach.closedTerminal': 'Zavřený terminál',
 
   'keys.more': 'Další klávesy',
   'keys.armed': 'Klepněte znovu pro odeslání',
+  'keys.up': 'Nahoru',
+  'keys.down': 'Dolů',
+  'keys.left': 'Doleva',
+  'keys.right': 'Doprava',
+  'keys.enter': 'Enter (potvrdit)',
+  'keys.backspace': 'Smazat vzad',
+  'keys.pageUp': 'O stránku nahoru',
+  'keys.pageDown': 'O stránku dolů',
+  'keys.home': 'Začátek řádku',
+  'keys.end': 'Konec řádku',
+  'keys.ctrl': 'Ctrl+{key}',
 
   'composer.placeholder': 'Zpráva pro agenta…',
   'composer.send': 'Odeslat ↵',
@@ -110,8 +124,10 @@ export const cs: Readonly<Record<string, string>> = {
   'prefs.alertsOn': 'Upozornění jsou zapnutá.',
   'prefs.alertsDenied': 'Upozornění jsou v nastavení tohoto prohlížeče zablokována.',
   'prefs.alertsUnavailable': 'Systémová upozornění vyžadují adresu HTTPS. Upozornění na stránce fungují dál.',
+  'prefs.alertsUnsupported': 'Tento prohlížeč neumí u takové webové stránky zobrazit systémová upozornění. Upozornění na stránce fungují dál.',
   'prefs.forget': 'Zapomenout toto zařízení',
   'prefs.forgetTitle': 'Zapomenout toto zařízení?',
   'prefs.forgetBody': 'K opětovnému připojení budete potřebovat nový kód z počítače.',
+  'prefs.forgetFailed': 'Počítač nebyl dostupný, takže toto zařízení zůstává spárované. Zkuste to znovu, nebo ho odeberte ve wmux na počítači.',
   'prefs.limits': 'Když je stránka zavřená, nic nepřijde, a iOS neumí vibrovat.',
 };

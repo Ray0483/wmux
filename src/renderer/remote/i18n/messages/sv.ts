@@ -5,13 +5,14 @@ export const sv: Readonly<Record<string, string>> = {
   'common.reload': 'Ladda om',
   'common.retry': 'Försök igen',
   'common.settings': 'Inställningar',
+  'common.dismiss': 'Stäng',
 
   'loading': 'Ansluter…',
 
   'pair.title': 'Parkoppla den här enheten',
   'pair.body': 'Din dator erbjuder att parkoppla den här webbläsaren med wmux fjärrkonsol. Fortsätt bara om du själv just skannade koden.',
   'pair.nameLabel': 'Enhetsnamn',
-  'pair.defaultName': 'Telefon',
+  'pair.namePlaceholder': 'Namnet som valdes på datorn',
   'pair.confirm': 'Parkoppla',
   'pair.pairing': 'Parkopplar…',
   'pair.failed': 'Parkopplingen misslyckades. Skapa en ny kod på datorn och försök igen.',
@@ -45,6 +46,7 @@ export const sv: Readonly<Record<string, string>> = {
 
   'card.openToAnswer': 'Behöver dig – öppna för att svara',
   'card.answerPending': 'Skickat – väntar på agenten',
+  'card.answerOnComputer': 'Behöver dig — svara på datorn',
 
   'attach.fit': 'Anpassa',
   'attach.pan': 'Läsbar',
@@ -56,9 +58,21 @@ export const sv: Readonly<Record<string, string>> = {
   'attach.errNoTerminal': 'Den här terminalen är inte öppen i något wmux-fönster.',
   'attach.errTimeout': 'Datorn svarade inte i tid.',
   'attach.errGone': 'Den här terminalen har stängts.',
+  'attach.closedTerminal': 'Stängd terminal',
 
   'keys.more': 'Fler tangenter',
   'keys.armed': 'Tryck igen för att skicka',
+  'keys.up': 'Upp',
+  'keys.down': 'Ned',
+  'keys.left': 'Vänster',
+  'keys.right': 'Höger',
+  'keys.enter': 'Retur',
+  'keys.backspace': 'Backsteg',
+  'keys.pageUp': 'Sida upp',
+  'keys.pageDown': 'Sida ned',
+  'keys.home': 'Radens början',
+  'keys.end': 'Radens slut',
+  'keys.ctrl': 'Ctrl+{key}',
 
   'composer.placeholder': 'Meddelande till agenten…',
   'composer.send': 'Skicka ↵',
@@ -109,8 +123,10 @@ export const sv: Readonly<Record<string, string>> = {
   'prefs.alertsOn': 'Aviseringar är på.',
   'prefs.alertsDenied': 'Aviseringar är blockerade i webbläsarens inställningar.',
   'prefs.alertsUnavailable': 'Systemaviseringar kräver en HTTPS-adress. Aviseringar på sidan fungerar fortfarande.',
+  'prefs.alertsUnsupported': 'Den här webbläsaren kan inte visa systemaviseringar för en webbsida som den här. Aviseringar på sidan fungerar fortfarande.',
   'prefs.forget': 'Glöm den här enheten',
   'prefs.forgetTitle': 'Glömma den här enheten?',
   'prefs.forgetBody': 'Du behöver en ny kod från datorn för att ansluta igen.',
+  'prefs.forgetFailed': 'Datorn gick inte att nå, så enheten är fortfarande parkopplad. Försök igen, eller ta bort den i wmux på datorn.',
   'prefs.limits': 'När sidan är stängd kommer inget fram, och iOS kan inte vibrera.',
 };

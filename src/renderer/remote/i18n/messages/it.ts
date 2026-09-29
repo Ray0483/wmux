@@ -5,13 +5,14 @@ export const it: Readonly<Record<string, string>> = {
   'common.reload': 'Ricarica',
   'common.retry': 'Riprova',
   'common.settings': 'Impostazioni',
+  'common.dismiss': 'Chiudi',
 
   'loading': 'Connessione…',
 
   'pair.title': 'Associa questo dispositivo',
   'pair.body': 'Il tuo computer ha proposto di associare questo browser alla console remota di wmux. Continua solo se hai appena scansionato tu questo codice.',
   'pair.nameLabel': 'Nome del dispositivo',
-  'pair.defaultName': 'Telefono',
+  'pair.namePlaceholder': 'Il nome scelto sul computer',
   'pair.confirm': 'Associa',
   'pair.pairing': 'Associazione…',
   'pair.failed': 'Associazione non riuscita. Genera un nuovo codice sul computer e riprova.',
@@ -45,6 +46,7 @@ export const it: Readonly<Record<string, string>> = {
 
   'card.openToAnswer': 'Ti aspetta: apri per rispondere',
   'card.answerPending': 'Inviato: in attesa dell’agente',
+  'card.answerOnComputer': 'Serve una risposta — rispondi dal computer',
 
   'attach.fit': 'Adatta',
   'attach.pan': 'Leggibile',
@@ -56,9 +58,21 @@ export const it: Readonly<Record<string, string>> = {
   'attach.errNoTerminal': 'Questo terminale non è aperto in nessuna finestra di wmux.',
   'attach.errTimeout': 'Il computer non ha risposto in tempo.',
   'attach.errGone': 'Questo terminale è stato chiuso.',
+  'attach.closedTerminal': 'Terminale chiuso',
 
   'keys.more': 'Altri tasti',
   'keys.armed': 'Tocca di nuovo per inviare',
+  'keys.up': 'Su',
+  'keys.down': 'Giù',
+  'keys.left': 'Sinistra',
+  'keys.right': 'Destra',
+  'keys.enter': 'Invio',
+  'keys.backspace': 'Backspace (cancella)',
+  'keys.pageUp': 'Pagina su',
+  'keys.pageDown': 'Pagina giù',
+  'keys.home': 'Inizio riga',
+  'keys.end': 'Fine riga',
+  'keys.ctrl': 'Ctrl+{key}',
 
   'composer.placeholder': 'Scrivi all’agente…',
   'composer.send': 'Invia ↵',
@@ -109,8 +123,10 @@ export const it: Readonly<Record<string, string>> = {
   'prefs.alertsOn': 'Gli avvisi sono attivi.',
   'prefs.alertsDenied': 'Gli avvisi sono bloccati nelle impostazioni di questo browser.',
   'prefs.alertsUnavailable': 'Gli avvisi di sistema richiedono un indirizzo HTTPS. Gli avvisi nella pagina funzionano comunque.',
+  'prefs.alertsUnsupported': 'Questo browser non può mostrare avvisi di sistema per una pagina web come questa. Gli avvisi nella pagina funzionano comunque.',
   'prefs.forget': 'Dimentica questo dispositivo',
   'prefs.forgetTitle': 'Dimenticare questo dispositivo?',
   'prefs.forgetBody': 'Per riconnetterti servirà un nuovo codice dal computer.',
+  'prefs.forgetFailed': 'Impossibile raggiungere il computer, quindi questo dispositivo è ancora associato. Riprova, oppure rimuovilo in wmux sul computer.',
   'prefs.limits': 'Con questa pagina chiusa non arriva nulla, e iOS non può vibrare.',
 };

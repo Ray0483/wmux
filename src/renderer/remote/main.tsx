@@ -10,6 +10,10 @@
  *
  * (Imports are hoisted and evaluate first, but none of them read the location:
  * React, xterm and our own modules only define things.)
+ *
+ * A fragment that arrives LATER — a pairing link pasted into this already-open
+ * tab, which the browser treats as a same-document navigation — is scrubbed by
+ * the `hashchange` watcher below, on every entry and not only the first.
  */
 const initialHash = globalThis.location.hash;
 if (initialHash) globalThis.history.replaceState(null, '', globalThis.location.pathname);
@@ -19,19 +23,16 @@ import { StrictMode } from 'react';
 import '@xterm/xterm/css/xterm.css';
 import './remote.css';
 import { RemoteApp } from './RemoteApp';
+import { PAIR_RE, watchPairFragment } from './pair-fragment';
 
-/**
- * base64url, the alphabet `devices.ts` mints the 32-byte secret in. Anything
- * else is not ours, and is dropped rather than POSTed.
- */
-const PAIR_RE = /^#pair=([A-Za-z0-9_-]{16,128})$/;
 const pairSecret = PAIR_RE.exec(initialHash)?.[1] ?? null;
+const laterSecrets = watchPairFragment(globalThis, globalThis.location, globalThis.history);
 
 const root = document.getElementById('root');
 if (root) {
   createRoot(root).render(
     <StrictMode>
-      <RemoteApp pairSecret={pairSecret} />
+      <RemoteApp pairSecret={pairSecret} laterSecrets={laterSecrets} />
     </StrictMode>,
   );
 }

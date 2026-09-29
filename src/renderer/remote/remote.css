@@ -393,6 +393,16 @@ button { cursor: pointer; }
 }
 .rc-key--on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .rc-key--armed { background: var(--danger); color: #fff; border-color: var(--danger); }
+.rc-keybar__armed {
+  margin: 0;
+  align-self: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
 
 .rc-composer { display: flex; flex-direction: column; gap: 4px; }
 .rc-composer__row { display: flex; gap: 6px; align-items: flex-end; }

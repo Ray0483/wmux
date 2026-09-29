@@ -22,8 +22,11 @@ import { createBrowserWsClient, isUnconfirmed, newNonce, type WelcomeMessage, ty
 import { NoticeScreen, PairScreen } from './screens/PairScreen';
 import { ConsoleScreen } from './screens/ConsoleScreen';
 import { AttachScreen } from './screens/AttachScreen';
-import { PrefsScreen, loadPrefs, savePrefs, type RemotePrefs } from './screens/PrefsScreen';
+import { PrefsScreen, alertState, loadPrefs, savePrefs, type RemotePrefs } from './screens/PrefsScreen';
 import { Toasts, type Toast, type ToastInput } from './components/Toasts';
+import { AnswerGate } from './answer-gate';
+import { browserStorages, forgetDeviceStorage, logoutUnpaired } from './device-storage';
+import type { PairSecretSource } from './pair-fragment';
 
 interface SessionInfo {
   scope: RemoteScope;
@@ -83,7 +86,10 @@ const withToast = (full: Toast) => (list: Toast[]): Toast[] => {
 };
 const withoutToast = (id: number) => (list: Toast[]): Toast[] => list.filter((x) => x.id !== id);
 
-export function RemoteApp({ pairSecret }: Readonly<{ pairSecret: string | null }>) {
+/** Phases in which this browser is no longer paired (or must reload): forget what it kept. */
+const UNPAIRED_PHASES: ReadonlySet<string> = new Set(['unpaired', 'revoked', 'incompatible']);
+
+export function RemoteApp({ pairSecret, laterSecrets }: Readonly<{ pairSecret: string | null; laterSecrets?: PairSecretSource }>) {
   const [prefs, setPrefsState] = useState<RemotePrefs>(loadPrefs);
   const lang = prefs.lang === 'auto' ? matchLanguage(navigator.languages ?? [navigator.language]) : prefs.lang;
   const t: RemoteT = useMemo(() => createT(lang), [lang]);
@@ -100,6 +106,7 @@ export function RemoteApp({ pairSecret }: Readonly<{ pairSecret: string | null }
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [dark, setDark] = useState(() => resolveDark(prefs.theme));
   const toastSeq = useRef(0);
+  const answerGate = useRef(new AnswerGate());
 
   // ── Theme: tokens switch on [data-theme]; "system" leaves it to the media query.
   useEffect(() => {
@@ -126,6 +133,18 @@ export function RemoteApp({ pairSecret }: Readonly<{ pairSecret: string | null }
   }, []);
   const dismissToast = useCallback((id: number) => setToasts(withoutToast(id)), []);
   const showError = useCallback((text: string) => pushToast({ kind: 'error', text }), [pushToast]);
+
+  // ── A pairing link pasted into this already-open tab (main.tsx scrubbed it).
+  useEffect(() => laterSecrets?.subscribe((secret) => {
+    setView({ screen: 'list' });
+    setPhase({ kind: 'pair', secret, busy: false, failed: false });
+  }), [laterSecrets]);
+
+  // ── Not paired any more: drafts (maybe a password typed for a sudo prompt)
+  // and per-surface keys must not outlive the pairing on this browser.
+  useEffect(() => {
+    if (UNPAIRED_PHASES.has(phase.kind)) forgetDeviceStorage(browserStorages());
+  }, [phase.kind]);
 
   // ── No pairing secret: ask the server who we are.
   useEffect(() => {
@@ -215,10 +234,16 @@ export function RemoteApp({ pairSecret }: Readonly<{ pairSecret: string | null }
   }, [blockedCount]);
 
   const answer = useCallback((s: string, choiceId: string) => {
-    if (!client) return;
+    const gate = answerGate.current;
+    // A double tap: the first answer is already on its way.
+    if (!client || !gate.begin(s)) return;
     client.request({ t: 'answer', s, nonce: newNonce(), choiceId }).then(
-      (ack) => { if (!ack.ok) showError(t.t(ackMessageKey(ack.code), { max: MAX_TEXT })); },
+      (ack) => {
+        gate.settle(s, ack.ok, Date.now());
+        if (!ack.ok && gate.shouldReport(s, ack.code, Date.now())) showError(t.t(ackMessageKey(ack.code), { max: MAX_TEXT }));
+      },
       (err: unknown) => {
+        gate.settle(s, false, Date.now());
         // Too old to resend: it may have landed, so say "check", not "failed".
         // Anything else is a stopped client, and the full-screen state says why.
         if (isUnconfirmed(err)) showError(t.t('ack.unconfirmed'));
@@ -229,7 +254,14 @@ export function RemoteApp({ pairSecret }: Readonly<{ pairSecret: string | null }
   const open = useCallback((s: string) => setView({ screen: 'attach', s }), []);
 
   const forget = async () => {
-    try { await postJson('/api/logout', {}); } catch { /* the cookie dies with the device record either way */ }
+    let status: number | null = null;
+    try { status = (await postJson('/api/logout', {})).status; } catch { /* no answer: still paired */ }
+    if (!logoutUnpaired(status)) {
+      // The desktop never heard it: the device record and the HttpOnly cookie
+      // are both still live, so stay on Prefs and say so.
+      showError(t.t('prefs.forgetFailed'));
+      return;
+    }
     client?.stop('closed');
     setPhase({ kind: 'unpaired' });
   };
@@ -352,8 +384,9 @@ function onNotify(
   if (msg.kind === 'blocked') {
     try { navigator.vibrate?.(120); } catch { /* not a phone, or not allowed */ }
   }
-  if (!document.hidden || !globalThis.isSecureContext || typeof Notification === 'undefined') return;
-  if (Notification.permission !== 'granted') return;
+  if (!document.hidden) return;
+  // The same test Prefs uses to say "Alerts are on", so the two cannot disagree.
+  if (alertState({ isSecureContext: globalThis.isSecureContext === true, Notification: typeof Notification === 'undefined' ? undefined : Notification, userAgent: navigator.userAgent }) !== 'on') return;
   const body = msg.kind === 'blocked' ? t.t('toast.blocked', { label: msg.label }) : t.t('toast.done', { label: msg.label });
   try {
     // `tag` per surface+kind, so a flapping agent replaces its notification instead of stacking them.

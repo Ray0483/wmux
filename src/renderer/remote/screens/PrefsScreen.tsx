@@ -48,13 +48,53 @@ export function savePrefs(p: RemotePrefs): void {
   try { globalThis.localStorage?.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* defaults next time */ }
 }
 
-type AlertState = 'on' | 'off' | 'denied' | 'unavailable';
+/**
+ * `insecure` and `unsupported` are different problems with different fixes:
+ * the first needs an https address, the second is this browser (iOS Safari
+ * outside a home-screen app has no `Notification` even over https; Android
+ * Chrome has one whose constructor throws without a service worker, which this
+ * page does not have). Telling an iPhone already on Tailscale HTTPS to "use
+ * HTTPS", or an Android user that alerts are "on", was wrong both times.
+ */
+export type AlertState = 'on' | 'off' | 'denied' | 'insecure' | 'unsupported';
 
-function alertState(): AlertState {
+export interface AlertEnv {
+  isSecureContext: boolean;
+  Notification: { readonly permission: NotificationPermission; new (title: string): unknown } | undefined;
+  userAgent: string;
+}
+
+/** Can `new Notification()` show anything here? Probed only while nothing could be shown by it. */
+function constructible(env: AlertEnv): boolean {
+  const N = env.Notification;
+  if (!N) return false;
+  // Android browsers only show notifications through a service worker.
+  if (/Android/i.test(env.userAgent)) return false;
+  if (N.permission === 'granted') return true;
+  try {
+    // Without a grant this shows nothing; it only tells whether it would throw.
+    new N('');
+  } catch (err) {
+    if (err instanceof TypeError) return false;
+  }
+  return true;
+}
+
+export function alertState(env: AlertEnv): AlertState {
   // A Notification needs a secure context: a LAN bind over plain http never has one.
-  if (!globalThis.isSecureContext || typeof Notification === 'undefined') return 'unavailable';
-  if (Notification.permission === 'granted') return 'on';
-  return Notification.permission === 'denied' ? 'denied' : 'off';
+  if (!env.isSecureContext) return 'insecure';
+  if (!constructible(env)) return 'unsupported';
+  const permission = env.Notification?.permission;
+  if (permission === 'granted') return 'on';
+  return permission === 'denied' ? 'denied' : 'off';
+}
+
+function currentAlertState(): AlertState {
+  return alertState({
+    isSecureContext: globalThis.isSecureContext === true,
+    Notification: typeof Notification === 'undefined' ? undefined : Notification,
+    userAgent: globalThis.navigator?.userAgent ?? '',
+  });
 }
 
 interface Props {
@@ -69,19 +109,20 @@ interface Props {
 }
 
 export function PrefsScreen({ t, prefs, host, device, effectiveScope, onChange, onBack, onForget }: Readonly<Props>) {
-  const [alerts, setAlerts] = useState<AlertState>(alertState);
+  const [alerts, setAlerts] = useState<AlertState>(currentAlertState);
   const [confirmForget, setConfirmForget] = useState(false);
 
   const enableAlerts = () => {
     // Asked only from this click — a permission prompt on page load is the
     // pattern every browser now quietly auto-denies.
-    Notification.requestPermission().then(() => setAlerts(alertState()), () => setAlerts(alertState()));
+    Notification.requestPermission().then(() => setAlerts(currentAlertState()), () => setAlerts(currentAlertState()));
   };
 
   const alertText: Record<Exclude<AlertState, 'off'>, string> = {
     on: t.t('prefs.alertsOn'),
     denied: t.t('prefs.alertsDenied'),
-    unavailable: t.t('prefs.alertsUnavailable'),
+    insecure: t.t('prefs.alertsUnavailable'),
+    unsupported: t.t('prefs.alertsUnsupported'),
   };
 
   return (

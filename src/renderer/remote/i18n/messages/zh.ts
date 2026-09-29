@@ -5,13 +5,14 @@ export const zh: Readonly<Record<string, string>> = {
   'common.reload': '重新加载',
   'common.retry': '重试',
   'common.settings': '设置',
+  'common.dismiss': '关闭',
 
   'loading': '正在连接…',
 
   'pair.title': '配对此设备',
   'pair.body': '你的电脑请求将此浏览器与 wmux 远程控制台配对。仅当你刚刚亲自扫描了此二维码时才继续。',
   'pair.nameLabel': '设备名称',
-  'pair.defaultName': '手机',
+  'pair.namePlaceholder': '在电脑上设置的名称',
   'pair.confirm': '配对',
   'pair.pairing': '正在配对…',
   'pair.failed': '配对失败。请在电脑上生成新的代码后重试。',
@@ -44,6 +45,7 @@ export const zh: Readonly<Record<string, string>> = {
 
   'card.openToAnswer': '等你处理 — 打开以回答',
   'card.answerPending': '已发送 — 等待代理',
+  'card.answerOnComputer': '需要你处理 — 请在电脑上回答',
 
   'attach.fit': '适应宽度',
   'attach.pan': '易读',
@@ -55,9 +57,21 @@ export const zh: Readonly<Record<string, string>> = {
   'attach.errNoTerminal': '此终端未在任何 wmux 窗口中打开。',
   'attach.errTimeout': '电脑未能及时响应。',
   'attach.errGone': '此终端已关闭。',
+  'attach.closedTerminal': '已关闭的终端',
 
   'keys.more': '更多按键',
   'keys.armed': '再次点按以发送',
+  'keys.up': '上',
+  'keys.down': '下',
+  'keys.left': '左',
+  'keys.right': '右',
+  'keys.enter': 'Enter 键',
+  'keys.backspace': '退格',
+  'keys.pageUp': '上一页',
+  'keys.pageDown': '下一页',
+  'keys.home': '行首',
+  'keys.end': '行尾',
+  'keys.ctrl': 'Ctrl+{key}',
 
   'composer.placeholder': '给代理发消息…',
   'composer.send': '发送 ↵',
@@ -108,8 +122,10 @@ export const zh: Readonly<Record<string, string>> = {
   'prefs.alertsOn': '提醒已开启。',
   'prefs.alertsDenied': '提醒已在此浏览器的设置中被阻止。',
   'prefs.alertsUnavailable': '系统提醒需要 HTTPS 地址。页面内提醒仍然可用。',
+  'prefs.alertsUnsupported': '此浏览器无法为这类网页显示系统通知。页面内的提醒仍然有效。',
   'prefs.forget': '忘记此设备',
   'prefs.forgetTitle': '忘记此设备？',
   'prefs.forgetBody': '重新连接需要从电脑获取新的代码。',
+  'prefs.forgetFailed': '无法连接到你的电脑，因此此设备仍处于配对状态。请重试，或在电脑上的 wmux 中移除它。',
   'prefs.limits': '关闭此页面后不会收到任何消息，且 iOS 无法振动。',
 };

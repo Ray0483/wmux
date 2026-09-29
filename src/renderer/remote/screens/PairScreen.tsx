@@ -10,6 +10,7 @@
  */
 
 import { useState } from 'react';
+import { DEVICE_NAME_MAX } from '../../../shared/remote-console-protocol';
 import type { RemoteT } from '../i18n';
 
 interface NoticeProps {
@@ -42,11 +43,14 @@ interface PairProps {
   onPair(name: string): void;
 }
 
-/** Same cap the server applies to a device name; the rest would be cut there anyway. */
-const NAME_MAX = 40;
-
+/**
+ * The name field starts EMPTY. The desktop already asked for a device name
+ * when it made the code, and an empty field here is what lets that name win:
+ * the server falls back to it (`cleanDeviceName(name, offer.name)`). Prefilling
+ * "Phone" here overrode the desktop's choice on every single pairing.
+ */
 export function PairScreen({ t, busy, failed, onPair }: Readonly<PairProps>) {
-  const [name, setName] = useState(() => t.t('pair.defaultName'));
+  const [name, setName] = useState('');
   const trimmed = name.trim();
   return (
     <main className="rc-full">
@@ -54,7 +58,7 @@ export function PairScreen({ t, busy, failed, onPair }: Readonly<PairProps>) {
         className="rc-full__panel"
         onSubmit={(e) => {
           e.preventDefault();
-          if (trimmed && !busy) onPair(trimmed);
+          if (!busy) onPair(trimmed);
         }}
       >
         <div className="rc-full__mark" aria-hidden="true">wmux</div>
@@ -65,13 +69,14 @@ export function PairScreen({ t, busy, failed, onPair }: Readonly<PairProps>) {
           <input
             className="rc-field__input"
             value={name}
-            maxLength={NAME_MAX}
+            placeholder={t.t('pair.namePlaceholder')}
+            maxLength={DEVICE_NAME_MAX}
             autoComplete="off"
             onChange={(e) => setName(e.target.value)}
           />
         </label>
         {failed && <p className="rc-full__error" role="alert">{t.t('pair.failed')}</p>}
-        <button type="submit" className="rc-btn rc-btn--primary rc-full__action" disabled={busy || !trimmed}>
+        <button type="submit" className="rc-btn rc-btn--primary rc-full__action" disabled={busy}>
           {busy ? t.t('pair.pairing') : t.t('pair.confirm')}
         </button>
       </form>

@@ -25,7 +25,10 @@ interface Props {
 function blockedLine(entry: RemoteRosterEntry, operator: boolean, t: RemoteT): string | null {
   if (entry.state !== 'blocked') return null;
   if (entry.answerPending) return t.t('card.answerPending');
-  if (entry.choices.length === 0 || !operator) return t.t('card.openToAnswer');
+  // A view-only device opens the card to find no composer, keys or choices:
+  // "open to answer" would send it looking for a way that is not there.
+  if (!operator) return t.t('card.answerOnComputer');
+  if (entry.choices.length === 0) return t.t('card.openToAnswer');
   return null;
 }
 

@@ -5,13 +5,14 @@ export const de: Readonly<Record<string, string>> = {
   'common.reload': 'Neu laden',
   'common.retry': 'Erneut versuchen',
   'common.settings': 'Einstellungen',
+  'common.dismiss': 'Schließen',
 
   'loading': 'Verbinde…',
 
   'pair.title': 'Dieses Gerät koppeln',
   'pair.body': 'Dein Computer bietet an, diesen Browser mit seiner wmux-Fernkonsole zu koppeln. Fahre nur fort, wenn du diesen Code gerade selbst gescannt hast.',
   'pair.nameLabel': 'Gerätename',
-  'pair.defaultName': 'Telefon',
+  'pair.namePlaceholder': 'Der Name vom Computer',
   'pair.confirm': 'Koppeln',
   'pair.pairing': 'Kopple…',
   'pair.failed': 'Koppeln fehlgeschlagen. Erzeuge auf deinem Computer einen neuen Code und versuche es erneut.',
@@ -45,6 +46,7 @@ export const de: Readonly<Record<string, string>> = {
 
   'card.openToAnswer': 'Braucht dich – zum Antworten öffnen',
   'card.answerPending': 'Gesendet – wartet auf den Agenten',
+  'card.answerOnComputer': 'Braucht dich — antworte am Computer',
 
   'attach.fit': 'Einpassen',
   'attach.pan': 'Lesbar',
@@ -56,9 +58,21 @@ export const de: Readonly<Record<string, string>> = {
   'attach.errNoTerminal': 'Dieses Terminal ist in keinem wmux-Fenster geöffnet.',
   'attach.errTimeout': 'Der Computer hat nicht rechtzeitig geantwortet.',
   'attach.errGone': 'Dieses Terminal wurde geschlossen.',
+  'attach.closedTerminal': 'Geschlossenes Terminal',
 
   'keys.more': 'Weitere Tasten',
   'keys.armed': 'Zum Senden erneut tippen',
+  'keys.up': 'Nach oben',
+  'keys.down': 'Nach unten',
+  'keys.left': 'Nach links',
+  'keys.right': 'Nach rechts',
+  'keys.enter': 'Eingabe',
+  'keys.backspace': 'Rücktaste',
+  'keys.pageUp': 'Bild auf',
+  'keys.pageDown': 'Bild ab',
+  'keys.home': 'Zeilenanfang',
+  'keys.end': 'Zeilenende',
+  'keys.ctrl': 'Strg+{key}',
 
   'composer.placeholder': 'Nachricht an den Agenten…',
   'composer.send': 'Senden ↵',
@@ -109,8 +123,10 @@ export const de: Readonly<Record<string, string>> = {
   'prefs.alertsOn': 'Benachrichtigungen sind aktiv.',
   'prefs.alertsDenied': 'Benachrichtigungen sind in den Einstellungen dieses Browsers blockiert.',
   'prefs.alertsUnavailable': 'Systembenachrichtigungen brauchen eine HTTPS-Adresse. Hinweise auf der Seite funktionieren weiterhin.',
+  'prefs.alertsUnsupported': 'Dieser Browser kann für eine Webseite wie diese keine Systembenachrichtigungen anzeigen. Hinweise in der Seite funktionieren weiterhin.',
   'prefs.forget': 'Dieses Gerät vergessen',
   'prefs.forgetTitle': 'Dieses Gerät vergessen?',
   'prefs.forgetBody': 'Zum erneuten Verbinden brauchst du einen neuen Code von deinem Computer.',
+  'prefs.forgetFailed': 'Dein Computer war nicht erreichbar, daher ist dieses Gerät noch gekoppelt. Versuche es erneut oder entferne es in wmux auf dem Computer.',
   'prefs.limits': 'Ist diese Seite geschlossen, kommt nichts an, und iOS kann nicht vibrieren.',
 };
