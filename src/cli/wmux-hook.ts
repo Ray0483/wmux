@@ -197,10 +197,12 @@ interface HookPayloadFields {
   toolName: string;
   prompt: string;
   notificationType: string;
+  /** Grok puts `subagentType` on events fired inside a subagent's own session. */
+  subagent: boolean;
 }
 
 function parsePayload(raw: string): HookPayloadFields {
-  const out: HookPayloadFields = { file: '', message: '', sessionId: '', toolName: '', prompt: '', notificationType: '' };
+  const out: HookPayloadFields = { file: '', message: '', sessionId: '', toolName: '', prompt: '', notificationType: '', subagent: false };
   if (!raw.trim()) return out;
   let data: Record<string, any>;
   try {
@@ -214,8 +216,16 @@ function parsePayload(raw: string): HookPayloadFields {
     out.sessionId = salvageSessionId(raw);
     return out;
   }
+  // Grok Build runs these same hooks out of ~/.claude/settings.json (its Claude
+  // compatibility, on by default) but sends a camelCase envelope: `toolInput`,
+  // `toolName`, `notificationType`. Read both spellings, or every Grok
+  // `idle_prompt` — which it fires at the end of EVERY turn — loses its type
+  // and is classified on message text alone (the #253 "Needs you" bug again).
+  // `sessionId` is deliberately NOT read: it names a Grok session, and a value
+  // recorded here ends up on a `claude --resume` command line at restore.
+  const toolInput = data.tool_input ?? data.toolInput;
   // Claude Code provides tool_input with file_path for Edit/Write.
-  out.file = data.tool_input?.file_path || data.tool_input?.path || data.input?.file_path || '';
+  out.file = toolInput?.file_path || toolInput?.path || data.input?.file_path || '';
   // The Notification hook payload carries the prompt text in `message`.
   out.message = data.message || '';
   // Which KIND of Notification this is (issue #253). Claude Code fires the one
@@ -223,19 +233,22 @@ function parsePayload(raw: string): HookPayloadFields {
   // the payload's `notification_type` tells them apart reliably — wmux read the
   // message alone, so an idle reminder that followed a background subagent was
   // taken for a question and the pane said "Needs you" with nothing to answer.
-  if (event === 'Notification' && typeof data.notification_type === 'string'
-      && NOTIFICATION_TYPE_RE.test(data.notification_type)) {
-    out.notificationType = data.notification_type;
+  const notificationType = data.notification_type ?? data.notificationType;
+  if (event === 'Notification' && typeof notificationType === 'string'
+      && NOTIFICATION_TYPE_RE.test(notificationType)) {
+    out.notificationType = notificationType;
   }
   // PreToolUse is registered matcher-less (one entry for every tool rather than
   // one entry per tracked tool), so the tool name arrives on stdin not argv.
-  if (typeof data.tool_name === 'string') out.toolName = data.tool_name;
+  const toolName = data.tool_name ?? data.toolName;
+  if (typeof toolName === 'string') out.toolName = toolName;
   // Every Claude Code hook payload carries the conversation's session_id. wmux
   // parsed this payload for years and threw it away, which is the only reason
   // `AgentStateRecord.sessionId` — a slot that has always existed and is
   // documented as surviving a restart — was never populated (issue #186).
   // Forwarding it is what makes `claude --resume` possible on restore.
   if (typeof data.session_id === 'string') out.sessionId = data.session_id;
+  out.subagent = typeof data.subagentType === 'string' && data.subagentType !== '';
   // UserPromptSubmit carries what the user actually typed, and wmux threw it
   // away — which is why the prompt-log features in issue #207 had no source of
   // truth for an agent pane. It cannot be recovered from the screen: an agent
@@ -260,7 +273,12 @@ function sendHook(): void {
   // stream nobody is going to end.
   process.stdin.pause();
 
-  const { file, message, sessionId, toolName, prompt, notificationType } = parsePayload(stdinData);
+  const { file, message, sessionId, toolName, prompt, notificationType, subagent } = parsePayload(stdinData);
+  // Grok's StopCancelled (Ctrl+C, a declined permission, the turn limit) and
+  // StopFailure (an API error) run INSTEAD of Stop, so to wmux they are the turn
+  // ending — see grok-context.ts, which registers them. Inside a subagent the
+  // same ending is that subagent's, which is what SubagentStop means.
+  if (event === 'StopCancelled' || event === 'StopFailure') event = subagent ? 'SubagentStop' : 'Stop';
   if (!tool && toolName) tool = toolName;
 
   const params: Record<string, string | number> = { at: firedAt };
