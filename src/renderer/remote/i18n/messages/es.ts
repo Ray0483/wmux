@@ -64,6 +64,7 @@ export const es: Readonly<Record<string, string>> = {
   'composer.send': 'Enviar ↵',
   'composer.insert': 'Insertar',
   'composer.sending': 'Enviando…',
+  'composer.submitSkipped': 'Se escribió, pero no se pulsó Intro: el agente empezó a esperar una respuesta.',
 
   'confirm.blocked.title': 'El agente espera una respuesta',
   'confirm.blocked.body': 'Tu texto se escribirá sin pulsar Intro, para que no responda a la pregunta por accidente.',
@@ -86,6 +87,7 @@ export const es: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Demasiado largo para enviar (máximo {max} caracteres).',
   'ack.badKey': 'Esa tecla no es compatible.',
   'ack.writeFailed': 'No se pudo enviar.',
+  'ack.multilineInsert': 'Este terminal no está en modo pegado, así que no se pueden insertar varias líneas sin pulsar Intro. Inserta una línea cada vez.',
   'ack.unconfirmed': 'Sin confirmar. Revisa la terminal antes de volver a enviar.',
 
   'toast.blocked': '{label} te necesita',

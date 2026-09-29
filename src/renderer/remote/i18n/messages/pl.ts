@@ -66,6 +66,7 @@ export const pl: Readonly<Record<string, string>> = {
   'composer.send': 'Wyślij ↵',
   'composer.insert': 'Wstaw',
   'composer.sending': 'Wysyłanie…',
+  'composer.submitSkipped': 'Wpisano, ale nie naciśnięto Enter: agent zaczął czekać na odpowiedź.',
 
   'confirm.blocked.title': 'Agent czeka na odpowiedź',
   'confirm.blocked.body': 'Tekst zostanie wpisany bez naciskania Enter, aby przypadkiem nie odpowiedział na pytanie.',
@@ -88,6 +89,7 @@ export const pl: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Za długie do wysłania (maksymalnie {max} znaków).',
   'ack.badKey': 'Ten klawisz nie jest obsługiwany.',
   'ack.writeFailed': 'Nie udało się wysłać.',
+  'ack.multilineInsert': 'Ten terminal nie jest w trybie wklejania, więc kilku wierszy nie da się wstawić bez naciśnięcia Enter. Wstawiaj po jednym wierszu.',
   'ack.unconfirmed': 'Niepotwierdzone. Sprawdź terminal, zanim wyślesz ponownie.',
 
   'toast.blocked': '{label} czeka na ciebie',

@@ -13,6 +13,7 @@ import path from 'path';
 import WebSocket from 'ws';
 import { DeviceRegistry } from '../../src/main/remote-console/devices';
 import { createConsoleServer, MAX_CONNECTIONS } from '../../src/main/remote-console/server';
+import { LIMITS } from '../../src/main/remote-console/rate-limit';
 import type { ConsoleClient, ConsoleServer } from '../../src/main/remote-console/server';
 import { loadAllowedAssets } from '../../src/main/remote-console/static-assets';
 import type { RemoteConsoleConfig } from '../../src/shared/remote-console-config';
@@ -177,6 +178,19 @@ describe('remote-console server: upgrade gate (#254)', () => {
     expect((await connect(r, { cookie, path: '/nope' })).status).toBe(404);
     expect(r.rejected).toContain('http://evil.example');
     expect(r.clients).toHaveLength(0);
+  });
+
+  it('a peer boxed by junk cookies does not lock out a paired device from the same address (proxy case)', async () => {
+    // Behind tailscale serve / ssh -L every phone is 127.0.0.1, as here.
+    const r = await rig();
+    const cookie = pairDevice(r);
+    for (let i = 0; i < LIMITS.penalty.failures; i++) {
+      expect((await connect(r, { cookie: 'dev-junk.token' })).status).toBe(401);
+    }
+    expect((await connect(r, { cookie: 'dev-junk.token' })).status).toBe(403);
+    const { ws, status } = await connect(r, { cookie });
+    expect(status).toBe('open');
+    ws.close();
   });
 
   it('accepts a paired device and relays text frames', async () => {
@@ -356,6 +370,16 @@ describe('remote-console server: pairing endpoints', () => {
     expect((await request(r, 'POST', '/api/pair', { 'Content-Type': 'application/json' }, '{}')).status).toBe(403);
     expect((await request(r, 'POST', '/api/pair', { 'Content-Type': 'application/json', Origin: 'null' }, '{}')).status).toBe(403);
     expect((await json(r, { secret: "x".repeat(3000) })).status).toBe(413);
+  });
+
+  it('junk POSTs with no code on screen spend neither the per-peer box nor the global budget', async () => {
+    const r = await rig();
+    for (let i = 0; i < LIMITS.pairGlobal.limit + 5; i++) {
+      expect((await json(r, { secret: 'junk' })).status).toBe(410);
+    }
+    const offer = r.devices.mintPairing({ scope: 'operator', name: 'Phone' });
+    if ('error' in offer) throw new Error();
+    expect((await json(r, { secret: offer.secret, name: 'Pixel' })).status).toBe(200);
   });
 
   it('GET on a POST route is 405', async () => {

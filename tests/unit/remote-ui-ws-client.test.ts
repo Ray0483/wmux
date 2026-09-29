@@ -192,7 +192,7 @@ describe('ws-client state machine', () => {
     h.last().open();
     h.last().receive(welcome);
     const first = h.client.request(sendFrame('nonce-same'));
-    const second = h.client.request(sendFrame('nonce-same', { force: true }));
+    const second = h.client.request(sendFrame('nonce-same', { force: ['multiline'] }));
     expect(h.client.pendingCount).toBe(1);
     h.last().receive({ t: 'ack', nonce: 'nonce-same', ok: true });
     await expect(first).resolves.toMatchObject({ ok: true });

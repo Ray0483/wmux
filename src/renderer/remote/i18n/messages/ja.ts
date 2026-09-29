@@ -63,6 +63,7 @@ export const ja: Readonly<Record<string, string>> = {
   'composer.send': '送信 ↵',
   'composer.insert': '挿入',
   'composer.sending': '送信中…',
+  'composer.submitSkipped': '入力しましたが Enter は押していません。エージェントが回答待ちになりました。',
 
   'confirm.blocked.title': 'エージェントが回答を待っています',
   'confirm.blocked.body': 'テキストは Enter を押さずに入力されるため、誤って質問に回答することはありません。',
@@ -85,6 +86,7 @@ export const ja: Readonly<Record<string, string>> = {
   'ack.tooLong': '長すぎて送信できません (最大 {max} 文字)。',
   'ack.badKey': 'そのキーはサポートされていません。',
   'ack.writeFailed': '送信できませんでした。',
+  'ack.multilineInsert': 'このターミナルは貼り付けモードではないため、Enter を押さずに複数行を挿入できません。1 行ずつ挿入してください。',
   'ack.unconfirmed': '未確認です。再送する前にターミナルを確認してください。',
 
   'toast.blocked': '{label} が対応を待っています',

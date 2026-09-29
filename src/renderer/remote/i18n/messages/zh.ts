@@ -63,6 +63,7 @@ export const zh: Readonly<Record<string, string>> = {
   'composer.send': '发送 ↵',
   'composer.insert': '插入',
   'composer.sending': '正在发送…',
+  'composer.submitSkipped': '已输入，但未按 Enter：代理开始等待回答。',
 
   'confirm.blocked.title': '代理正在等待回答',
   'confirm.blocked.body': '文本将在不按回车的情况下输入，以免意外回答问题。',
@@ -85,6 +86,7 @@ export const zh: Readonly<Record<string, string>> = {
   'ack.tooLong': '内容过长，无法发送（最多 {max} 个字符）。',
   'ack.badKey': '不支持该按键。',
   'ack.writeFailed': '发送失败。',
+  'ack.multilineInsert': '此终端未处于粘贴模式，无法在不按 Enter 的情况下插入多行。请一次插入一行。',
   'ack.unconfirmed': '未确认。再次发送前请先查看终端。',
 
   'toast.blocked': '{label} 在等你处理',

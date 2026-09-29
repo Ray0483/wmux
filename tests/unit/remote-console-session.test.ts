@@ -139,8 +139,8 @@ describe('session: hello gate (#254 rule 1)', () => {
 describe('session: scope', () => {
   it('a viewer can never cause a write, a noteHumanInput or an answer', async () => {
     const h = await greeted({ scope: 'viewer' });
-    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'rm -rf /', submit: true, force: true });
-    await h.frame({ t: 'key', s: S, nonce: nonce(), key: 'enter', force: true });
+    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'rm -rf /', submit: true, force: ['blocked', 'multiline'] });
+    await h.frame({ t: 'key', s: S, nonce: nonce(), key: 'enter', force: ['blocked'] });
     expect(h.calls).toEqual([]);
     expect(h.ops.deliverAnswer).not.toHaveBeenCalled();
     expect(h.acks().every((a) => a.code === 'forbidden' && !a.ok)).toBe(true);
@@ -184,7 +184,7 @@ describe('session: send (rule 4)', () => {
   it('force inserts into a blocked pane', async () => {
     const h = await greeted();
     h.state.blocked = true;
-    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'note', submit: false, force: true });
+    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'note', submit: false, force: ['blocked'] });
     expect(h.calls.filter((c) => c.startsWith('write'))).toHaveLength(1);
     expect(h.acks()[0].ok).toBe(true);
   });
@@ -193,13 +193,67 @@ describe('session: send (rule 4)', () => {
     const h = await greeted();
     h.state.bracketed = false;
     const n = nonce();
-    await h.frame({ t: 'send', s: S, nonce: n, text: 'a\nb', submit: false });
+    await h.frame({ t: 'send', s: S, nonce: n, text: 'a\nb', submit: true });
     expect(h.acks()[0]).toMatchObject({ ok: false, code: 'confirm', confirm: 'multiline' });
     expect(h.calls).toEqual([]);
     // Refusals are not recorded, so the SAME nonce can be resent with force.
-    await h.frame({ t: 'send', s: S, nonce: n, text: 'a\nb', submit: false, force: true });
-    expect(h.calls).toEqual(['note:"a\\rb"', 'write:"a\\rb"']);
+    await h.frame({ t: 'send', s: S, nonce: n, text: 'a\nb', submit: true, force: ['multiline'] });
+    expect(h.calls).toEqual(['note:"a\\rb"', 'write:"a\\rb"', `sleep:${SUBMIT_GAP_MS}`, 'note:"\\r"', 'write:"\\r"']);
     expect(h.acks()[1]).toEqual({ t: 'ack', nonce: n, ok: true });
+  });
+
+  it('a multiline Insert into a non-bracketed pane is refused outright: every LF would be an Enter', async () => {
+    const h = await greeted();
+    h.state.bracketed = false;
+    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'a\nb', submit: false, force: ['blocked', 'multiline'] });
+    expect(h.calls).toEqual([]);
+    expect(h.acks()[0]).toMatchObject({ ok: false, code: 'multiline-insert' });
+    // A modes timeout reads as not bracketed, so it is refused the same way.
+    h.state.bracketed = 'none';
+    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'a\nb', submit: false });
+    expect(h.acks()[1]).toMatchObject({ ok: false, code: 'multiline-insert' });
+    expect(h.calls).toEqual([]);
+  });
+
+  it('accepting the blocked confirm does not waive the multiline one (and the reverse)', async () => {
+    // The reported repro: blocked pane, not bracketed, "a\nb", user accepts
+    // "Insert". A single boolean force skipped the multiline check and typed
+    // "a\rb" — whose CR answered the prompt.
+    const h = await greeted();
+    h.state.blocked = true;
+    h.state.bracketed = false;
+    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'a\nb', submit: false, force: ['blocked'] });
+    expect(h.calls).toEqual([]);
+    expect(h.acks()[0]).toMatchObject({ ok: false, code: 'multiline-insert' });
+    expect(h.state.blocked).toBe(true);
+    // Reverse: multiline accepted while idle, the agent blocks before the resend.
+    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'a\nb', submit: true, force: ['multiline'] });
+    expect(h.calls).toEqual([]);
+    expect(h.acks()[1]).toMatchObject({ ok: false, code: 'confirm', confirm: 'blocked' });
+    // Waiving interrupt says nothing about blocked either.
+    await h.frame({ t: 'key', s: S, nonce: nonce(), key: 'enter', force: ['interrupt'] });
+    expect(h.acks()[2]).toMatchObject({ ok: false, code: 'confirm', confirm: 'blocked' });
+    expect(h.calls).toEqual([]);
+  });
+
+  it('an agent that blocks during the 40 ms submit gap keeps its prompt: the Enter is withheld and the ack says so', async () => {
+    const h = await greeted();
+    h.deps.sleep = async (ms) => {
+      h.calls.push(`sleep:${ms}`);
+      h.state.blocked = true;
+    };
+    const n = nonce();
+    await h.frame({ t: 'send', s: S, nonce: n, text: 'hello', submit: true });
+    expect(h.calls).toEqual([
+      'note:"\\u001b[200~hello\\u001b[201~"', 'write:"\\u001b[200~hello\\u001b[201~"',
+      `sleep:${SUBMIT_GAP_MS}`,
+    ]);
+    expect(h.state.blocked).toBe(true);
+    // ok (the text landed, so it is recorded and a resend is a duplicate), with the Enter withheld.
+    expect(h.acks()[0]).toEqual({ t: 'ack', nonce: n, ok: true, submitSkipped: true });
+    await h.frame({ t: 'send', s: S, nonce: n, text: 'hello', submit: true });
+    expect(h.acks()[1]).toMatchObject({ ok: true, duplicate: true });
+    expect(h.calls.filter((c) => c.startsWith('write'))).toHaveLength(1);
   });
 
   it('a modes timeout/no-terminal reads as not bracketed (never the phone\'s opinion)', async () => {
@@ -246,7 +300,7 @@ describe('session: send (rule 4)', () => {
     expect(h.calls).toEqual([]);
     expect(h.acks()[0]).toMatchObject({ ok: false, code: 'confirm', confirm: 'blocked' });
     // force still goes through.
-    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'yes', submit: true, force: true });
+    await h.frame({ t: 'send', s: S, nonce: nonce(), text: 'yes', submit: true, force: ['blocked'] });
     expect(h.calls.filter((c) => c.startsWith('write'))).toHaveLength(2);
   });
 
@@ -344,7 +398,7 @@ describe('session: key (rule 5)', () => {
     await h.frame({ t: 'key', s: S, nonce: nonce(), key: 'ctrl-c' });
     expect(h.acks().map((a) => a.confirm)).toEqual(['interrupt', 'interrupt']);
     expect(h.calls).toEqual([]);
-    await h.frame({ t: 'key', s: S, nonce: nonce(), key: 'ctrl-c', force: true });
+    await h.frame({ t: 'key', s: S, nonce: nonce(), key: 'ctrl-c', force: ['interrupt'] });
     expect(h.calls).toEqual(['note:"\\u0003"', 'write:"\\u0003"']);
   });
 

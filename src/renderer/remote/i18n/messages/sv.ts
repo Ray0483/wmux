@@ -64,6 +64,7 @@ export const sv: Readonly<Record<string, string>> = {
   'composer.send': 'Skicka ↵',
   'composer.insert': 'Infoga',
   'composer.sending': 'Skickar…',
+  'composer.submitSkipped': 'Inskrivet, men Enter trycktes inte: agenten började vänta på ett svar.',
 
   'confirm.blocked.title': 'Agenten väntar på ett svar',
   'confirm.blocked.body': 'Texten skrivs utan att Enter trycks, så att den inte besvarar frågan av misstag.',
@@ -86,6 +87,7 @@ export const sv: Readonly<Record<string, string>> = {
   'ack.tooLong': 'För långt för att skicka (högst {max} tecken).',
   'ack.badKey': 'Den tangenten stöds inte.',
   'ack.writeFailed': 'Kunde inte skicka.',
+  'ack.multilineInsert': 'Terminalen är inte i klistra in-läge, så flera rader kan inte infogas utan att trycka Enter. Infoga en rad i taget.',
   'ack.unconfirmed': 'Inte bekräftat. Kontrollera terminalen innan du skickar igen.',
 
   'toast.blocked': '{label} behöver dig',

@@ -27,12 +27,16 @@ import type { AckCode, ConfirmKind, RemoteAgentState, RemoteKey } from '../../sh
 
 // ── Composer ──────────────────────────────────────────────────────────────
 
-/** What will be (re)sent. Held across a confirm so the resend is byte-identical but for `force`. */
+/**
+ * What will be (re)sent. Held across a confirm so the resend is byte-identical
+ * but for `force` — the confirms accepted so far, one per kind. Accepting one
+ * never waives another: the server asks each question on its own (#254).
+ */
 export interface ComposerFrame {
   nonce: string;
   text: string;
   submit: boolean;
-  force: boolean;
+  force: ConfirmKind[];
 }
 
 export type ComposerPhase = 'idle' | 'sending' | 'acked' | 'confirm' | 'failed';
@@ -49,12 +53,14 @@ export interface ComposerState {
   frame: ComposerFrame | null;
   confirm: ConfirmKind | null;
   code: ComposerFailure | null;
+  /** The last send landed but its Enter was withheld (the agent went blocked meanwhile). */
+  submitSkipped: boolean;
 }
 
 export type ComposerAction =
   | { type: 'edit'; text: string }
   | { type: 'submit'; nonce: string; blocked: boolean }
-  | { type: 'ack'; nonce: string; ok: boolean; code?: AckCode; confirm?: ConfirmKind }
+  | { type: 'ack'; nonce: string; ok: boolean; code?: AckCode; confirm?: ConfirmKind; submitSkipped?: boolean }
   | { type: 'accept' }
   | { type: 'cancel' }
   /**
@@ -65,7 +71,7 @@ export type ComposerAction =
   | { type: 'error'; unconfirmed?: boolean };
 
 export const initialComposer = (draft = ''): ComposerState => ({
-  phase: 'idle', draft, frame: null, confirm: null, code: null,
+  phase: 'idle', draft, frame: null, confirm: null, code: null, submitSkipped: false,
 });
 
 /** Can the button be pressed at all? */
@@ -91,7 +97,7 @@ function onSubmit(s: ComposerState, nonce: string, blocked: boolean): ComposerSt
       phase: 'confirm',
       confirm: 'blocked',
       code: null,
-      frame: { nonce, text: s.draft, submit: false, force: false },
+      frame: { nonce, text: s.draft, submit: false, force: [] },
     };
   }
   return {
@@ -99,7 +105,7 @@ function onSubmit(s: ComposerState, nonce: string, blocked: boolean): ComposerSt
     phase: 'sending',
     confirm: null,
     code: null,
-    frame: { nonce, text: s.draft, submit: true, force: false },
+    frame: { nonce, text: s.draft, submit: true, force: [] },
   };
 }
 
@@ -110,7 +116,7 @@ function onAck(s: ComposerState, a: Extract<ComposerAction, { type: 'ack' }>): C
   // was in flight is a new draft, and wiping it would lose it.
   if (a.ok) {
     const draft = s.draft === s.frame.text ? '' : s.draft;
-    return { ...s, phase: 'acked', draft, frame: null, confirm: null, code: null };
+    return { ...s, phase: 'acked', draft, frame: null, confirm: null, code: null, submitSkipped: a.submitSkipped === true };
   }
   if (a.code === 'confirm' && a.confirm) {
     return { ...s, phase: 'confirm', confirm: a.confirm, code: null };
@@ -123,7 +129,8 @@ function onAccept(s: ComposerState): ComposerState {
   // A blocked confirm becomes an Insert: the text lands, the Enter does not.
   // Multiline and interrupt keep what the user asked for, plus force.
   const submit = s.confirm === 'blocked' ? false : s.frame.submit;
-  return { ...s, phase: 'sending', frame: { ...s.frame, submit, force: true }, confirm: null };
+  const force = s.confirm && !s.frame.force.includes(s.confirm) ? [...s.frame.force, s.confirm] : s.frame.force;
+  return { ...s, phase: 'sending', frame: { ...s.frame, submit, force }, confirm: null };
 }
 
 export function composerReducer(s: ComposerState, a: ComposerAction): ComposerState {
@@ -132,7 +139,7 @@ export function composerReducer(s: ComposerState, a: ComposerAction): ComposerSt
       // Typing after a result returns to idle; typing DURING a send only edits
       // the box (the in-flight frame already carries its own copy of the text).
       const settled = s.phase === 'acked' || s.phase === 'failed';
-      return settled ? { ...s, draft: a.text, phase: 'idle', code: null } : { ...s, draft: a.text };
+      return settled ? { ...s, draft: a.text, phase: 'idle', code: null, submitSkipped: false } : { ...s, draft: a.text };
     }
     case 'submit':
       return onSubmit(s, a.nonce, a.blocked);
@@ -206,20 +213,22 @@ export const ARM_WINDOW_MS = 1500;
  * y and n while it is blocked answer a question. Arrows never arm — menu
  * navigation must stay one tap.
  */
-export function keyNeedsArming(key: RemoteKey, state: RemoteAgentState | null): boolean {
-  if (state === 'working') return key === 'esc' || key === 'ctrl-c';
-  if (state === 'blocked') return key === 'enter' || key === 'y' || key === 'n';
-  return false;
+export function keyNeedsArming(key: RemoteKey, state: RemoteAgentState | null): ConfirmKind | null {
+  if (state === 'working' && (key === 'esc' || key === 'ctrl-c')) return 'interrupt';
+  if (state === 'blocked' && (key === 'enter' || key === 'y' || key === 'n')) return 'blocked';
+  return null;
 }
 
 export interface KeyArm {
   key: RemoteKey;
   nonce: string;
   until: number;
+  /** The confirms the second tap accepts: the question this arm asked, plus any earlier one for the same nonce. */
+  force: ConfirmKind[];
 }
 
 export type KeyTapResult =
-  | { action: 'send'; nonce: string; force: boolean; arm: null }
+  | { action: 'send'; nonce: string; force: ConfirmKind[]; arm: null }
   | { action: 'arm'; arm: KeyArm };
 
 /**
@@ -235,16 +244,25 @@ export function tapKey(
   mintNonce: () => string,
 ): KeyTapResult {
   if (arm && arm.key === key && now < arm.until) {
-    return { action: 'send', nonce: arm.nonce, force: true, arm: null };
+    return { action: 'send', nonce: arm.nonce, force: arm.force, arm: null };
   }
   const nonce = mintNonce();
-  if (keyNeedsArming(key, state)) return { action: 'arm', arm: { key, nonce, until: now + ARM_WINDOW_MS } };
-  return { action: 'send', nonce, force: false, arm: null };
+  const kind = keyNeedsArming(key, state);
+  if (kind) return { action: 'arm', arm: { key, nonce, until: now + ARM_WINDOW_MS, force: [kind] } };
+  return { action: 'send', nonce, force: [], arm: null };
 }
 
-/** A server `confirm` ack for a key arms it with the nonce it refused. */
-export function armFromConfirm(key: RemoteKey, nonce: string, now: number): KeyArm {
-  return { key, nonce, until: now + ARM_WINDOW_MS };
+/**
+ * A server `confirm` ack for a key arms it with the nonce it refused and the
+ * kind it asked about. `waived` is what that refused frame already carried:
+ * a forced Enter the server stops again for a DIFFERENT reason keeps the first
+ * acceptance and adds the new one, rather than trading one for the other.
+ */
+export function armFromConfirm(
+  key: RemoteKey, nonce: string, now: number, kind: ConfirmKind, waived: readonly ConfirmKind[] = [],
+): KeyArm {
+  const force = waived.includes(kind) ? [...waived] : [...waived, kind];
+  return { key, nonce, until: now + ARM_WINDOW_MS, force };
 }
 
 export function isArmed(arm: KeyArm | null, key: RemoteKey, now: number): boolean {

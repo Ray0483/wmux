@@ -66,6 +66,7 @@ export const uk: Readonly<Record<string, string>> = {
   'composer.send': 'Надіслати ↵',
   'composer.insert': 'Вставити',
   'composer.sending': 'Надсилання…',
+  'composer.submitSkipped': 'Текст введено, але Enter не натиснуто: агент почав чекати на відповідь.',
 
   'confirm.blocked.title': 'Агент чекає на відповідь',
   'confirm.blocked.body': 'Текст буде введено без натискання Enter, щоб випадково не відповісти на запитання.',
@@ -88,6 +89,7 @@ export const uk: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Занадто довго для надсилання (не більше {max} символів).',
   'ack.badKey': 'Ця клавіша не підтримується.',
   'ack.writeFailed': 'Не вдалося надіслати.',
+  'ack.multilineInsert': 'Цей термінал не в режимі вставлення, тож кілька рядків не можна вставити без натискання Enter. Вставляйте по одному рядку.',
   'ack.unconfirmed': 'Не підтверджено. Перевірте термінал, перш ніж надсилати знову.',
 
   'toast.blocked': '{label} чекає на вас',

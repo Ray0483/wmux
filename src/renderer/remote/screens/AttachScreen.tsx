@@ -91,15 +91,16 @@ export function AttachScreen({ client, s, entry, status, operator, maxText, font
       return;
     }
     setArm(null);
-    const frame = r.force
-      ? { t: 'key' as const, s, nonce: r.nonce, key, force: true }
+    // Exactly the listed fields: an empty `force` is noise, and the validator refuses one.
+    const frame = r.force.length > 0
+      ? { t: 'key' as const, s, nonce: r.nonce, key, force: r.force }
       : { t: 'key' as const, s, nonce: r.nonce, key };
     client.request(frame).then(
       (ack) => {
         if (ack.ok) return;
         // The server knew better than the roster (declared blocked, or a live
         // run depth): arm with the nonce it refused, so the next tap is it.
-        if (ack.code === 'confirm') setArm(armFromConfirm(key, ack.nonce, Date.now()));
+        if (ack.code === 'confirm' && ack.confirm) setArm(armFromConfirm(key, ack.nonce, Date.now(), ack.confirm, r.force));
         else onError(t.t(ackMessageKey(ack.code), { max: maxText }));
       },
       (err: unknown) => {

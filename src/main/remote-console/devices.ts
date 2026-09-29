@@ -46,6 +46,7 @@ export interface DevicesFile {
 export interface DeviceDeps {
   /** Parsed contents of remote-devices.json; null when absent. May throw on a corrupt file. */
   load(): unknown;
+  /** Throws when the write did not land (a sharing violation on the rename, a full disk). */
   save(data: DevicesFile): void;
   now(): number;
   randomBytes(n: number): Buffer;
@@ -113,13 +114,39 @@ export class DeviceRegistry {
   private readonly revokedListeners = new Set<(ids: string[]) => void>();
   private lastPersist = 0;
   private dirty = false;
+  /**
+   * The last write did not land, so memory is ahead of the file. A reload in
+   * that state would read the file BEHIND memory — resurrecting a device the
+   * user revoked, token hash intact — so it retries the write instead.
+   */
+  private unsaved = false;
+  /**
+   * Every id revoked (or expired) in this process lifetime. A reload never
+   * brings one back, whatever the file says: a revoke whose write failed must
+   * not be undone by the next reconfigure. Ids are random per pairing, so a
+   * re-paired phone is a new id and is not caught by this.
+   */
+  private readonly tombstones = new Set<string>();
 
   constructor(private readonly deps: DeviceDeps) {
     this.reload();
   }
 
-  /** Re-read the file. A corrupt or foreign file loads as EMPTY and is logged, never thrown. */
+  /** True while memory holds changes the file does not (the last write failed). */
+  hasUnsavedChanges(): boolean {
+    return this.unsaved;
+  }
+
+  /**
+   * Re-read the file. A corrupt or foreign file loads as EMPTY and is logged,
+   * never thrown. With an unsaved change pending, memory is authoritative: the
+   * write is retried and the file is not read.
+   */
   reload(): void {
+    if (this.unsaved) {
+      this.persist();
+      return;
+    }
     this.devices.clear();
     let raw: unknown;
     try {
@@ -135,14 +162,23 @@ export class DeviceRegistry {
     }
     for (const d of raw.devices) {
       const rec = parseDevice(d);
-      if (rec) this.devices.set(rec.id, rec);
+      if (rec && !this.tombstones.has(rec.id)) this.devices.set(rec.id, rec);
     }
   }
 
-  private persist(): void {
+  /** False when the write failed; the change stays in memory and is retried on the next persist or reload. */
+  private persist(): boolean {
     this.dirty = false;
     this.lastPersist = this.deps.now();
-    this.deps.save({ version: 1, devices: [...this.devices.values()].map((d) => ({ ...d })) });
+    try {
+      this.deps.save({ version: 1, devices: [...this.devices.values()].map((d) => ({ ...d })) });
+      this.unsaved = false;
+      return true;
+    } catch (err) {
+      this.unsaved = true;
+      this.deps.log?.('remote-devices-save-failed', { message: err instanceof Error ? err.message : String(err) });
+      return false;
+    }
   }
 
   /** Write a pending `touch` now (stop, quit). */
@@ -266,18 +302,28 @@ export class DeviceRegistry {
     this.persist();
   }
 
-  revoke(id: string): void {
-    if (!this.devices.delete(id)) return;
-    this.persist();
+  /**
+   * The live cutoff happens whatever the disk says (memory and the tombstone
+   * are what `verify` answers from). The return value is whether it is also
+   * on disk, so Settings can say so rather than show a revoke that a restart
+   * of wmux would quietly undo.
+   */
+  revoke(id: string): boolean {
+    if (!this.devices.delete(id)) return true;
+    this.tombstones.add(id);
+    const saved = this.persist();
     this.emitRevoked([id]);
+    return saved;
   }
 
-  revokeAll(): void {
+  revokeAll(): boolean {
     const ids = [...this.devices.keys()];
+    for (const id of ids) this.tombstones.add(id);
     this.devices.clear();
     this.offer = null;
-    this.persist();
+    const saved = this.persist();
     this.emitRevoked(ids);
+    return saved;
   }
 
   /** Forget devices unseen for 30 days. Runs at start and hourly. */
@@ -287,6 +333,7 @@ export class DeviceRegistry {
     for (const [id, d] of this.devices) {
       if (d.lastSeenAt < cutoff) {
         this.devices.delete(id);
+        this.tombstones.add(id);
         gone.push(id);
       }
     }

@@ -63,6 +63,7 @@ export const ko: Readonly<Record<string, string>> = {
   'composer.send': '보내기 ↵',
   'composer.insert': '삽입',
   'composer.sending': '보내는 중…',
+  'composer.submitSkipped': '입력했지만 Enter는 누르지 않았습니다. 에이전트가 답변을 기다리기 시작했습니다.',
 
   'confirm.blocked.title': '에이전트가 응답을 기다리고 있습니다',
   'confirm.blocked.body': '텍스트는 Enter 없이 입력되므로 실수로 질문에 응답하지 않습니다.',
@@ -85,6 +86,7 @@ export const ko: Readonly<Record<string, string>> = {
   'ack.tooLong': '너무 길어서 보낼 수 없습니다 (최대 {max}자).',
   'ack.badKey': '지원되지 않는 키입니다.',
   'ack.writeFailed': '보내지 못했습니다.',
+  'ack.multilineInsert': '이 터미널은 붙여넣기 모드가 아니어서 Enter 없이 여러 줄을 넣을 수 없습니다. 한 줄씩 넣으세요.',
   'ack.unconfirmed': '확인되지 않았습니다. 다시 보내기 전에 터미널을 확인하세요.',
 
   'toast.blocked': '{label}: 확인 필요',

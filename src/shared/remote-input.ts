@@ -69,9 +69,16 @@ export const PASTE_END = '\x1b[201~';
  * Submit is a separate trailing `\r` — the session sleeps 40 ms before it —
  * because an agent TUI that sees paste-then-Enter in one read treats the
  * Enter as part of the paste and inserts a newline instead of submitting.
- * Without bracketed paste, LF becomes CR: that is what a key press sends.
+ * Without bracketed paste, LF becomes CR: that is what a key press sends —
+ * which is exactly why an Insert (`submit: false`) of several lines into a
+ * non-bracketed terminal is refused here rather than built: every CR would be
+ * an Enter, and Insert is the one send that promises not to press it. The
+ * session answers that case with `multiline-insert` before it gets here.
  */
 export function buildComposerWrites(clean: string, opts: { bracketed: boolean; submit: boolean }): string[] {
+  if (!opts.submit && !opts.bracketed && clean.includes('\n')) {
+    throw new RangeError('multiline insert needs bracketed paste');
+  }
   const writes: string[] = [];
   if (clean !== '') {
     writes.push(opts.bracketed ? PASTE_START + clean + PASTE_END : clean.split('\n').join('\r'));

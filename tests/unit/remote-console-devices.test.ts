@@ -152,6 +152,46 @@ describe('DeviceRegistry persistence and verification', () => {
     expect(reg.count()).toBe(0);
   });
 
+  it('a revoke whose write fails is reported, and no reload brings the device back', () => {
+    // The file on disk still lists the device: the write that would have
+    // removed it failed (antivirus or a sync client holding the rename).
+    let disk: DevicesFile | null = null;
+    let failWrites = false;
+    const h = harness(() => disk);
+    h.deps.save = (d) => {
+      if (failWrites) throw new Error('EBUSY');
+      disk = JSON.parse(JSON.stringify(d)) as DevicesFile;
+    };
+    const r = pair(h.reg);
+    const cookie = `${r.device.id}.${r.token}`;
+    failWrites = true;
+    expect(h.reg.revoke(r.device.id)).toBe(false);
+    expect(h.reg.hasUnsavedChanges()).toBe(true);
+    expect(h.reg.verify(cookie)).toBeNull();
+    // Reconfigure / start reloads: memory stays authoritative while unsaved.
+    h.reg.reload();
+    expect(h.reg.verify(cookie)).toBeNull();
+    // The retry lands once the file is writable again, and the file agrees.
+    failWrites = false;
+    h.reg.reload();
+    expect(h.reg.hasUnsavedChanges()).toBe(false);
+    expect(disk!.devices.map((d) => d.id)).not.toContain(r.device.id);
+    expect(h.reg.verify(cookie)).toBeNull();
+  });
+
+  it('a device revoked this run stays revoked even if a stale file lists it again', () => {
+    let disk: DevicesFile | null = null;
+    const h = harness(() => disk);
+    h.deps.save = (d) => { disk = JSON.parse(JSON.stringify(d)) as DevicesFile; };
+    const r = pair(h.reg);
+    const stale = JSON.parse(JSON.stringify(disk)) as DevicesFile;
+    expect(h.reg.revoke(r.device.id)).toBe(true);
+    disk = stale;
+    h.reg.reload();
+    expect(h.reg.verify(`${r.device.id}.${r.token}`)).toBeNull();
+    expect(h.reg.count()).toBe(0);
+  });
+
   it('reloads saved devices', () => {
     const first = harness();
     const r = pair(first.reg);

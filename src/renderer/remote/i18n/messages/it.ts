@@ -64,6 +64,7 @@ export const it: Readonly<Record<string, string>> = {
   'composer.send': 'Invia ↵',
   'composer.insert': 'Inserisci',
   'composer.sending': 'Invio…',
+  'composer.submitSkipped': 'Testo inserito, ma Invio non è stato premuto: l’agente ha iniziato ad aspettare una risposta.',
 
   'confirm.blocked.title': 'L’agente aspetta una risposta',
   'confirm.blocked.body': 'Il testo verrà digitato senza premere Invio, così non risponderà alla domanda per errore.',
@@ -86,6 +87,7 @@ export const it: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Troppo lungo da inviare (massimo {max} caratteri).',
   'ack.badKey': 'Questo tasto non è supportato.',
   'ack.writeFailed': 'Invio non riuscito.',
+  'ack.multilineInsert': 'Questo terminale non è in modalità incolla, quindi non si possono inserire più righe senza premere Invio. Inserisci una riga alla volta.',
   'ack.unconfirmed': 'Non confermato. Controlla il terminale prima di inviare di nuovo.',
 
   'toast.blocked': '{label} ti aspetta',

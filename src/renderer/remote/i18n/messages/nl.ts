@@ -64,6 +64,7 @@ export const nl: Readonly<Record<string, string>> = {
   'composer.send': 'Verzenden ↵',
   'composer.insert': 'Invoegen',
   'composer.sending': 'Verzenden…',
+  'composer.submitSkipped': 'Getypt, maar Enter is niet ingedrukt: de agent wacht inmiddels op een antwoord.',
 
   'confirm.blocked.title': 'De agent wacht op een antwoord',
   'confirm.blocked.body': 'Je tekst wordt getypt zonder op Enter te drukken, zodat hij de vraag niet per ongeluk beantwoordt.',
@@ -86,6 +87,7 @@ export const nl: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Te lang om te verzenden (maximaal {max} tekens).',
   'ack.badKey': 'Die toets wordt niet ondersteund.',
   'ack.writeFailed': 'Verzenden mislukt.',
+  'ack.multilineInsert': 'Deze terminal staat niet in plakmodus, dus meerdere regels kunnen niet zonder Enter worden ingevoegd. Voeg één regel tegelijk in.',
   'ack.unconfirmed': 'Niet bevestigd. Controleer de terminal voordat je opnieuw verzendt.',
 
   'toast.blocked': '{label} wacht op jou',

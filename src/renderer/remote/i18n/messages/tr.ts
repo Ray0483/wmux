@@ -64,6 +64,7 @@ export const tr: Readonly<Record<string, string>> = {
   'composer.send': 'Gönder ↵',
   'composer.insert': 'Ekle',
   'composer.sending': 'Gönderiliyor…',
+  'composer.submitSkipped': 'Yazıldı ama Enter’a basılmadı: ajan bir yanıt beklemeye başladı.',
 
   'confirm.blocked.title': 'Ajan bir yanıt bekliyor',
   'confirm.blocked.body': 'Metniniz Enter’a basılmadan yazılır; böylece soruyu yanlışlıkla yanıtlamaz.',
@@ -86,6 +87,7 @@ export const tr: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Göndermek için çok uzun (en fazla {max} karakter).',
   'ack.badKey': 'Bu tuş desteklenmiyor.',
   'ack.writeFailed': 'Gönderilemedi.',
+  'ack.multilineInsert': 'Bu terminal yapıştırma modunda değil, bu yüzden birden çok satır Enter’a basmadan eklenemez. Her seferinde bir satır ekleyin.',
   'ack.unconfirmed': 'Onaylanmadı. Yeniden göndermeden önce terminali kontrol edin.',
 
   'toast.blocked': '{label} sizi bekliyor',

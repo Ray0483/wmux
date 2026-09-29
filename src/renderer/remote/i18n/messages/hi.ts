@@ -64,6 +64,7 @@ export const hi: Readonly<Record<string, string>> = {
   'composer.send': 'भेजें ↵',
   'composer.insert': 'डालें',
   'composer.sending': 'भेजा जा रहा है…',
+  'composer.submitSkipped': 'टेक्स्ट लिखा गया, पर Enter नहीं दबाया गया: एजेंट अब एक जवाब की प्रतीक्षा कर रहा है।',
 
   'confirm.blocked.title': 'एजेंट जवाब का इंतज़ार कर रहा है',
   'confirm.blocked.body': 'आपका टेक्स्ट Enter दबाए बिना टाइप होगा, ताकि वह गलती से सवाल का जवाब न दे दे।',
@@ -86,6 +87,7 @@ export const hi: Readonly<Record<string, string>> = {
   'ack.tooLong': 'भेजने के लिए बहुत लंबा (अधिकतम {max} अक्षर)।',
   'ack.badKey': 'यह कुंजी समर्थित नहीं है।',
   'ack.writeFailed': 'भेजा नहीं जा सका।',
+  'ack.multilineInsert': 'यह टर्मिनल पेस्ट मोड में नहीं है, इसलिए Enter दबाए बिना कई पंक्तियाँ नहीं डाली जा सकतीं। एक बार में एक पंक्ति डालें।',
   'ack.unconfirmed': 'पुष्टि नहीं हुई। दोबारा भेजने से पहले टर्मिनल देखें।',
 
   'toast.blocked': '{label} को आपकी ज़रूरत है',

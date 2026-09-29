@@ -63,6 +63,7 @@ export const zhTW: Readonly<Record<string, string>> = {
   'composer.send': '送出 ↵',
   'composer.insert': '插入',
   'composer.sending': '正在送出…',
+  'composer.submitSkipped': '已輸入，但未按下 Enter：代理程式開始等待回答。',
 
   'confirm.blocked.title': '代理程式正在等待回答',
   'confirm.blocked.body': '文字會在不按 Enter 的情況下輸入，以免意外回答問題。',
@@ -85,6 +86,7 @@ export const zhTW: Readonly<Record<string, string>> = {
   'ack.tooLong': '內容過長，無法送出（最多 {max} 個字元）。',
   'ack.badKey': '不支援此按鍵。',
   'ack.writeFailed': '無法送出。',
+  'ack.multilineInsert': '此終端機未處於貼上模式，無法在不按 Enter 的情況下插入多行。請一次插入一行。',
   'ack.unconfirmed': '未確認。再次送出前請先查看終端機。',
 
   'toast.blocked': '{label} 在等你處理',

@@ -181,6 +181,7 @@ const ACK_KEYS: Readonly<Record<AckCode, RemoteMessageKey>> = {
   'too-long': 'ack.tooLong',
   'bad-key': 'ack.badKey',
   'write-failed': 'ack.writeFailed',
+  'multiline-insert': 'ack.multilineInsert',
 };
 
 export function ackMessageKey(code: AckCode | undefined): RemoteMessageKey {

@@ -44,8 +44,8 @@ export type ClientMessage =
   | { t: 'detach' }
   | { t: 'seen'; s: string }
   | { t: 'ping' }
-  | { t: 'send'; s: string; nonce: string; text: string; submit: boolean; force?: boolean }
-  | { t: 'key'; s: string; nonce: string; key: RemoteKey; force?: boolean }
+  | { t: 'send'; s: string; nonce: string; text: string; submit: boolean; force?: ConfirmKind[] }
+  | { t: 'key'; s: string; nonce: string; key: RemoteKey; force?: ConfirmKind[] }
   | { t: 'answer'; s: string; nonce: string; choiceId: string };
 
 export type ClientMessageType = ClientMessage['t'];
@@ -68,12 +68,23 @@ export const SCOPE_OF: Readonly<Record<ClientMessageType, RemoteScope>> = {
 
 // ── Server → client ──────────────────────────────────────────────────────
 
-export type ConfirmKind = 'blocked' | 'interrupt' | 'multiline';
+/**
+ * `force` on a resend lists the confirms the user ACCEPTED, one entry per
+ * kind. A list and not a boolean because a waiver answers one question:
+ * accepting "insert without Enter while blocked" must not also answer "send
+ * several lines into a terminal that is not in paste mode", or a multiline
+ * Insert types CRs into the prompt it was meant to leave alone. The server
+ * bypasses exactly the listed checks and asks any other one afresh.
+ */
+export const CONFIRM_KINDS = ['blocked', 'interrupt', 'multiline'] as const;
+export type ConfirmKind = (typeof CONFIRM_KINDS)[number];
 
 export type AckCode =
   | 'forbidden' | 'rate' | 'gone' | 'confirm'
   | 'not-blocked' | 'no-choices' | 'unknown-choice'
-  | 'too-long' | 'bad-key' | 'write-failed';
+  | 'too-long' | 'bad-key' | 'write-failed'
+  /** Several lines, no Enter, and a terminal not in paste mode: every line break would BE an Enter. */
+  | 'multiline-insert';
 
 export type RemoteAgentState = 'blocked' | 'working' | 'idle' | 'unknown';
 
@@ -116,7 +127,15 @@ export type ServerMessage =
   | { t: 'term.lag'; s: string }
   | { t: 'term.exit'; s: string; code: number }
   | { t: 'term.error'; s: string; code: 'no-terminal' | 'timeout' | 'gone'; message: string }
-  | { t: 'ack'; nonce: string; ok: boolean; code?: AckCode; confirm?: ConfirmKind; duplicate?: boolean }
+  | {
+      t: 'ack'; nonce: string; ok: boolean; code?: AckCode; confirm?: ConfirmKind; duplicate?: boolean;
+      /**
+       * `ok`, with the text typed but the trailing Enter withheld: the agent
+       * went blocked in the gap before it. Not a refusal — the text DID land,
+       * so nothing may resend it.
+       */
+      submitSkipped?: boolean;
+    }
   | { t: 'error'; code: 'bad-frame' | 'hello-required' | 'forbidden' | 'rate'; message: string }
   | { t: 'revoked' }
   | { t: 'pong' };
@@ -157,7 +176,13 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 const isSurface = (v: unknown): v is string => typeof v === 'string' && SURFACE_ID_RE.test(v);
 const isNonce = (v: unknown): v is string => typeof v === 'string' && NONCE_RE.test(v);
-const isOptionalBool = (v: unknown): boolean => v === undefined || typeof v === 'boolean';
+const CONFIRM_KIND_SET: ReadonlySet<string> = new Set(CONFIRM_KINDS);
+/** Absent, or a non-empty list of distinct known confirm kinds. */
+const isOptionalForce = (v: unknown): boolean => {
+  if (v === undefined) return true;
+  if (!Array.isArray(v) || v.length === 0 || v.length > CONFIRM_KINDS.length) return false;
+  return v.every((k) => typeof k === 'string' && CONFIRM_KIND_SET.has(k)) && new Set(v).size === v.length;
+};
 
 function hasOnlyAllowedFields(o: Record<string, unknown>, t: ClientMessageType): boolean {
   const allowed = ALLOWED_FIELDS[t];
@@ -182,10 +207,10 @@ function fieldsValid(o: Record<string, unknown>, t: ClientMessageType): boolean 
       // No MAX_TEXT check here on purpose: an over-long text is answered with
       // `ack{too-long}` so the composer can say so, not dropped as bad-frame.
       return isSurface(o.s) && isNonce(o.nonce) && typeof o.text === 'string'
-        && typeof o.submit === 'boolean' && isOptionalBool(o.force);
+        && typeof o.submit === 'boolean' && isOptionalForce(o.force);
     case 'key':
       return isSurface(o.s) && isNonce(o.nonce) && typeof o.key === 'string'
-        && REMOTE_KEY_SET.has(o.key) && isOptionalBool(o.force);
+        && REMOTE_KEY_SET.has(o.key) && isOptionalForce(o.force);
     case 'answer':
       return isSurface(o.s) && isNonce(o.nonce) && typeof o.choiceId === 'string'
         && CHOICE_ID_RE.test(o.choiceId);

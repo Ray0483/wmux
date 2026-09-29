@@ -74,6 +74,7 @@ export const en = {
   'composer.send': 'Send ↵',
   'composer.insert': 'Insert',
   'composer.sending': 'Sending…',
+  'composer.submitSkipped': 'Typed, but Enter was not pressed: the agent started waiting for an answer.',
 
   'confirm.blocked.title': 'The agent is waiting for an answer',
   'confirm.blocked.body': 'Your text will be typed without pressing Enter, so it cannot answer the question by accident.',
@@ -96,6 +97,7 @@ export const en = {
   'ack.tooLong': 'Too long to send ({max} characters at most).',
   'ack.badKey': 'That key is not supported.',
   'ack.writeFailed': 'Could not send.',
+  'ack.multilineInsert': 'This terminal is not in paste mode, so several lines cannot be inserted without pressing Enter. Insert one line at a time.',
   'ack.unconfirmed': 'Not confirmed. Check the terminal before sending again.',
 
   'toast.blocked': '{label} needs you',

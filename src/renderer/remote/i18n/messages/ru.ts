@@ -66,6 +66,7 @@ export const ru: Readonly<Record<string, string>> = {
   'composer.send': 'Отправить ↵',
   'composer.insert': 'Вставить',
   'composer.sending': 'Отправка…',
+  'composer.submitSkipped': 'Текст введён, но Enter не нажат: агент начал ждать ответа.',
 
   'confirm.blocked.title': 'Агент ждёт ответа',
   'confirm.blocked.body': 'Текст будет введён без нажатия Enter, чтобы случайно не ответить на вопрос.',
@@ -88,6 +89,7 @@ export const ru: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Слишком длинно для отправки (не более {max} символов).',
   'ack.badKey': 'Эта клавиша не поддерживается.',
   'ack.writeFailed': 'Не удалось отправить.',
+  'ack.multilineInsert': 'Этот терминал не в режиме вставки, поэтому несколько строк нельзя вставить без нажатия Enter. Вставляйте по одной строке.',
   'ack.unconfirmed': 'Не подтверждено. Проверьте терминал, прежде чем отправлять снова.',
 
   'toast.blocked': '{label} ждёт вас',

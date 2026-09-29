@@ -61,8 +61,9 @@ export interface RemoteConsoleRuntime {
   setConfig(raw: unknown): Promise<{ ok: true } | { ok: false; error: string }>;
   pairStart(o: { name: string; scope: RemoteScope }): PairOffer | { error: string };
   pairCancel(): void;
-  revoke(id: string): void;
-  revokeAll(): void;
+  /** `write-failed`: cut off live, but the file write did not land (retried on the next change or reload). */
+  revoke(id: string): { error: 'write-failed' } | undefined;
+  revokeAll(): { error: 'write-failed' } | undefined;
   rename(id: string, name: string): void;
   onStatus(cb: (status: RemoteConsoleStatus) => void): () => void;
   notifyAgentStateChanged(): void;

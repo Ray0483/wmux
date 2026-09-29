@@ -65,6 +65,7 @@ export const cs: Readonly<Record<string, string>> = {
   'composer.send': 'Odeslat ↵',
   'composer.insert': 'Vložit',
   'composer.sending': 'Odesílání…',
+  'composer.submitSkipped': 'Text byl napsán, ale Enter nebyl stisknut: agent mezitím začal čekat na odpověď.',
 
   'confirm.blocked.title': 'Agent čeká na odpověď',
   'confirm.blocked.body': 'Text se napíše bez stisknutí Enter, aby omylem neodpověděl na otázku.',
@@ -87,6 +88,7 @@ export const cs: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Příliš dlouhé k odeslání (nejvýše {max} znaků).',
   'ack.badKey': 'Tato klávesa není podporována.',
   'ack.writeFailed': 'Odeslání se nezdařilo.',
+  'ack.multilineInsert': 'Tento terminál není v režimu vkládání, takže více řádků nelze vložit bez stisku Enter. Vkládejte po jednom řádku.',
   'ack.unconfirmed': 'Nepotvrzeno. Než odešlete znovu, zkontrolujte terminál.',
 
   'toast.blocked': '{label} na vás čeká',

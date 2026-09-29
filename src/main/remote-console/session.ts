@@ -128,6 +128,20 @@ const ok = (nonce: string): AckMsg => ({ t: 'ack', nonce, ok: true });
 const refuse = (nonce: string, code: AckCode): AckMsg => ({ t: 'ack', nonce, ok: false, code });
 const confirm = (nonce: string, kind: ConfirmKind): AckMsg => ({ t: 'ack', nonce, ok: false, code: 'confirm', confirm: kind });
 
+/** Did the user accept THIS confirm? A waiver answers one question, never all of them. */
+const waives = (m: { force?: ConfirmKind[] }, kind: ConfirmKind): boolean => m.force?.includes(kind) === true;
+
+/**
+ * Several lines into a terminal not in paste mode. Every line break then goes
+ * out as CR — an Enter — so an Insert, which promised none, is refused outright
+ * (no waiver can make it keep that promise), and a Send asks first.
+ */
+function multilineRefusal(m: Extract<ClientMessage, { t: 'send' }>, clean: string, bracketed: boolean): AckMsg | null {
+  if (bracketed || !clean.includes('\n')) return null;
+  if (!m.submit) return refuse(m.nonce, 'multiline-insert');
+  return waives(m, 'multiline') ? null : confirm(m.nonce, 'multiline');
+}
+
 type OperatorMsg = Extract<ClientMessage, { t: 'send' | 'key' | 'answer' }>;
 
 export class ConsoleSession {
@@ -305,7 +319,7 @@ export class ConsoleSession {
     const clean = sanitizeComposerText(m.text);
     if (clean === '' && !m.submit) return ok(m.nonce);
     if (!this.d.ops.isLivePty(m.s)) return refuse(m.nonce, 'gone');
-    if (wasBlocked && !m.force) return confirm(m.nonce, 'blocked');
+    if (wasBlocked && !waives(m, 'blocked')) return confirm(m.nonce, 'blocked');
 
     const modes = await this.d.queryModes(m.s);
     // That await is up to 2 s, and two things can change across it. The
@@ -315,26 +329,41 @@ export class ConsoleSession {
     // prompt the phone never saw. Both are read BEFORE any noteHumanInput, so
     // this re-check still asks the question `wasBlocked` asks (I4).
     if (this.closed) return refuse(m.nonce, 'gone');
-    if (!m.force && this.d.ops.isBlocked(m.s)) return confirm(m.nonce, 'blocked');
+    if (!waives(m, 'blocked') && this.d.ops.isBlocked(m.s)) return confirm(m.nonce, 'blocked');
     const bracketed = 'bracketedPaste' in modes && modes.bracketedPaste === true;
-    if (clean.includes('\n') && !bracketed && !m.force) return confirm(m.nonce, 'multiline');
+    const refusal = multilineRefusal(m, clean, bracketed);
+    if (refusal) return refusal;
     if (!this.d.ops.isLivePty(m.s)) return refuse(m.nonce, 'gone');
-
-    const writes = buildComposerWrites(clean, { bracketed, submit: m.submit });
-    const failed = await this.writeComposer(m.s, writes, m.submit);
-    if (failed) return refuse(m.nonce, failed);
-    const bytes = writes.reduce((n, w) => n + Buffer.byteLength(w, 'utf8'), 0);
-    this.d.ops.log('remote-input', { device: this.d.device.id, surface: m.s, bytes, submit: m.submit });
-    return ok(m.nonce);
+    return this.deliverComposer(m, clean, bracketed);
   }
 
-  /** Each write preceded by its `noteHumanInput`; a 40 ms gap before a trailing submit. */
-  private async writeComposer(s: string, writes: string[], submit: boolean): Promise<AckCode | null> {
+  private async deliverComposer(m: Extract<ClientMessage, { t: 'send' }>, clean: string, bracketed: boolean): Promise<AckMsg> {
+    const writes = buildComposerWrites(clean, { bracketed, submit: m.submit });
+    const outcome = await this.writeComposer(m.s, writes, m.submit, !waives(m, 'blocked'));
+    if (outcome !== null && outcome !== 'submit-skipped') return refuse(m.nonce, outcome);
+    const skipped = outcome === 'submit-skipped';
+    const sent = skipped ? writes.slice(0, -1) : writes;
+    const bytes = sent.reduce((n, w) => n + Buffer.byteLength(w, 'utf8'), 0);
+    this.d.ops.log('remote-input', { device: this.d.device.id, surface: m.s, bytes, submit: m.submit && !skipped });
+    return skipped ? { ...ok(m.nonce), submitSkipped: true } : ok(m.nonce);
+  }
+
+  /**
+   * Each write preceded by its `noteHumanInput`; a 40 ms gap before a trailing
+   * submit. That gap is an await like `queryModes`, and the agent can go
+   * blocked across it: the text is already typed by then, so the Enter alone
+   * is withheld (`submit-skipped`) — confirming would invite a resend that
+   * types the text a second time.
+   */
+  private async writeComposer(
+    s: string, writes: string[], submit: boolean, guardBlocked: boolean,
+  ): Promise<AckCode | 'submit-skipped' | null> {
     for (let i = 0; i < writes.length; i++) {
       const trailingSubmit = submit && i > 0 && i === writes.length - 1;
       if (trailingSubmit) {
         await this.d.sleep(SUBMIT_GAP_MS);
         if (this.closed || !this.d.ops.isLivePty(s)) return 'gone';
+        if (guardBlocked && this.d.ops.isBlocked(s)) return 'submit-skipped';
       }
       try {
         this.writeHuman(s, writes[i]);
@@ -356,10 +385,10 @@ export class ConsoleSession {
     if (!this.d.ops.isLivePty(m.s)) return refuse(m.nonce, 'gone');
     // Arrow keys are not answering input, so a menu can still be navigated
     // from the phone without a confirm; Enter, y and n are.
-    if (wasBlocked && !m.force && this.d.ops.isAnsweringInput(bytes)) return confirm(m.nonce, 'blocked');
+    if (wasBlocked && !waives(m, 'blocked') && this.d.ops.isAnsweringInput(bytes)) return confirm(m.nonce, 'blocked');
     // A bare ESC or ^C ends an agent's run (and clears blocked) — one stray
     // tap on a phone must not cancel twenty minutes of work.
-    if ((m.key === 'esc' || m.key === 'ctrl-c') && !m.force && this.d.ops.runDepth(m.s) > 0) return confirm(m.nonce, 'interrupt');
+    if ((m.key === 'esc' || m.key === 'ctrl-c') && !waives(m, 'interrupt') && this.d.ops.runDepth(m.s) > 0) return confirm(m.nonce, 'interrupt');
     try {
       this.writeHuman(m.s, bytes);
     } catch {

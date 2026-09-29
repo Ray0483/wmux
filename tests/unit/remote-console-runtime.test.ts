@@ -433,7 +433,7 @@ describe('ConsoleRuntime sessions, roster, terminal', () => {
     const phone = await openPhone(port, await pairViaHttp(rt, port, 'viewer'));
     phone.ws.send(JSON.stringify({ t: 'hello', v: 1 }));
     await phone.next('welcome');
-    phone.ws.send(JSON.stringify({ t: 'key', s: S, nonce: 'nonce-0002', key: 'enter', force: true }));
+    phone.ws.send(JSON.stringify({ t: 'key', s: S, nonce: 'nonce-0002', key: 'enter', force: ['blocked'] }));
     expect(await phone.next('ack')).toMatchObject({ ok: false, code: 'forbidden' });
     expect(ops.write).not.toHaveBeenCalled();
     expect(ops.noteHumanInput).not.toHaveBeenCalled();

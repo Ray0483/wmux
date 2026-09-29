@@ -64,6 +64,7 @@ export const fr: Readonly<Record<string, string>> = {
   'composer.send': 'Envoyer ↵',
   'composer.insert': 'Insérer',
   'composer.sending': 'Envoi…',
+  'composer.submitSkipped': 'Texte saisi, mais Entrée n’a pas été pressée : l’agent s’est mis à attendre une réponse.',
 
   'confirm.blocked.title': 'L’agent attend une réponse',
   'confirm.blocked.body': 'Votre texte sera saisi sans appuyer sur Entrée, pour qu’il ne réponde pas à la question par accident.',
@@ -86,6 +87,7 @@ export const fr: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Trop long pour être envoyé ({max} caractères maximum).',
   'ack.badKey': 'Cette touche n’est pas prise en charge.',
   'ack.writeFailed': 'Envoi impossible.',
+  'ack.multilineInsert': 'Ce terminal n’est pas en mode collage : plusieurs lignes ne peuvent pas être insérées sans appuyer sur Entrée. Insérez une ligne à la fois.',
   'ack.unconfirmed': 'Non confirmé. Vérifiez le terminal avant de renvoyer.',
 
   'toast.blocked': '{label} vous attend',

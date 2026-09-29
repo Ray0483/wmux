@@ -22,7 +22,7 @@ describe('composer state machine', () => {
   it('idle → sending → acked clears the draft', () => {
     let s = typed('hello');
     s = composerReducer(s, { type: 'submit', nonce: 'n-00000001', blocked: false });
-    expect(s).toMatchObject({ phase: 'sending', draft: 'hello', frame: { nonce: 'n-00000001', text: 'hello', submit: true, force: false } });
+    expect(s).toMatchObject({ phase: 'sending', draft: 'hello', frame: { nonce: 'n-00000001', text: 'hello', submit: true, force: [] } });
     s = composerReducer(s, { type: 'ack', nonce: 'n-00000001', ok: true });
     expect(s).toMatchObject({ phase: 'acked', draft: '', frame: null });
   });
@@ -66,7 +66,25 @@ describe('composer state machine', () => {
     s = composerReducer(s, { type: 'ack', nonce: 'n-00000004', ok: false, code: 'confirm', confirm: 'multiline' });
     expect(s).toMatchObject({ phase: 'confirm', confirm: 'multiline' });
     s = composerReducer(s, { type: 'accept' });
-    expect(s).toMatchObject({ phase: 'sending', frame: { nonce: 'n-00000004', submit: true, force: true } });
+    expect(s).toMatchObject({ phase: 'sending', frame: { nonce: 'n-00000004', submit: true, force: ['multiline'] } });
+  });
+
+  it('each accepted confirm waives only its own kind, and they accumulate across one frame', () => {
+    // Blocked accepted (Insert), then the server asks multiline: the resend
+    // carries both, and still no Enter.
+    let s = composerReducer(typed('a\nb'), { type: 'submit', nonce: 'n-0000000d', blocked: true });
+    s = composerReducer(s, { type: 'accept' });
+    expect(s.frame).toMatchObject({ submit: false, force: ['blocked'] });
+    s = composerReducer(s, { type: 'ack', nonce: 'n-0000000d', ok: false, code: 'confirm', confirm: 'multiline' });
+    s = composerReducer(s, { type: 'accept' });
+    expect(s.frame).toMatchObject({ nonce: 'n-0000000d', submit: false, force: ['blocked', 'multiline'] });
+  });
+
+  it('an ok ack that withheld the Enter is surfaced, and editing clears it', () => {
+    let s = composerReducer(typed('hi'), { type: 'submit', nonce: 'n-0000000e', blocked: false });
+    s = composerReducer(s, { type: 'ack', nonce: 'n-0000000e', ok: true, submitSkipped: true });
+    expect(s).toMatchObject({ phase: 'acked', draft: '', submitSkipped: true });
+    expect(composerReducer(s, { type: 'edit', text: 'x' }).submitSkipped).toBe(false);
   });
 
   it('blocked: the button reads Insert, pre-confirms, and inserts without Enter', () => {
@@ -74,16 +92,16 @@ describe('composer state machine', () => {
     expect(composerLabel(s, true)).toBe('insert');
     expect(composerLabel(s, false)).toBe('send');
     s = composerReducer(s, { type: 'submit', nonce: 'n-00000005', blocked: true });
-    expect(s).toMatchObject({ phase: 'confirm', confirm: 'blocked', frame: { submit: false, force: false } });
+    expect(s).toMatchObject({ phase: 'confirm', confirm: 'blocked', frame: { submit: false, force: [] } });
     s = composerReducer(s, { type: 'accept' });
-    expect(s).toMatchObject({ phase: 'sending', frame: { nonce: 'n-00000005', submit: false, force: true } });
+    expect(s).toMatchObject({ phase: 'sending', frame: { nonce: 'n-00000005', submit: false, force: ['blocked'] } });
   });
 
   it('a SERVER blocked confirm (roster was stale) also turns the resend into an Insert', () => {
     let s = composerReducer(typed('y'), { type: 'submit', nonce: 'n-00000006', blocked: false });
     s = composerReducer(s, { type: 'ack', nonce: 'n-00000006', ok: false, code: 'confirm', confirm: 'blocked' });
     s = composerReducer(s, { type: 'accept' });
-    expect(s.frame).toMatchObject({ nonce: 'n-00000006', submit: false, force: true });
+    expect(s.frame).toMatchObject({ nonce: 'n-00000006', submit: false, force: ['blocked'] });
   });
 
   it('cancel from confirm returns to idle with the text intact', () => {
@@ -157,13 +175,13 @@ describe('draft persistence', () => {
 
 describe('key arming', () => {
   it('arms esc and ctrl-c while working; enter, y, n while blocked; never arrows', () => {
-    expect(keyNeedsArming('esc', 'working')).toBe(true);
-    expect(keyNeedsArming('ctrl-c', 'working')).toBe(true);
-    expect(keyNeedsArming('enter', 'working')).toBe(false);
-    for (const k of ['enter', 'y', 'n'] as const) expect(keyNeedsArming(k, 'blocked')).toBe(true);
-    expect(keyNeedsArming('up', 'blocked')).toBe(false);
-    expect(keyNeedsArming('esc', 'idle')).toBe(false);
-    expect(keyNeedsArming('esc', null)).toBe(false);
+    expect(keyNeedsArming('esc', 'working')).toBe('interrupt');
+    expect(keyNeedsArming('ctrl-c', 'working')).toBe('interrupt');
+    expect(keyNeedsArming('enter', 'working')).toBeNull();
+    for (const k of ['enter', 'y', 'n'] as const) expect(keyNeedsArming(k, 'blocked')).toBe('blocked');
+    expect(keyNeedsArming('up', 'blocked')).toBeNull();
+    expect(keyNeedsArming('esc', 'idle')).toBeNull();
+    expect(keyNeedsArming('esc', null)).toBeNull();
   });
 
   it('first tap arms, second tap inside 1.5 s sends the SAME nonce with force', () => {
@@ -174,19 +192,25 @@ describe('key arming', () => {
     const arm = first.action === 'arm' ? first.arm : null;
     expect(isArmed(arm, 'esc', 1000 + ARM_WINDOW_MS - 1)).toBe(true);
     const second = tapKey(arm, 'esc', 'working', 1000 + ARM_WINDOW_MS - 1, mint);
-    expect(second).toEqual({ action: 'send', nonce: 'nonce-1-xxxx', force: true, arm: null });
+    expect(second).toEqual({ action: 'send', nonce: 'nonce-1-xxxx', force: ['interrupt'], arm: null });
   });
 
   it('an expired arm starts over, and a different key never borrows it', () => {
     const mint = () => 'nonce-fresh-1';
-    const arm = { key: 'esc' as const, nonce: 'nonce-old-01', until: 2500 };
+    const arm = { key: 'esc' as const, nonce: 'nonce-old-01', until: 2500, force: ['interrupt' as const] };
     expect(tapKey(arm, 'esc', 'working', 2500, mint)).toMatchObject({ action: 'arm', arm: { nonce: 'nonce-fresh-1' } });
-    expect(tapKey(arm, 'up', 'working', 2000, mint)).toEqual({ action: 'send', nonce: 'nonce-fresh-1', force: false, arm: null });
+    expect(tapKey(arm, 'up', 'working', 2000, mint)).toEqual({ action: 'send', nonce: 'nonce-fresh-1', force: [], arm: null });
   });
 
   it('a server confirm arms the refused nonce', () => {
-    const arm = armFromConfirm('ctrl-c', 'nonce-refused', 100);
-    expect(arm).toEqual({ key: 'ctrl-c', nonce: 'nonce-refused', until: 100 + ARM_WINDOW_MS });
-    expect(tapKey(arm, 'ctrl-c', 'idle', 200, () => 'never')).toMatchObject({ nonce: 'nonce-refused', force: true });
+    const arm = armFromConfirm('ctrl-c', 'nonce-refused', 100, 'interrupt');
+    expect(arm).toEqual({ key: 'ctrl-c', nonce: 'nonce-refused', until: 100 + ARM_WINDOW_MS, force: ['interrupt'] });
+    expect(tapKey(arm, 'ctrl-c', 'idle', 200, () => 'never')).toMatchObject({ nonce: 'nonce-refused', force: ['interrupt'] });
+  });
+
+  it('a second server confirm for a different kind keeps the first waiver', () => {
+    const arm = armFromConfirm('enter', 'nonce-refused', 100, 'blocked', ['interrupt']);
+    expect(arm.force).toEqual(['interrupt', 'blocked']);
+    expect(armFromConfirm('enter', 'nonce-refused', 100, 'blocked', ['blocked']).force).toEqual(['blocked']);
   });
 });

@@ -179,13 +179,9 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     const devicesFile = path.join(ops.appDataDir(), DEVICES_FILE);
     this.devices = new DeviceRegistry({
       load: () => readJson(devicesFile),
-      save: (data: DevicesFile) => {
-        try {
-          writeJsonAtomic(devicesFile, data);
-        } catch (err) {
-          ops.log('remote-devices-save-failed', { message: errMessage(err) });
-        }
-      },
+      // Throws on failure: the registry logs it, keeps the change in memory,
+      // and must know, or a failed revoke is undone by the next reload.
+      save: (data: DevicesFile) => writeJsonAtomic(devicesFile, data),
       now: () => Date.now(),
       randomBytes: (n) => crypto.randomBytes(n),
       sha256: (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex'),
@@ -443,14 +439,17 @@ export class ConsoleRuntime implements RemoteConsoleRuntime {
     this.emitStatus();
   }
 
-  revoke(id: string): void {
-    this.devices.revoke(id);
+  /** `write-failed`: cut off now, but not on disk yet — the write is retried on the next change or restart. */
+  revoke(id: string): { error: 'write-failed' } | undefined {
+    const saved = this.devices.revoke(id);
     this.emitStatus();
+    return saved ? undefined : { error: 'write-failed' };
   }
 
-  revokeAll(): void {
-    this.devices.revokeAll();
+  revokeAll(): { error: 'write-failed' } | undefined {
+    const saved = this.devices.revokeAll();
     this.emitStatus();
+    return saved ? undefined : { error: 'write-failed' };
   }
 
   rename(id: string, name: string): void {

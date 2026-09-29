@@ -64,6 +64,7 @@ export const de: Readonly<Record<string, string>> = {
   'composer.send': 'Senden ↵',
   'composer.insert': 'Einfügen',
   'composer.sending': 'Sende…',
+  'composer.submitSkipped': 'Getippt, aber Enter wurde nicht gedrückt: Der Agent wartet inzwischen auf eine Antwort.',
 
   'confirm.blocked.title': 'Der Agent wartet auf eine Antwort',
   'confirm.blocked.body': 'Dein Text wird ohne Eingabetaste getippt, damit er die Frage nicht versehentlich beantwortet.',
@@ -86,6 +87,7 @@ export const de: Readonly<Record<string, string>> = {
   'ack.tooLong': 'Zu lang zum Senden (höchstens {max} Zeichen).',
   'ack.badKey': 'Diese Taste wird nicht unterstützt.',
   'ack.writeFailed': 'Senden fehlgeschlagen.',
+  'ack.multilineInsert': 'Dieses Terminal ist nicht im Einfügemodus, daher lassen sich mehrere Zeilen nicht ohne Enter einfügen. Füge eine Zeile nach der anderen ein.',
   'ack.unconfirmed': 'Nicht bestätigt. Prüfen Sie das Terminal, bevor Sie erneut senden.',
 
   'toast.blocked': '{label} braucht dich',

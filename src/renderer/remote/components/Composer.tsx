@@ -59,13 +59,13 @@ export function Composer({ client, s, blocked, maxText, t }: Readonly<Props>) {
   const transmit = useCallback((frame: ComposerFrame) => {
     const msg: Extract<ClientMessage, { t: 'send' }> = { t: 'send', s, nonce: frame.nonce, text: frame.text, submit: frame.submit };
     // Exactly the listed fields: the validator rejects an unknown one, and an
-    // explicit `force:false` is noise.
-    if (frame.force) msg.force = true;
+    // empty `force` list (which it also rejects) is noise.
+    if (frame.force.length > 0) msg.force = [...frame.force];
     client.request(msg).then(
       (ack) => {
         // Also when this composer is already unmounted — see clearSentDraft.
         if (ack.ok) clearSentDraft(safeStorage(), s, frame.text);
-        dispatch({ type: 'ack', nonce: ack.nonce, ok: ack.ok, code: ack.code, confirm: ack.confirm });
+        dispatch({ type: 'ack', nonce: ack.nonce, ok: ack.ok, code: ack.code, confirm: ack.confirm, submitSkipped: ack.submitSkipped });
       },
       (err: unknown) => dispatch({ type: 'error', unconfirmed: isUnconfirmed(err) }),
     );
@@ -116,6 +116,9 @@ export function Composer({ client, s, blocked, maxText, t }: Readonly<Props>) {
   return (
     <div className="rc-composer">
       {failure && <p className="rc-composer__error" role="alert">{failure}</p>}
+      {state.phase === 'acked' && state.submitSkipped && (
+        <p className="rc-composer__error" role="status">{t.t('composer.submitSkipped')}</p>
+      )}
       <div className="rc-composer__row">
         <textarea
           ref={boxRef}

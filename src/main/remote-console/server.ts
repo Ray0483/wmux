@@ -9,8 +9,17 @@
  * rebinding), then route, then method, then Origin for anything with an
  * effect — and a WebSocket upgrade passes a stricter version of the same
  * sequence before `handleUpgrade` is ever reached: Host, Origin, `/ws`,
- * penalty box, cookie, device still paired, connection caps. A failure there
- * is a bare status line and a destroyed socket; ws never sees the request.
+ * cookie (then, only for a cookie that does not verify, the penalty box),
+ * device still paired, connection caps. A failure there is a bare status line
+ * and a destroyed socket; ws never sees the request.
+ *
+ * The penalty box is keyed by PEER ADDRESS, and behind `tailscale serve` or
+ * `ssh -L` every phone arrives from 127.0.0.1 — so there the per-peer limits
+ * are effectively global. That is why the box only ever refuses a request that
+ * failed on its own merits: a valid cookie is checked first and never boxed
+ * (a 32-byte token is not guessable, so the box buys nothing against it), and
+ * the global pairing budget is only spent while an offer is live, so junk
+ * POSTs with no code on screen cannot lock pairing out for an hour.
  *
  * Binding is one address, never `0.0.0.0` and never a port walk (I3): the user
  * picked a port and an interface, and silently listening somewhere else would
@@ -298,7 +307,9 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
 
   async function handlePair(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const peer = peerOf(req);
-    if (penalty.isBoxed(peer) || !pairGlobal.hit()) {
+    // No live offer: nothing can be guessed, and the request is answered
+    // `expired` below without touching the global budget.
+    if (penalty.isBoxed(peer) || (deps.devices.pairing() !== null && !pairGlobal.hit())) {
       req.resume();
       send(res, 429, { error: 'rate' });
       return;
@@ -313,9 +324,13 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
       send(res, 400, { error: 'bad-request' });
       return;
     }
+    const offerLive = deps.devices.pairing() !== null;
     const r = deps.devices.consumePairing(v.secret, v.name);
     if (!r.ok) {
-      penalty.fail(peer);
+      // Only a miss against a LIVE offer is a guess; with none there is
+      // nothing to guess, and boxing 127.0.0.1 for it would lock out the
+      // real phone behind a proxy.
+      if (offerLive) penalty.fail(peer);
       // A voided, expired or mistyped code all read the same to the phone:
       // "make a new one". Telling them apart would only help a guesser.
       if (r.reason === 'device-cap') send(res, 400, { error: 'device-cap' });
@@ -412,10 +427,12 @@ export function createConsoleServer(deps: ServerDeps): ConsoleServer {
       return { status: 403 };
     }
     if (routeOf(req.url) !== '/ws') return { status: 404 };
-    const peer = peerOf(req);
-    if (penalty.isBoxed(peer)) return { status: 403 };
+    // Cookie BEFORE the box: behind a proxy every peer is 127.0.0.1, and one
+    // client's junk must not lock every paired phone out.
     const device = deps.devices.verify(readCookie(header(req, 'cookie')));
     if (!device) {
+      const peer = peerOf(req);
+      if (penalty.isBoxed(peer)) return { status: 403 };
       penalty.fail(peer);
       return { status: 401 };
     }

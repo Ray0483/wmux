@@ -27,7 +27,11 @@ describe('buildComposerWrites', () => {
     expect(buildComposerWrites('a\nb', { bracketed: true, submit: true })).toEqual(['\x1b[200~a\nb\x1b[201~', '\r']);
   });
   it('unbracketed turns LF into CR', () => {
-    expect(buildComposerWrites('a\nb', { bracketed: false, submit: false })).toEqual(['a\rb']);
+    expect(buildComposerWrites('a\nb', { bracketed: false, submit: true })).toEqual(['a\rb', '\r']);
+  });
+  it('an unbracketed multiline Insert is never built: its CRs would be Enters', () => {
+    expect(() => buildComposerWrites('a\nb', { bracketed: false, submit: false })).toThrow(RangeError);
+    expect(buildComposerWrites('a\nb', { bracketed: true, submit: false })).toEqual(['\x1b[200~a\nb\x1b[201~']);
   });
   it('unbracketed with submit', () => {
     expect(buildComposerWrites('ls', { bracketed: false, submit: true })).toEqual(['ls', '\r']);
