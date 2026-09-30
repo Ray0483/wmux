@@ -38,6 +38,7 @@ import { readCodeFile, writeCodeFile } from './code-file';
 import { getExplorerRoot, forgetExplorerRoot } from './explorer-roots';
 import { sessionWindows, toRestorePayload, restoreAnswerFor } from './session-windows';
 import { loadSettings, saveSetting } from './settings-store';
+import { stampAgentSessionIds } from './agent-session-persistence';
 import { readConsent, updateConsent } from './agent-integration';
 import { handleAgentStateV2 } from './agent-state-rpc';
 import { remoteTaps } from './remote-console/taps';
@@ -1030,6 +1031,9 @@ export function registerIpcHandlers(windowManager: WindowManager, cdpProxyInstan
   );
 
   ipcMain.handle(IPC_CHANNELS.SESSION_SAVE_NAMED, (_event, session: any) => {
+    for (const workspace of session.workspaces ?? []) {
+      workspace.splitTree = stampAgentSessionIds(workspace.splitTree);
+    }
     saveNamedSession(session);
     return { ok: true };
   });

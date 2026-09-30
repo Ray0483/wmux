@@ -267,6 +267,7 @@ export default function PaneWrapper({
               colorScheme={surface.colorScheme}
               startupCommands={surface.startupCommands}
               claudeSessionId={surface.claudeSessionId}
+              codexSessionId={surface.codexSessionId}
               focused={isFocused && isActive}
               visible={isVisible}
               showFindBar={findBarVisible && isFocused && isActive}

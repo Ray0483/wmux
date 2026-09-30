@@ -41,11 +41,11 @@ import {
   shouldSnapshot,
   writeSessionSnapshot,
 } from './session-persistence';
+import { stampAgentSessionIds } from './agent-session-persistence';
 import { noteIconRevision } from './icon-cache';
 import { installGpuWatchdog } from './gpu-watchdog';
-import { getAgentState, currentPromptId, currentPromptView, reportAgentSession, isAnsweringInput, noteHumanInput, onAgentStateBroadcast } from './agent-state';
+import { getAgentState, currentPromptId, currentPromptView, reportAgentSession, isAnsweringInput, noteHumanInput, onAgentStateBroadcast, onAgentSessionChanged } from './agent-state';
 import {
-  stampClaudeSessionIds,
   pruneDeadClaudeSessions,
   listKnownTranscriptIds,
 } from './claude-resume';
@@ -301,6 +301,16 @@ function routeSpecialV2(
   }
   if (request.method.startsWith('window.')) {
     return handleWindowV2(request.method, request.params, respond, respondError);
+  }
+  if (request.method === 'pane.codex_restore_config') {
+    const prefs = loadSettings()['wmux-workspace-prefs'] as { restoreCodexSessions?: boolean } | undefined;
+    respond({ enabled: !isQuitting && ptyManager.has(request.params?.surfaceId) && prefs?.restoreCodexSessions === true });
+    return true;
+  }
+  // The CLI exiting because wmux is shutting down must not erase recovery IDs.
+  if (request.method === 'pane.release_codex_session' && isQuitting) {
+    respond({ released: false });
+    return true;
   }
   // Declared agent state (issue #128) — pane.report_agent and friends.
   if (handleAgentStateV2(request.method, request.params, respond, respondError)) return true;
@@ -1109,10 +1119,10 @@ type SavedWindow = SessionData['windows'][number];
  * renderer-supplied object on its way to `sessionWindows`; a fresh copy here
  * would have to be threaded through both save paths for no benefit.
  */
-function stampWindowClaudeSessions(state: SavedWindow | undefined): void {
+function stampWindowAgentSessions(state: SavedWindow | undefined): void {
   if (!state?.workspaces) return;
   for (const ws of state.workspaces) {
-    ws.splitTree = stampClaudeSessionIds(ws.splitTree, (id) => getAgentState(id)?.sessionId);
+    ws.splitTree = stampAgentSessionIds(ws.splitTree);
   }
 }
 
@@ -1207,7 +1217,7 @@ app.whenReady().then(() => {
     const state = data?.windows?.[0];
     if (!state) return;
     // Before anything downstream copies this tree (issue #186).
-    stampWindowClaudeSessions(state);
+    stampWindowAgentSessions(state);
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win && !win.isDestroyed()) {
       // Persist the maximized flag and the *normal* (pre-maximize) rectangle so a
@@ -1238,6 +1248,18 @@ app.whenReady().then(() => {
   });
 
   registerIpcHandlers(windowManager, cdpProxy);
+  // Capture a new conversation promptly, rather than waiting for the 30s tick.
+  let sessionSavePending: ReturnType<typeof setTimeout> | undefined;
+  onAgentSessionChanged(() => {
+    if (isQuitting || sessionSavePending) return;
+    sessionSavePending = setTimeout(() => {
+      sessionSavePending = undefined;
+      if (isQuitting) return;
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send('session:request');
+      }
+    }, 100);
+  });
   // A wedged GPU process freezes every window while every PTY lives on
   // (issue #229); the renderer probes for frames, this restarts the process.
   installGpuWatchdog();

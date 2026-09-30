@@ -1764,10 +1764,11 @@ const AGENT_STATE_COMMANDS = {
   'report-metadata': cmdReportMetadata,
   'report-session': async (args: string[]) => {
     const surfaceId = reportingSurface(args, 'report-session');
-    print(await sendV2('pane.report_agent_session', {
+    print(await sendV2(getFlag(args, '--provider') === 'codex' ? 'pane.report_codex_session' : 'pane.report_agent_session', {
       surfaceId,
       seq: seqFlag(args),
       sessionId: getFlag(args, '--session') ?? args[1] ?? null,
+      provider: getFlag(args, '--provider'),
     }));
   },
   'answer-agent': cmdAnswerAgent,
@@ -2050,8 +2051,8 @@ const COMMAND_SPECS = {
     value: ['--model', '--tokens', '--context-pct', '--ttl', '--seq', '--surface'],
   },
   'report-session': {
-    usage: `wmux report-session <sessionId> [--seq N] [--surface <id>]   ${SURFACE_NOTE}`,
-    value: ['--session', '--seq', '--surface'],
+    usage: `wmux report-session <sessionId> [--provider claude|codex] [--seq N] [--surface <id>]   ${SURFACE_NOTE}`,
+    value: ['--session', '--provider', '--seq', '--surface'],
   },
   'answer-agent': {
     usage: 'wmux answer-agent --surface <id> --choice <choiceId>   (reply to ANOTHER pane; no ambient default)',

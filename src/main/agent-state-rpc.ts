@@ -135,12 +135,13 @@ function targetSurface(params: any): SurfaceId | undefined {
  * joined here, at the read, rather than merged in either store, so a caller can
  * still tell "Claude, silent" from "something, blocked".
  */
-function withIdentity<T extends { surfaceId: string }>(snapshot: T): T & {
+function withIdentity<T extends { surfaceId: string; sessionId?: string | null; sessionProvider?: string }>(snapshot: T): T & {
   agent: string | null;
   agentSource: string | null;
 } {
   const identity = agentIdentity.identify(snapshot.surfaceId);
-  return { ...snapshot, agent: identity?.kind ?? null, agentSource: identity?.source ?? null };
+  const reported = snapshot.sessionId ? snapshot.sessionProvider : undefined;
+  return { ...snapshot, agent: reported ?? identity?.kind ?? null, agentSource: reported ? 'session' : identity?.source ?? null };
 }
 
 /**
@@ -224,8 +225,18 @@ const HANDLERS: Record<string, (surfaceId: SurfaceId, p: any) => any> = {
   },
 
   'pane.report_agent_session': (surfaceId, p) => ({
-    accepted: !!reportAgentSession(surfaceId, { seq: p.seq, sessionId: p.sessionId ?? null }),
+    accepted: !!reportAgentSession(surfaceId, { seq: p.seq, sessionId: p.sessionId ?? null, provider: p.provider }),
   }),
+
+  // Distinct verbs keep the Codex launcher inert against older wmux instances.
+  'pane.report_codex_session': (surfaceId, p) => ({
+    accepted: !!reportAgentSession(surfaceId, { sessionId: p.sessionId ?? null, provider: 'codex' }),
+  }),
+  'pane.release_codex_session': (surfaceId, p) => {
+    const current = getAgentState(surfaceId);
+    if (current?.sessionProvider !== 'codex' || current.sessionId !== p.sessionId) return { released: false };
+    return { released: releaseAgent(surfaceId) };
+  },
 
   'pane.report_metadata': (surfaceId, p) => ({
     accepted: !!reportMetadata(surfaceId, {

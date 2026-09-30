@@ -10,6 +10,7 @@ import { PtyLedger } from './pty-ledger';
 import { attachErrorSink, installPtyCrashGuard } from './pty-crash-guard';
 import { powerShellShimDir } from './powershell-shim';
 import { getCliBinPath } from './cli-paths';
+import { codexShimDirs } from './codex-launcher';
 import { getNodeRuntime } from './node-runtime';
 import { system32, opensshPath } from './system32';
 import { bashAlias, gitBashCandidates, isWslBashLauncher, isGitBashLauncher, GIT_BASH_LOGIN_ARGS } from './git-bash';
@@ -628,6 +629,15 @@ export class PtyManager {
     // not matter to any other shell: bash and cmd.exe ignore .ps1 files.
     const cliBinDir = getCliBinPath();
     const shimDirs = [powerShellShimDir(), cliBinDir].filter((d): d is string => d !== null);
+    // Keep the helper under this PTY's process tree so the existing orphan
+    // cleanup also covers Codex and its app-server after an app crash.
+    const codexExe = !nodeRuntime.electron && process.platform === 'win32' && ['powershell', 'cmd'].includes(shellType)
+      ? resolveExistingShellPath('codex.exe') : undefined;
+    shimDirs.unshift(...codexShimDirs({
+      shellType, executable: codexExe, cliBinDir, psVerified: powerShellShimDir() !== null, env,
+      runtime: nodeRuntime.path,
+      launcher: path.join(path.dirname(cliPath), 'wmux-codex.js'),
+    }));
     const pathKey = Object.keys(env).find((k) => k.toLowerCase() === 'path') ?? 'PATH';
     const prefix = shimDirs.join(path.delimiter);
     env[pathKey] = env[pathKey] ? `${prefix}${path.delimiter}${env[pathKey]}` : prefix;

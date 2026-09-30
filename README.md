@@ -613,7 +613,9 @@ On relaunch, wmux restores:
 
 wmux does **not** restore live process state — a running tmux or vim is gone after a restart, and shells are respawned fresh in the saved working directories.
 
-Claude Code is the one exception, and it is opt-in. Turn on **Settings → Workspace → Resume Claude Code sessions on restore** and each terminal that was running Claude when the session was saved comes back with `claude --resume <id>` in the directory it was in. This resumes the *conversation*, not the process: wmux records which session each pane was on and asks Claude to pick it back up. A pane is skipped when Claude no longer has that conversation on disk, and a Claude you exited cleanly is not resumed. Off by default, because every such pane starts an agent the moment the window opens.
+Agent conversation restore is opt-in. Turn on **Settings → Workspace → Resume Claude Code sessions on restore** and each terminal that was running Claude when the session was saved comes back with `claude --resume <id>` in the directory it was in. This resumes the *conversation*, not the process: wmux records which session each pane was on and asks Claude to pick it back up. A pane is skipped when Claude no longer has that conversation on disk, and a Claude you exited cleanly is not resumed. Off by default, because every such pane starts an agent the moment the window opens.
+
+**Codex has its own switch:** **Settings -> Workspace -> Resume Codex sessions on restore**. Enable it, then launch `codex` in a new wmux terminal. wmux records each tab's exact conversation ID and runs `codex resume <id>` in its saved directory. Tabs sharing a folder keep their own conversations; restore never uses `--last`. No Codex hooks or manual hook approval are needed. This opt-in integration supports the native Windows Codex CLI in PowerShell and Command Prompt; both restore switches default to off. [Compatibility and verification](docs/codex-session-restore.md).
 
 ## Config
 

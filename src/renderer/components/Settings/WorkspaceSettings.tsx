@@ -286,6 +286,19 @@ export default function WorkspaceSettings() {
       </p>
 
       <div className="settings-row">
+        <label className="settings-label">{t('settings.workspacePanel.restoreCodexSessions', 'Resume Codex sessions on restore')}</label>
+        <input
+          type="checkbox"
+          className="settings-toggle"
+          checked={workspacePrefs.restoreCodexSessions}
+          onChange={(e) => setWorkspacePrefs({ restoreCodexSessions: e.target.checked })}
+        />
+      </div>
+      <p className="settings-hint">
+        {t('settings.workspacePanel.restoreCodexSessionsHint', 'Reopens the exact Codex conversation in each restored tab. Enable this, then launch codex in a new wmux terminal. Requires Node.js and the native Windows Codex CLI in PowerShell or Command Prompt. Sessions you exit normally are not reopened.')}
+      </p>
+
+      <div className="settings-row">
         <label className="settings-label">{t('settings.workspacePanel.detectAgentScreens', 'Read agent screens to infer state')}</label>
         <input
           type="checkbox"
