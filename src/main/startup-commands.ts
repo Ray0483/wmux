@@ -12,13 +12,21 @@
 //
 //   * everything else (cmd, bash, WSL, PowerShell with no integration): TYPED
 //     into the PTY. That used to happen in two places with two different rules.
-//     The renderer wrote `<cmd>\r` on a blind 600 ms timer after pty.create —
-//     which is the restore path #251 is about, and "pty created" is not "shell
-//     reading": the reporter measured cmd at 372 ms and pwsh at 1.5 s to ready,
-//     and switching to cmd made the loss rarer without closing it, which is the
-//     signature of exactly that timer. agent-manager.ts had its own prompt
-//     sniff for `wmux agent spawn`. Two deliveries with two ideas of "ready"
-//     is how one of them stays broken while the other gets fixed.
+//     The renderer wrote `<cmd>\r` on a blind 600 ms timer after pty.create,
+//     and "pty created" is not "shell reading". agent-manager.ts had its own
+//     prompt sniff for `wmux agent spawn`. Two deliveries with two ideas of
+//     "ready" is how one of them stays broken while the other gets fixed.
+//
+//     This gate is NOT the fix for #251, though 2.14.0 shipped it as one. The
+//     symptom there (`esume` in Claude's session picker) is Claude receiving
+//     `-resume` with ONE dash — its parser reads that as `-r` with the value
+//     `esume`, and the picker's search box is seeded from argv, never from
+//     keystrokes. Measured afterwards over ~1,900 deliveries (cmd, pwsh 7,
+//     5.1, both ConPTYs, the old blind timer at every delay from 0 to 1.8 s):
+//     the timer never lost a character — the console input buffer holds
+//     type-ahead — and a restored pwsh pane was never on this path at all. No
+//     wmux path drops that dash; the open question is what `claude` resolves
+//     to on the reporter's machine. Do not "fix" #251 here again.
 //
 // So PtyManager owns delivery now, for every caller, and this module is the
 // rule it applies. Readiness, strongest signal first:

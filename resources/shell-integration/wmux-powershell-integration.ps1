@@ -819,12 +819,17 @@ $null = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.PS
 # merged into a bogus executed line (e.g. "62;4;9;22ccls"). Running here avoids
 # that entirely. Runs last so the prompt override / PSReadLine handlers exist.
 if ($env:WMUX_STARTUP_COMMANDS) {
-    foreach ($_wmux_cmd in ($env:WMUX_STARTUP_COMMANDS -split "`n")) {
+    $_wmux_startup = $env:WMUX_STARTUP_COMMANDS -split "`n"
+    # One-shot, and cleared BEFORE the loop: removing it afterwards meant the
+    # startup command's own process inherited it (measured: a baked
+    # `cmd /c echo %WMUX_STARTUP_COMMANDS%` printed it). A restored
+    # `claude --resume <id>` and everything that agent spawned then carried
+    # the command line, session id included, in their environment.
+    Remove-Item Env:\WMUX_STARTUP_COMMANDS -ErrorAction SilentlyContinue
+    foreach ($_wmux_cmd in $_wmux_startup) {
         $_wmux_cmd = $_wmux_cmd.Trim()
         if ($_wmux_cmd) {
             try { Invoke-Expression $_wmux_cmd } catch { Write-Error $_ }
         }
     }
-    # One-shot: don't let it leak into child shells spawned from this session.
-    Remove-Item Env:\WMUX_STARTUP_COMMANDS -ErrorAction SilentlyContinue
 }
