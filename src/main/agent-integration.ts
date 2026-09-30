@@ -1,7 +1,7 @@
 /**
  * Consent gate for everything wmux writes outside its own directory (issue #132).
  *
- * wmux integrates with Claude Code, OpenCode, Kiro, omp and pi by editing files
+ * wmux integrates with Claude Code, OpenCode, Kiro, omp, pi and Grok by editing files
  * in the user's home: it appends a block to ~/.claude/CLAUDE.md,
  * ~/.config/opencode/AGENTS.md, ~/.omp/agent/AGENTS.md and pi's user-scope
  * context file, writes ~/.kiro/steering/wmux.md, registers eight hook families
@@ -46,6 +46,12 @@ import {
 } from './opencode-context';
 import { ensureKiroContext, removeKiroContext } from './kiro-context';
 import { ensureOmpContext, removeOmpContext } from './omp-context';
+import {
+  ensureGrokContext,
+  ensureGrokHooks,
+  removeGrokContext,
+  removeGrokHooks,
+} from './grok-context';
 import {
   ensurePiContext,
   ensurePiExtension,
@@ -97,6 +103,9 @@ export const INTEGRATION_CONSENT_DETAIL =
   '      a wmux section, between markers, leaving your own text untouched\n' +
   '  • ~/.kiro/steering/wmux.md\n' +
   '      a steering file of wmux\'s own; your other Kiro steering is untouched\n' +
+  '  • ~/.grok/rules/wmux.md and ~/.grok/hooks/wmux.json (only if Grok is installed)\n' +
+  '      files of wmux\'s own; the rules file only when Grok is not already\n' +
+  '      reading the ~/.claude/CLAUDE.md section\n' +
   '  • ~/.claude/settings.json\n' +
   '      eight hook families: PostToolUse, Notification, Stop, SubagentStop,\n' +
   '      SessionStart, UserPromptSubmit, PreToolUse and SessionEnd\n' +
@@ -150,11 +159,13 @@ function applyFeature(feature: IntegrationFeature, enabled: boolean): void {
   switch (feature) {
     case 'instructions':
       if (enabled) {
+        // Grok after Claude: it writes its rules file only when Grok would not
+        // already read the block ensureClaudeContext just put in CLAUDE.md.
         ensureClaudeContext(); ensureOpencodeContext(); ensureKiroContext();
-        ensureOmpContext(); ensurePiContext();
+        ensureOmpContext(); ensurePiContext(); ensureGrokContext();
       } else {
         removeClaudeContext(); removeOpencodeContext(); removeKiroContext();
-        removeOmpContext(); removePiContext();
+        removeOmpContext(); removePiContext(); removeGrokContext();
       }
       break;
     case 'hooks':
@@ -165,8 +176,8 @@ function applyFeature(feature: IntegrationFeature, enabled: boolean): void {
       // pre-existing mismatch deliberately left alone — moving it would
       // silently re-enable a status bridge for every user who switched that
       // toggle off, which is the #132 complaint in reverse.
-      if (enabled) { ensureClaudeHooks(); ensurePiExtension(); }
-      else { removeClaudeHooks(); removePiExtension(); }
+      if (enabled) { ensureClaudeHooks(); ensurePiExtension(); ensureGrokHooks(); }
+      else { removeClaudeHooks(); removePiExtension(); removeGrokHooks(); }
       break;
     case 'orchestrator':
       // The Claude Code half of this feature is DEPRECATED (issue #239) and has
@@ -226,7 +237,7 @@ export async function promptForConsent(parent?: Electron.BrowserWindow): Promise
       defaultId: 0,
       cancelId: 1,
       title: 'wmux — agent integration',
-      message: 'Let wmux set up Claude Code, OpenCode, Kiro, omp and pi?',
+      message: 'Let wmux set up Claude Code, OpenCode, Kiro, omp, pi and Grok?',
       detail: INTEGRATION_CONSENT_DETAIL,
       noLink: true,
     };

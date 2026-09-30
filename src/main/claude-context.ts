@@ -7,7 +7,7 @@ const START_MARKER = '<!-- wmux:start';
 const END_MARKER = '<!-- wmux:end -->';
 
 
-function getClaudeMdPath(): string {
+export function getClaudeMdPath(): string {
   return path.join(os.homedir(), '.claude', 'CLAUDE.md');
 }
 
@@ -297,7 +297,7 @@ export function applyWmuxHooks(settings: any, hookScript: string): any {
   // may still use Git Bash, so a PowerShell-only spelling (`2>$null`) is
   // equally wrong. No redirect is valid in bash, cmd and pwsh.
   const makeToolCmd = (tool: string) => `node "${hookScript}" ${tool}`;
-  const makeEventCmd = (event: string) => `node "${hookScript}" --event ${event}`;
+  const makeEventCmd = (event: string) => wmuxEventHookCommand(hookScript, event);
 
   // The per-tool-call hooks run in the BACKGROUND. Every wmux hook is a pure
   // observer: it reports to the pipe and never blocks a tool or injects
@@ -384,6 +384,37 @@ export function applyWmuxHooks(settings: any, hookScript: string): any {
 }
 
 /**
+ * The command line a lifecycle hook entry runs. Shared with grok-context.ts,
+ * whose hook file has to carry these exact bytes: Grok dedupes a hook it finds
+ * in both ~/.grok/hooks and ~/.claude/settings.json only when the command
+ * strings are identical.
+ */
+export function wmuxEventHookCommand(hookScript: string, event: string): string {
+  return `node "${hookScript}" --event ${event}`;
+}
+
+/**
+ * Absolute, forward-slashed path to the hook helper OUTSIDE the ASAR.
+ * __dirname is inside app.asar when packaged — Node.js outside Electron can't
+ * read ASAR files, so we use the standalone copy in resources/cli/.
+ */
+export function getHookScriptPath(): string {
+  let hookScript: string;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { app } = require('electron') as typeof import('electron');
+    if (app.isPackaged) {
+      hookScript = path.join(process.resourcesPath, 'cli', 'wmux-hook.js');
+    } else {
+      hookScript = path.resolve(path.join(__dirname, '../../resources/cli/wmux-hook.js'));
+    }
+  } catch {
+    hookScript = path.resolve(path.join(__dirname, '../../resources/cli/wmux-hook.js'));
+  }
+  return hookScript.split(path.sep).join('/');
+}
+
+/**
  * Ensures Claude Code's ~/.claude/settings.json has the wmux hooks:
  *  - PostToolUse   → drives the sidebar/diff view (tool activity)
  *  - Notification  → fires a wmux notification when the agent needs input/permission
@@ -405,24 +436,7 @@ export function ensureClaudeHooks(): void {
     let settings: any;
     try { settings = JSON.parse(raw); } catch { return; }
 
-    // Use absolute path to the hook helper script OUTSIDE the ASAR.
-    // __dirname is inside app.asar when packaged — Node.js outside Electron
-    // can't read ASAR files, so we use the standalone copy in resources/cli/.
-    let hookScript: string;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { app } = require('electron') as typeof import('electron');
-      if (app.isPackaged) {
-        hookScript = path.join(process.resourcesPath, 'cli', 'wmux-hook.js');
-      } else {
-        hookScript = path.resolve(path.join(__dirname, '../../resources/cli/wmux-hook.js'));
-      }
-    } catch {
-      hookScript = path.resolve(path.join(__dirname, '../../resources/cli/wmux-hook.js'));
-    }
-    hookScript = hookScript.split(path.sep).join('/');
-
-    const updated = applyWmuxHooks(settings, hookScript);
+    const updated = applyWmuxHooks(settings, getHookScriptPath());
     fs.writeFileSync(settingsPath, JSON.stringify(updated, null, 2), 'utf-8');
     console.log(`[wmux] Configured ${WMUX_HOOK_EVENTS.join('/')} hooks in ~/.claude/settings.json`);
   } catch (err) {
