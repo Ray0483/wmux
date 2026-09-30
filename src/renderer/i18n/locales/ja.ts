@@ -579,7 +579,7 @@ export const ja: Translation = {
   'surfaceTab.profileBadge': 'プロジェクト',
   // 設定 — エージェント統合の同意 (issue #132)
   'settings.integration.section': 'エージェント統合',
-  'settings.integration.enable': 'wmux が Claude Code、OpenCode、Kiro を設定できるようにする',
+  'settings.integration.enable': 'wmux が Claude Code、OpenCode、Kiro、omp、pi、Grok を設定できるようにする',
   'settings.integration.hint':
     'wmux はホームディレクトリのファイルを編集して、コーディングエージェントがブラウザーパネル、markdown ビュー、サイドバーのステータスを操作できるようにします。ここで何かをオフにすると、それが書き込んだものも削除されます。',
   'settings.integration.instructions': 'エージェントの指示',

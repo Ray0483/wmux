@@ -579,7 +579,7 @@ export const tr: Translation = {
   'surfaceTab.profileBadge': 'proje',
   // Ayarlar — aracı entegrasyonu onayı (issue #132)
   'settings.integration.section': 'Aracı entegrasyonu',
-  'settings.integration.enable': 'wmux\'un Claude Code, OpenCode ve Kiro\'yu yapılandırmasına izin ver',
+  'settings.integration.enable': 'wmux\'un Claude Code, OpenCode, Kiro, omp, pi ve Grok\'u yapılandırmasına izin ver',
   'settings.integration.hint':
     'wmux, kod üretim aracılarının tarayıcı panelini, markdown görünümlerini ve kenar çubuğu durumunu yönlendirebilmesi için ev dizininizdeki dosyaları düzenler. Burada bir şeyi kapatmak, onun yazdıklarını da kaldırır.',
   'settings.integration.instructions': 'Aracı talimatları',

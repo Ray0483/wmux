@@ -184,7 +184,7 @@ function salvageSessionId(raw) {
  */
 const NOTIFICATION_TYPE_RE = /^[a-z][a-z0-9_]{0,63}$/;
 function parsePayload(raw) {
-    const out = { file: '', message: '', sessionId: '', toolName: '', prompt: '', notificationType: '' };
+    const out = { file: '', message: '', sessionId: '', toolName: '', prompt: '', notificationType: '', subagent: false };
     if (!raw.trim())
         return out;
     let data;
@@ -200,8 +200,16 @@ function parsePayload(raw) {
         out.sessionId = salvageSessionId(raw);
         return out;
     }
+    // Grok Build runs these same hooks out of ~/.claude/settings.json (its Claude
+    // compatibility, on by default) but sends a camelCase envelope: `toolInput`,
+    // `toolName`, `notificationType`. Read both spellings, or every Grok
+    // `idle_prompt` — which it fires at the end of EVERY turn — loses its type
+    // and is classified on message text alone (the #253 "Needs you" bug again).
+    // Grok's session id is never forwarded — see the GROK_HOOK_EVENT guard in
+    // sendHook, which is needed because Grok sends a snake_case `session_id` too.
+    const toolInput = data.tool_input ?? data.toolInput;
     // Claude Code provides tool_input with file_path for Edit/Write.
-    out.file = data.tool_input?.file_path || data.tool_input?.path || data.input?.file_path || '';
+    out.file = toolInput?.file_path || toolInput?.path || data.input?.file_path || '';
     // The Notification hook payload carries the prompt text in `message`.
     out.message = data.message || '';
     // Which KIND of Notification this is (issue #253). Claude Code fires the one
@@ -209,14 +217,16 @@ function parsePayload(raw) {
     // the payload's `notification_type` tells them apart reliably — wmux read the
     // message alone, so an idle reminder that followed a background subagent was
     // taken for a question and the pane said "Needs you" with nothing to answer.
-    if (event === 'Notification' && typeof data.notification_type === 'string'
-        && NOTIFICATION_TYPE_RE.test(data.notification_type)) {
-        out.notificationType = data.notification_type;
+    const notificationType = data.notification_type ?? data.notificationType;
+    if (event === 'Notification' && typeof notificationType === 'string'
+        && NOTIFICATION_TYPE_RE.test(notificationType)) {
+        out.notificationType = notificationType;
     }
     // PreToolUse is registered matcher-less (one entry for every tool rather than
     // one entry per tracked tool), so the tool name arrives on stdin not argv.
-    if (typeof data.tool_name === 'string')
-        out.toolName = data.tool_name;
+    const toolName = data.tool_name ?? data.toolName;
+    if (typeof toolName === 'string')
+        out.toolName = toolName;
     // Every Claude Code hook payload carries the conversation's session_id. wmux
     // parsed this payload for years and threw it away, which is the only reason
     // `AgentStateRecord.sessionId` — a slot that has always existed and is
@@ -224,6 +234,7 @@ function parsePayload(raw) {
     // Forwarding it is what makes `claude --resume` possible on restore.
     if (typeof data.session_id === 'string')
         out.sessionId = data.session_id;
+    out.subagent = typeof data.subagentType === 'string' && data.subagentType !== '';
     // UserPromptSubmit carries what the user actually typed, and wmux threw it
     // away — which is why the prompt-log features in issue #207 had no source of
     // truth for an agent pane. It cannot be recovered from the screen: an agent
@@ -238,6 +249,36 @@ function parsePayload(raw) {
     }
     return out;
 }
+/**
+ * The event wmux is told about for the hook that fired, or null for none.
+ *
+ * Only Grok makes this anything but the identity. Two things differ from Claude
+ * Code, and both are about whose event it is:
+ *
+ * - `StopCancelled` (Ctrl+C, a declined permission, the turn limit) and
+ *   `StopFailure` (an API error) run INSTEAD of `Stop`, so to wmux they are the
+ *   turn ending — grok-context.ts registers them for exactly that.
+ *
+ * - A Grok subagent runs its OWN session, and that session fires the same hooks
+ *   on the parent's pane (they inherit WMUX_SURFACE_ID), marked with
+ *   `subagentType`. Claude Code keeps a subagent inside the parent's session and
+ *   gives its ending a name of its own, so none of this arises there. Read as
+ *   the pane's own, a child's `SessionEnd` releases the pane's record while the
+ *   parent is still mid-turn, and a child's `UserPromptSubmit` — its task brief,
+ *   not something the user typed — clears a "Needs you" nobody answered and
+ *   lands in the prompt log as a user prompt. Neither is reported. A child's
+ *   turn ending is `SubagentStop`, which may sustain a turn and never end one.
+ *   Its tool events and its Notifications still pass: a subagent working is the
+ *   pane working, and its permission prompt is a real question on screen.
+ */
+function reportedEvent(fired, subagent) {
+    const turnEnd = fired === 'StopCancelled' || fired === 'StopFailure';
+    if (!subagent)
+        return turnEnd ? 'Stop' : fired;
+    if (fired === 'SessionEnd' || fired === 'UserPromptSubmit')
+        return null;
+    return turnEnd ? 'SubagentStop' : fired;
+}
 function sendHook() {
     if (sent)
         return;
@@ -250,7 +291,12 @@ function sendHook() {
     // caller opened it and never closes it, exiting would otherwise wait on a
     // stream nobody is going to end.
     process.stdin.pause();
-    const { file, message, sessionId, toolName, prompt, notificationType } = parsePayload(stdinData);
+    const { file, message, sessionId, toolName, prompt, notificationType, subagent } = parsePayload(stdinData);
+    const reported = reportedEvent(event, subagent);
+    // Nothing to say, so no connection either: the pipe is never opened.
+    if (reported === null)
+        process.exit(0);
+    event = reported;
     if (!tool && toolName)
         tool = toolName;
     const params = { at: firedAt };
@@ -264,7 +310,11 @@ function sendHook() {
         params.message = message;
     if (notificationType)
         params.notificationType = notificationType;
-    if (sessionId)
+    // Not under Grok (it sets GROK_HOOK_EVENT on every hook process). Grok 1.0.44
+    // sends `session_id` alongside `sessionId`, and an id recorded here ends up on
+    // a `claude --resume` command line at restore — naming a session Claude has
+    // never seen.
+    if (sessionId && !process.env.GROK_HOOK_EVENT)
         params.sessionId = sessionId;
     if (prompt)
         params.prompt = prompt;

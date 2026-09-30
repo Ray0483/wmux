@@ -579,7 +579,7 @@ export const hi: Translation = {
   'surfaceTab.profileBadge': 'प्रोजेक्ट',
   // सेटिंग्स — एजेंट एकीकरण की सहमति (issue #132)
   'settings.integration.section': 'एजेंट एकीकरण',
-  'settings.integration.enable': 'wmux को Claude Code, OpenCode और Kiro कॉन्फ़िगर करने दें',
+  'settings.integration.enable': 'wmux को Claude Code, OpenCode, Kiro, omp, pi और Grok कॉन्फ़िगर करने दें',
   'settings.integration.hint':
     'wmux आपकी होम डायरेक्टरी में फ़ाइलें संपादित करता है ताकि कोडिंग एजेंट उसके ब्राउज़र पैनल, markdown दृश्य और साइडबार स्थिति चला सकें। यहाँ कुछ बंद करने पर वह जो लिखा गया था उसे भी हटा देता है।',
   'settings.integration.instructions': 'एजेंट निर्देश',

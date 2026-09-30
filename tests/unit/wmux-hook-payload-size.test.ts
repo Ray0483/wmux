@@ -182,6 +182,108 @@ describe('wmux-hook.js Notification kind (issue #253)', () => {
     expect(req.params.message).toBe('Claude is waiting for your input');
   });
 
+  it("reads Grok Build's camelCase envelope, but never its sessionId", async () => {
+    const server = await startCapturingServer();
+    close = server.close;
+
+    // Grok runs the ~/.claude/settings.json hooks through its Claude
+    // compatibility and fires idle_prompt at every turn end. Without the type
+    // the pane reads "Needs you"; with Grok's session id, restore would run
+    // `claude --resume` on an id Claude has never seen. Shape and env as
+    // captured from grok 1.0.44: both id spellings, GROK_HOOK_EVENT set.
+    const env = { ...envFor(server.port), GROK_HOOK_EVENT: 'notification' };
+    await runHook(['--event', 'Notification'], env, JSON.stringify({
+      hookEventName: 'notification',
+      hook_event_name: 'Notification',
+      sessionId: 'grok-session-0001',
+      session_id: 'grok-session-0001',
+      toolName: 'run_terminal_command',
+      message: 'Grok is waiting for your input',
+      notificationType: 'idle_prompt',
+    }));
+
+    const req = await server.requests;
+    expect(req.params.notificationType).toBe('idle_prompt');
+    expect(req.params.tool).toBe('run_terminal_command');
+    expect(req.params.sessionId).toBeUndefined();
+  });
+
+  it('reports Grok\'s StopCancelled as the turn ending, and a subagent\'s as SubagentStop', async () => {
+    for (const [event, payload, expected] of [
+      ['StopCancelled', { hook_event_name: 'StopCancelled', reason: 'user_interrupt' }, 'Stop'],
+      ['StopFailure', { hook_event_name: 'StopFailure', subagentType: 'explore' }, 'SubagentStop'],
+    ] as const) {
+      const server = await startCapturingServer();
+      close = server.close;
+      await runHook(['--event', event], envFor(server.port), JSON.stringify(payload));
+      expect((await server.requests).params.event).toBe(expected);
+      await server.close();
+      close = undefined;
+    }
+  });
+
+  it("reports nothing for a Grok subagent's own SessionEnd or UserPromptSubmit", async () => {
+    // A Grok subagent is its own session firing on the PARENT's pane. Its
+    // SessionEnd would release the pane's record mid-turn; its UserPromptSubmit
+    // (the task brief) would clear a "Needs you" nobody answered and enter the
+    // prompt log as something the user typed.
+    for (const [event, payload] of [
+      ['SessionEnd', { hook_event_name: 'SessionEnd', reason: 'completed', subagentType: 'explore' }],
+      ['UserPromptSubmit', { hook_event_name: 'UserPromptSubmit', prompt: 'find the config loader', subagentType: 'explore' }],
+    ] as const) {
+      const server = await startCapturingServer();
+      close = server.close;
+      await runHook(['--event', event], envFor(server.port), JSON.stringify(payload));
+      // The helper has exited; a frame it sent would already be here.
+      const got = await Promise.race([
+        server.requests,
+        new Promise((r) => setTimeout(() => r('nothing'), 300)),
+      ]);
+      expect(got).toBe('nothing');
+      await server.close();
+      close = undefined;
+    }
+  });
+
+  it("still reports the MAIN session's SessionEnd and UserPromptSubmit under Grok", async () => {
+    const server = await startCapturingServer();
+    close = server.close;
+    const env = { ...envFor(server.port), GROK_HOOK_EVENT: 'user_prompt_submit' };
+    await runHook(['--event', 'UserPromptSubmit'], env, JSON.stringify({
+      hook_event_name: 'UserPromptSubmit', sessionId: 'grok-session-0001', prompt: 'fix the build',
+    }));
+    const req = await server.requests;
+    expect(req.params.event).toBe('UserPromptSubmit');
+    expect(req.params.prompt).toBe('fix the build');
+  });
+
+  it("keeps a Grok subagent's tool events and turn ending on the pane", async () => {
+    for (const [event, payload, expected] of [
+      ['PreToolUse', { hook_event_name: 'PreToolUse', toolName: 'read_file', subagentType: 'explore' }, 'PreToolUse'],
+      ['StopCancelled', { hook_event_name: 'StopCancelled', reason: 'max_turns', subagentType: 'explore' }, 'SubagentStop'],
+    ] as const) {
+      const server = await startCapturingServer();
+      close = server.close;
+      await runHook(['--event', event], envFor(server.port), JSON.stringify(payload));
+      expect((await server.requests).params.event).toBe(expected);
+      await server.close();
+      close = undefined;
+    }
+  });
+
+  it('forwards a Claude session id — the Grok guard is on the env, not the payload', async () => {
+    const server = await startCapturingServer();
+    close = server.close;
+    const env = envFor(server.port);
+    delete env.GROK_HOOK_EVENT;
+    await runHook(['--event', 'Stop'], env, JSON.stringify({
+      session_id: 'abc123DEF-456_789', hook_event_name: 'Stop',
+    }));
+    const req = await server.requests;
+    expect(req.params.event).toBe('Stop');
+    expect(req.params.sessionId).toBe('abc123DEF-456_789');
+  });
+
   it('drops a notification_type that is not an identifier', async () => {
     const server = await startCapturingServer();
     close = server.close;

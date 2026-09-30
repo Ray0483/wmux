@@ -580,7 +580,7 @@ export const zhTW: Translation = {
   'surfaceTab.profileBadge': '專案',
   // 設定 — agent 整合的同意設定 (issue #132)
   'settings.integration.section': 'agent 整合',
-  'settings.integration.enable': '讓 wmux 自動設定 Claude Code、OpenCode 與 Kiro',
+  'settings.integration.enable': '讓 wmux 自動設定 Claude Code、OpenCode、Kiro、omp、pi 與 Grok',
   'settings.integration.hint': 'wmux 會修改使用者主目錄中的檔案，讓 coding agent 能夠操作它的瀏覽器面板、Markdown 檢視與側邊欄狀態。在這裡關掉任何一項，它寫入的內容也會一併移除。',
   'settings.integration.instructions': 'agent 指示檔',
   'settings.integration.hooks': '狀態 hook',
