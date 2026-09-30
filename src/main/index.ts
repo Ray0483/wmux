@@ -1549,7 +1549,7 @@ app.whenReady().then(() => {
         respond({ ok: true, note: 'Zoom toggle is a renderer-only action' });
         break;
       }
-      // pane.list, layout.grid, system.tree, surface.create/close/focus/list
+      // pane.list, layout.grid, layout.agents, system.tree, surface.create/close/focus/list
       // handled by handleBridgeV2 (./v2-bridge).
       case 'surface.set_color_scheme': {
         // Per-pane color scheme override (issue #4). Pass `scheme: null` to clear.

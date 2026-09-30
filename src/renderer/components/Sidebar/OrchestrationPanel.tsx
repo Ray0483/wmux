@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useStore } from '../../store';
 import { useT } from '../../i18n';
 import { OrchestrationWave, OrchestrationAgent, OrchestrationState } from '../../../shared/types';
+import { groupWaveAgents } from './orchestration-groups';
 
 /**
  * Sidebar panel for the wmux-orchestrator plugin. Self-contained; auto-hides
@@ -124,9 +125,21 @@ function WaveBlock({ wave, now }: { wave: OrchestrationWave; now: number }) {
         <span className="orch-panel__wave-pct">{Math.round(progress * 100)}%</span>
       </div>
       <div className="orch-panel__agents">
-        {wave.agents.map((agent) => (
-          <AgentCard key={agent.id} agent={agent} now={now} />
-        ))}
+        {groupWaveAgents(wave.agents).map((item) =>
+          item.kind === 'agent' ? (
+            <AgentCard key={item.agent.id} agent={item.agent} now={now} />
+          ) : (
+            <div key={`group:${item.name}`} className="orch-panel__group">
+              <div className="orch-panel__group-head" title={item.name}>
+                <span className="orch-panel__group-name">{item.name}</span>
+                <span className="orch-panel__group-count">{item.done}/{item.total}</span>
+              </div>
+              {item.agents.map((agent) => (
+                <AgentCard key={agent.id} agent={agent} now={now} />
+              ))}
+            </div>
+          ),
+        )}
       </div>
     </div>
   );

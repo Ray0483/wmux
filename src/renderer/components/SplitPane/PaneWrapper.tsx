@@ -643,6 +643,7 @@ export default function PaneWrapper({
   return (
     <div
       ref={paneRef}
+      data-pane-id={paneId}
       className={`pane-wrapper ${isFocused ? 'pane-wrapper--focused' : ''} ${dragActive ? 'pane-wrapper--drag-active' : ''}`}
     >
       <SurfaceTabBar

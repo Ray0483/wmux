@@ -27,6 +27,8 @@ interface BridgeSpec {
    * deliberately NOT scoped: the renderer resolves those ids window-wide.
    */
   callerScoped?: boolean;
+  // Reject bad params before any window is looked up. Returns the -32602 message.
+  validate?: (params: any) => string | null;
 }
 
 /** Which window (by `BrowserWindow.id`) and workspace a call should be answered by. */
@@ -92,6 +94,33 @@ export async function resolveCallerTarget<W>(
 
 const S = (v: any) => JSON.stringify(v);
 
+// Same value as MAX_AGENT_CELLS in renderer/store/split-utils.ts; main's tsconfig does not include the renderer.
+const MAX_LAYOUT_AGENT_CELLS = 16;
+
+/**
+ * -32602 message for `layout.agents` params, or null when they are usable.
+ * Main answers this itself so a bad count never reaches a renderer. The ratio
+ * is only checked for being a finite number: clamping to [0.2, 0.8] belongs to
+ * `buildAgentLayout`, so an out-of-range ratio is not an error.
+ */
+export function validateLayoutAgentsParams(params: unknown): string | null {
+  if (typeof params !== 'object' || params === null || Array.isArray(params)) {
+    return 'layout.agents params must be an object';
+  }
+  const p = params as Record<string, unknown>;
+  if (!Number.isInteger(p.count) || (p.count as number) < 1 || (p.count as number) > MAX_LAYOUT_AGENT_CELLS) {
+    return `count must be an integer from 1 to ${MAX_LAYOUT_AGENT_CELLS}`;
+  }
+  if (p.coordinatorRatio !== undefined
+    && (typeof p.coordinatorRatio !== 'number' || !Number.isFinite(p.coordinatorRatio))) {
+    return 'coordinatorRatio must be a finite number';
+  }
+  for (const key of ['type', 'anchorSurfaceId', 'anchorPaneId', 'workspaceId']) {
+    if (p[key] !== undefined && typeof p[key] !== 'string') return `${key} must be a string`;
+  }
+  return null;
+}
+
 // caller surface id → the window that last held it. See resolveCallerTarget:
 // this is a hint that reorders the probe, not a binding.
 const callerWindows = new Map<string, number>();
@@ -156,6 +185,13 @@ const SPECS: Record<string, BridgeSpec> = {
     requireResult: 'No active workspace or invalid anchor',
     callerScoped: true,
   },
+  // `validate` runs first, so the renderer can assume `params` is an object.
+  'layout.agents': {
+    js: (p) => `window.__wmux_layoutAgents?.(${S(p)})`,
+    requireResult: 'No active workspace or invalid anchor',
+    callerScoped: true,
+    validate: validateLayoutAgentsParams,
+  },
   'system.tree': {
     js: (p) => `window.__wmux_getTree?.(${S(p?.workspaceId)})`,
     shape: (r) => ({ tree: r || null }),
@@ -206,6 +242,8 @@ const SPECS: Record<string, BridgeSpec> = {
 function runBridge(spec: BridgeSpec, params: any, respond: Respond, respondError: RespondError): void {
   (async () => {
     try {
+      const invalid = spec.validate?.(params);
+      if (invalid) { respondError(-32602, invalid); return; }
       const target = await targetForCaller(params?.caller);
       if (!target) {
         if (spec.emptyOnNoWindow !== undefined) { respond(spec.emptyOnNoWindow); return; }

@@ -93,3 +93,20 @@ When you detect strong or weak coupling in a wave, walk this flowchart:
 
 - Do NOT duplicate the class-name list (or type list, or API schema) into each coupled agent's prompt and hope they converge. They won't. Two Claudes reading the same instruction file still produce different code when asked to "use names like these." The contract must be ONE file on disk that all agents Read.
 - Do NOT assume that listing "expected classes" in an agent's prompt is the same as a contract. It is not. A contract is a real file on disk, referenced by path, that every coupled agent Reads before writing code.
+
+## Grouping agents into panes
+
+With wmux, every agent of a wave gets its own cell in the worker grid unless you give several agents of that wave the same `group`. Grouped agents share one cell as tabs, and the first one is the active tab. Grouping changes only where agents are shown. They still run in parallel, with the same zones, contracts and results.
+
+Group when:
+- a wave has 4–5 agents and the cells would get too small to read;
+- agents work on the same feature or bug, or do the same kind of work (e.g. all coders of one feature, or independent agents on one bug);
+- you do not need to watch them side by side. A background tab keeps running and can be opened with one click.
+
+Do not group when:
+- the agents are in different waves. A group lives inside one wave, so a coder in wave N and its reviewer in wave N+1 are never a group;
+- an agent is risky or likely to block on the user. Give it its own cell so it stays visible;
+- the wave has only 2–3 agents. Separate cells are already big enough;
+- it would make a group of more than about 3 agents. Split it into two groups or leave some ungrouped.
+
+A group of one behaves exactly like an ungrouped agent. A pane group is not the same as a coupled group (see "Coupling Detection"): coupling decides whether agents need a shared contract, grouping only decides how they are laid out.

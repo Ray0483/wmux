@@ -10,6 +10,7 @@ exports.browserRequest = browserRequest;
 exports.subcommandError = subcommandError;
 exports.formatRemoteStatus = formatRemoteStatus;
 exports.parseFlagArgs = parseFlagArgs;
+exports.layoutAgentsParams = layoutAgentsParams;
 exports.emptyPromptNote = emptyPromptNote;
 exports.promptTruncationNote = promptTruncationNote;
 exports.rawV1Error = rawV1Error;
@@ -720,7 +721,62 @@ async function cmdLocales(args) {
         process.exit(1);
     }
 }
+/**
+ * `wmux layout agents` flags -> `layout.agents` params. The caller's surface is
+ * only the anchor when no explicit anchor was given: the renderer treats an
+ * explicit `anchorPaneId` as authoritative, so sending a pane AND the caller's
+ * surface would turn a stale pane into a miss instead of a fallback.
+ */
+const LAYOUT_AGENTS_FLAGS = [
+    '--count', '--type', '--coordinator-ratio', '--anchor-surface', '--anchor-pane', '--workspace',
+];
+/** The flags that pass through verbatim, and the pipe param each becomes. */
+const LAYOUT_AGENTS_STRING_PARAMS = [
+    ['--type', 'type'],
+    ['--anchor-surface', 'anchorSurfaceId'],
+    ['--anchor-pane', 'anchorPaneId'],
+    ['--workspace', 'workspaceId'],
+];
+function layoutAgentsParams(args, callerSurfaceId) {
+    // Scanned, not paired (#247) — see parseFlagArgs. A pairwise walk reads a
+    // flag that lost its value as the value of the flag before it, and silently
+    // ignores a token it does not know.
+    let values;
+    try {
+        ({ values } = parseFlagArgs(args, { value: LAYOUT_AGENTS_FLAGS }));
+    }
+    catch (err) {
+        return { error: err.message };
+    }
+    const params = {};
+    const count = values['--count'];
+    if (count !== undefined)
+        params.count = /^\d+$/.test(count) ? parseInt(count, 10) : NaN;
+    const ratio = values['--coordinator-ratio'];
+    if (ratio !== undefined)
+        params.coordinatorRatio = ratio.trim() === '' ? NaN : Number(ratio);
+    for (const [flag, key] of LAYOUT_AGENTS_STRING_PARAMS) {
+        if (values[flag] !== undefined)
+            params[key] = values[flag];
+    }
+    if (!Number.isInteger(params.count) || params.count < 1)
+        return { error: '--count <N> is required and must be an integer >= 1' };
+    if ('coordinatorRatio' in params && !Number.isFinite(params.coordinatorRatio)) {
+        return { error: '--coordinator-ratio must be a number (0.2 to 0.8)' };
+    }
+    if (!params.anchorSurfaceId && !params.anchorPaneId && callerSurfaceId) {
+        params.anchorSurfaceId = callerSurfaceId;
+    }
+    return { params };
+}
 async function cmdLayout(args) {
+    if (args[1] === 'agents') {
+        const parsed = layoutAgentsParams(args.slice(2), process.env.WMUX_SURFACE_ID);
+        if ('error' in parsed)
+            fail('layout', COMMAND_SPECS.layout, parsed.error);
+        print(await sendV2('layout.agents', parsed.params));
+        return;
+    }
     if (args[1] !== 'grid')
         failSubcommand('layout', args[1]);
     // Scanned, not paired (#247) — see parseFlagArgs.
@@ -1808,8 +1864,9 @@ const COMMAND_SPECS = {
     tree: { usage: 'wmux tree [--workspace <workspaceId>]', value: ['--workspace'] },
     // Layout
     layout: {
-        usage: 'wmux layout grid --count <N> [--type T] [--anchor-surface <id>] [--anchor-pane <id>] [--workspace <id>]',
-        value: ['--count', '--type', '--anchor-surface', '--anchor-pane', '--workspace'],
+        usage: 'wmux layout grid --count <N> [--type T] [--anchor-surface <id>] [--anchor-pane <id>] [--workspace <id>]\n'
+            + 'wmux layout agents --count <N> [--type T] [--coordinator-ratio R] [--anchor-surface <id>] [--anchor-pane <id>] [--workspace <id>]',
+        value: ['--count', '--type', '--coordinator-ratio', '--anchor-surface', '--anchor-pane', '--workspace'],
     },
     // Terminal interaction
     send: { usage: 'wmux send [--surface <id>] <text>', passthrough: true },
@@ -2203,6 +2260,7 @@ Surface:    new-surface [--type T] [--color-scheme NAME], close-surface, focus-s
 Pane:       split [--down] [--type T] [--color-scheme NAME], close-pane, focus-pane, zoom-pane, list-panes, tree
             pane new|close|focus|list   (verb form, mirrors issue #4 example)
 Layout:     layout grid --count <N> [--type terminal] [--anchor-surface <id>]
+            layout agents --count <N> [--coordinator-ratio R] [--anchor-surface <id>]
 Terminal:   send <text>, send-key <key>, read-screen [--lines N] [--surface <id>], trigger-flash
             prompts [--surface <id>] [--limit N] [--json]
             (the prompts this pane was given — the one thing read-screen cannot

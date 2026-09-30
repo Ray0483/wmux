@@ -576,15 +576,17 @@ The source still ships in `resources/wmux-orchestrator/` — `scripts/launch-age
 ```
 resources/wmux-orchestrator/
   .claude-plugin/plugin.json    Manifest (name, version, author)
-  commands/orchestrate.md       /wmux:orchestrate slash command
-  skills/orchestrate/SKILL.md   Core: codebase analysis, wave planning, agent spawning
+  skills/orchestrate/SKILL.md   Core: codebase analysis, wave planning, agent spawning. Invoked as
+                                /wmux-orchestrator:orchestrate <task>; there is deliberately no command
+                                of the same name (a command and a skill sharing it loop into each other)
   skills/reviewer/SKILL.md      Post-orchestration review and auto-fix
   skills/wmux-detect/SKILL.md   Detects wmux availability for degraded mode
   agents/wmux-worker.md         Worker template with file zone enforcement
   hooks/hooks.json              PostToolUse, SubagentStop, Stop, SessionStart
   scripts/json-tool.js          Node.js JSON helper (replaces jq)
   scripts/orchestration-state.sh  State file management library
-  scripts/spawn-agents.sh       Creates panes + launches Claude Code agents
+  scripts/spawn-agents.sh       Creates panes (`layout agents`) + launches Claude Code agents
+  scripts/reap-wave.sh          Kills a wave's agents and closes their tabs; also run by the Stop hook
   scripts/on-agent-stop.sh      Wave transition driver (core orchestration)
   scripts/check-status.sh       Markdown dashboard generator
   scripts/*.sh                  Other utilities (cleanup, collect-results, etc.)
@@ -646,6 +648,29 @@ wmux split [--down] [--type T] | close-pane | focus-pane | zoom-pane | list-pane
                                        # --type takes the same set as new-surface, so
                                        # `wmux split --type prompts` puts the outline
                                        # beside the terminal in one command
+
+# Layouts (what the orchestrator uses to place its agents)
+wmux layout grid --count N [--type T] [--anchor-surface S] [--anchor-pane P] [--workspace W]
+                                       # Rebuilds the WHOLE workspace as an anchor plus an
+                                       # N-cell grid; every other pane is absorbed into the
+                                       # anchor as tabs. Anchor defaults to $WMUX_SURFACE_ID.
+wmux layout agents --count N [--type T] [--coordinator-ratio R] [--anchor-surface S]
+                   [--anchor-pane P] [--workspace W]
+                                       # Splits ONLY the anchor's pane into [anchor | N-cell
+                                       # worker grid]; other panes are untouched. --count is
+                                       # 1-16 CELLS, R is the anchor's share of the width
+                                       # (default 0.4, clamped to 0.2-0.8), and the column
+                                       # count follows the pane's measured aspect ratio.
+                                       # Replies {newPaneIds, newPanes:[{paneId,surfaceId}],
+                                       # anchorPaneId, cols, rows}. A bad count or ratio is
+                                       # -32602 from main, before any window is asked. The
+                                       # anchor is --anchor-pane, else --anchor-surface, else
+                                       # $WMUX_SURFACE_ID, and never "the first pane": an
+                                       # unresolvable anchor is an error, not a guess. An
+                                       # explicit --anchor-pane that is not in the tree is a
+                                       # miss and does not fall through to the surface, so
+                                       # the CLI sends the caller's surface only when no
+                                       # anchor flag was given.
 
 # Terminal I/O
 wmux send <text> | send-key <key> [--ctrl] [--shift] [--alt]

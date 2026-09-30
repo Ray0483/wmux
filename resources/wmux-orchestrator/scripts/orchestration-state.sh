@@ -137,3 +137,10 @@ parse_json() {
   local path="$2"
   node "$JSON_TOOL" parse-json "$json_str" "$path" 2>/dev/null
 }
+
+# Finished runs whose agents have not been reaped yet, one directory per line.
+# Only reads state.json files (one node process for the whole scan); makes no
+# wmux call, so the Stop hook stays free on a machine with nothing to reap.
+find_unreaped_finished_orchs() {
+  node "$JSON_TOOL" find-unreaped-finished "$ORCH_BASE" 2>/dev/null
+}

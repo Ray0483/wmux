@@ -3,7 +3,8 @@
  * so the main process can call them via executeJavaScript from V2 pipe handlers.
  */
 import { useStore } from './store';
-import { splitNode, getAllPaneIds, findLeaf, buildGridLayout, buildWorkspaceTree } from './store/split-utils';
+import { splitNode, getAllPaneIds, findLeaf, buildGridLayout, buildAgentLayout, leafFraction, buildWorkspaceTree } from './store/split-utils';
+import { resolveAnchorPane, resolveLayoutSize } from './store/agent-layout-target';
 import { surfaceTerminalRegistry } from './hooks/useTerminal';
 import { rollupAgents } from './store/agent-rollup';
 import { toRemoteRosterSource } from './utils/remote-roster';
@@ -325,6 +326,40 @@ export function initPipeBridge(): void {
     });
 
     return { newPaneIds, newPanes, anchorPaneId, cols: Math.ceil(Math.sqrt(count)), rows: Math.ceil(count / Math.ceil(Math.sqrt(count))) };
+  };
+
+  w.__wmux_layoutAgents = (params: { count: number; type?: string; coordinatorRatio?: number; anchorSurfaceId?: string; anchorPaneId?: string; workspaceId?: string }) => {
+    const store = useStore.getState();
+    const candidates = params.workspaceId
+      ? store.workspaces.filter(w => w.id === params.workspaceId)
+      : store.workspaces;
+    for (const ws of candidates) {
+      const anchorPaneId = resolveAnchorPane(ws.splitTree, params);
+      if (!anchorPaneId) continue;
+
+      const rectOf = (selector: string) => {
+        const r = document.querySelector(selector)?.getBoundingClientRect();
+        return r ? { width: r.width, height: r.height } : null;
+      };
+      const size = resolveLayoutSize({
+        paneRect: rectOf(`[data-pane-id="${anchorPaneId}"]`),
+        workspaceRect: rectOf(`[data-workspace-id="${ws.id}"]`),
+        fraction: leafFraction(ws.splitTree, anchorPaneId),
+      });
+      const result = buildAgentLayout(
+        ws.splitTree, anchorPaneId, params.count, size, params.coordinatorRatio,
+        (params.type || 'terminal') as SurfaceType,
+      );
+      if (!result) return null;
+      store.updateSplitTree(ws.id, result.tree);
+
+      const newPanes = result.newPaneIds.map(pid => ({
+        paneId: pid,
+        surfaceId: findLeaf(result.tree, pid)?.surfaces?.[0]?.id || null,
+      }));
+      return { newPaneIds: result.newPaneIds, newPanes, anchorPaneId, cols: result.cols, rows: result.rows };
+    }
+    return null;
   };
 
   w.__wmux_listPanes = (workspaceId?: string) => {

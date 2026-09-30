@@ -549,7 +549,6 @@ export function buildGridLayout(
   };
 
   const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
-  const rows = Math.max(1, Math.ceil(count / cols));
 
   const cells: SplitNode[] = [];
   const newPaneIds: PaneId[] = [];
@@ -563,12 +562,22 @@ export function buildGridLayout(
     }
   }
 
+  // Replace the entire workspace tree with the grid. Other panes' containers
+  // are discarded; their surfaces already live inside mergedAnchor.
+  return { tree: buildGridFromCells(cells, cols), newPaneIds };
+}
+
+// Row-major grid of pre-built cells, `cols` per row; a short last row gets
+// wider cells rather than empty ones.
+function buildGridFromCells(cells: SplitNode[], cols: number): SplitNode {
+  const rows = Math.max(1, Math.ceil(cells.length / cols));
+
   // Chain each row horizontally (left to right): A | (B | (C | D))
   // ratio[i] = 1 / (rowLen - i) so every cell ends up at 1/rowLen of the row width.
   const rowTrees: SplitNode[] = [];
   for (let r = 0; r < rows; r++) {
     const start = r * cols;
-    const end = Math.min(start + cols, count);
+    const end = Math.min(start + cols, cells.length);
     const rowCells = cells.slice(start, end);
     let rowTree: SplitNode = rowCells[rowCells.length - 1];
     for (let c = rowCells.length - 2; c >= 0; c--) {
@@ -592,8 +601,118 @@ export function buildGridLayout(
       children: [rowTrees[r], gridTree],
     };
   }
+  return gridTree;
+}
 
-  // Replace the entire workspace tree with the grid. Other panes' containers
-  // are discarded; their surfaces already live inside mergedAnchor.
-  return { tree: gridTree, newPaneIds };
+// ─── buildAgentLayout ─────────────────────────────────────────────────────────
+// Split ONE pane into [anchor | worker grid]. Unlike buildGridLayout nothing is
+// absorbed and no other leaf is touched: the orchestrator lays its agents out
+// inside the coordinator's own rectangle and leaves the user's panes alone.
+
+/** w/h, in px, that the grid shape chooser tries to give each worker cell. */
+export const TARGET_CELL_ASPECT = 1.6;
+export const MAX_AGENT_CELLS = 16;
+
+const DEFAULT_COORDINATOR_RATIO = 0.4;
+const MIN_COORDINATOR_RATIO = 0.2;
+const MAX_COORDINATOR_RATIO = 0.8;
+const FALLBACK_SIZE = { width: 1920, height: 1080 };
+
+function usableSize(width: number, height: number): { width: number; height: number } {
+  return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+    ? { width, height }
+    : FALLBACK_SIZE;
+}
+
+/**
+ * Columns/rows for `n` cells in a `width` x `height` area: the column count
+ * whose cells come closest to TARGET_CELL_ASPECT, compared on a log scale so
+ * "twice too wide" and "twice too tall" cost the same. Ties go to fewer columns.
+ */
+export function chooseGridShape(
+  n: number,
+  width: number,
+  height: number,
+): { cols: number; rows: number } {
+  const count = Math.max(1, Math.floor(Number.isFinite(n) ? n : 1));
+  const size = usableSize(width, height);
+  let best = { cols: 1, rows: count };
+  let bestScore = Infinity;
+  for (let cols = 1; cols <= count; cols++) {
+    const rows = Math.ceil(count / cols);
+    const aspect = size.width / cols / (size.height / rows);
+    const score = Math.abs(Math.log(aspect / TARGET_CELL_ASPECT));
+    if (score < bestScore - 1e-9) {
+      best = { cols, rows };
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function replaceLeaf(tree: SplitNode, paneId: PaneId, replacement: SplitNode): SplitNode {
+  if (tree.type === 'leaf') return tree.paneId === paneId ? replacement : tree;
+  const [left, right] = tree.children;
+  const newLeft = replaceLeaf(left, paneId, replacement);
+  const newRight = replaceLeaf(right, paneId, replacement);
+  if (newLeft === left && newRight === right) return tree;
+  return { ...tree, children: [newLeft, newRight] };
+}
+
+/**
+ * `size` is the anchor pane's pixel size; the worker area is what is left of it
+ * after the coordinator column. Returns null, tree untouched, when the anchor is
+ * not in the tree or `count` is not an integer in 1..MAX_AGENT_CELLS.
+ * `newPaneIds` is row-major.
+ */
+export function buildAgentLayout(
+  tree: SplitNode,
+  anchorPaneId: PaneId,
+  count: number,
+  size: { width: number; height: number },
+  coordinatorRatio: number = DEFAULT_COORDINATOR_RATIO,
+  surfaceType: SurfaceType = 'terminal',
+): { tree: SplitNode; newPaneIds: PaneId[]; cols: number; rows: number } | null {
+  if (!Number.isInteger(count) || count < 1 || count > MAX_AGENT_CELLS) return null;
+  const anchor = findLeaf(tree, anchorPaneId);
+  if (!anchor) return null;
+
+  const ratio = Number.isFinite(coordinatorRatio)
+    ? Math.min(MAX_COORDINATOR_RATIO, Math.max(MIN_COORDINATOR_RATIO, coordinatorRatio))
+    : DEFAULT_COORDINATOR_RATIO;
+
+  const area = usableSize(size.width, size.height);
+  const { cols, rows } = chooseGridShape(count, area.width * (1 - ratio), area.height);
+
+  const cells: SplitNode[] = [];
+  const newPaneIds: PaneId[] = [];
+  for (let i = 0; i < count; i++) {
+    const id = `pane-${uuid()}` as PaneId;
+    newPaneIds.push(id);
+    cells.push(createLeaf(id, surfaceType));
+  }
+
+  const split: SplitNode = {
+    type: 'branch',
+    direction: 'horizontal',
+    ratio,
+    children: [anchor, buildGridFromCells(cells, cols)],
+  };
+  return { tree: replaceLeaf(tree, anchorPaneId, split), newPaneIds, cols, rows };
+}
+
+/**
+ * Share of the tree's width (`w`) and height (`h`) a leaf occupies, by ratios
+ * alone (dividers ignored). Null when the pane is not in the tree.
+ */
+export function leafFraction(tree: SplitNode, paneId: PaneId): { w: number; h: number } | null {
+  if (tree.type === 'leaf') return tree.paneId === paneId ? { w: 1, h: 1 } : null;
+  const [left, right] = tree.children;
+  const inLeft = leafFraction(left, paneId);
+  const inner = inLeft ?? leafFraction(right, paneId);
+  if (!inner) return null;
+  const share = inLeft ? tree.ratio : 1 - tree.ratio;
+  return tree.direction === 'horizontal'
+    ? { w: inner.w * share, h: inner.h }
+    : { w: inner.w, h: inner.h * share };
 }

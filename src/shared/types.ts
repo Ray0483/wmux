@@ -822,6 +822,7 @@ export type OrchRunStatus = 'pending' | 'running' | 'complete' | 'failed';
 export interface OrchestrationAgent {
   id: string;
   label: string;
+  group?: string | null;
   subtask?: string;
   files?: string[];
   excludeFiles?: string[];

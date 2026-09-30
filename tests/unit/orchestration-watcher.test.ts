@@ -57,6 +57,17 @@ describe('orchestration-watcher / isValidState', () => {
     expect(isValidState({ ...validState, waves: [null] })).toBe(false);
   });
 
+  it('accepts agents whose group is of any type', () => {
+    const agents = [
+      { id: 'a', label: 'a', status: 'running', group: 'x' },
+      { id: 'b', label: 'b', status: 'running', group: null },
+      { id: 'c', label: 'c', status: 'running', group: 5 },
+      { id: 'd', label: 'd', status: 'running', group: { name: 'x' } },
+      { id: 'e', label: 'e', status: 'running', group: ['x'] },
+    ];
+    expect(isValidState({ ...validState, waves: [{ index: 0, status: 'running', agents }] })).toBe(true);
+  });
+
   it('rejects non-objects', () => {
     expect(isValidState(null)).toBe(false);
     expect(isValidState(undefined)).toBe(false);

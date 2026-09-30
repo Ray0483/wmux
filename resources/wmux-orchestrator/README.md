@@ -9,7 +9,7 @@ When you hand Claude Code a large task, it works sequentially in a single termin
 ## How it works
 
 ```
-You: /wmux:orchestrate "Refactor the auth system"
+You: /wmux-orchestrator:orchestrate "Refactor the auth system"
 
   Phase 1   Analyze codebase, trace imports, identify file boundaries
   Phase 2   Present wave plan for approval
@@ -52,7 +52,7 @@ Install the plugin:
 Run it:
 
 ```
-/wmux:orchestrate "Refactor the auth system to use JWT tokens"
+/wmux-orchestrator:orchestrate "Refactor the auth system to use JWT tokens"
 ```
 
 Claude workers keep their normal tool permission prompts by default. To bypass
@@ -123,11 +123,9 @@ The shared coordination layer is a JSON state file in a temp directory (`/tmp/wm
 wmux-orchestrator/
   .claude-plugin/
     plugin.json                     # Plugin manifest (name, version, metadata)
-  commands/
-    orchestrate.md                  # /wmux:orchestrate slash command entry point
   skills/
     orchestrate/
-      SKILL.md                      # Core orchestration: analyze, decompose, plan, launch
+      SKILL.md                      # Core orchestration, invoked as /wmux-orchestrator:orchestrate <task>
       references/
         decomposition-guide.md      # Patterns for splitting tasks into agents
     reviewer/
@@ -141,13 +139,14 @@ wmux-orchestrator/
   scripts/
     orchestration-state.sh          # State file read/write helpers
     spawn-agents.sh                 # Launch agents for a wave via wmux CLI
+    reap-wave.sh                    # Kill a wave's agents and close their tabs (idempotent)
     check-status.sh                 # Read-only status check for dashboard
     collect-results.sh              # Aggregate agent result files
     update-dashboard.sh             # Refresh the live markdown dashboard
     detect-wmux.sh                  # Check if wmux is running (pipe test)
     on-tool-use.sh                  # Hook: increment tool use counter
     on-agent-stop.sh                # Hook: wave transition logic
-    on-stop.sh                      # Hook: warn if orchestration is active
+    on-stop.sh                      # Hook: warn if orchestration is active, reap finished runs
     on-session-start.sh             # Hook: crash recovery check
     cleanup.sh                      # Remove orchestration temp files
   package.json

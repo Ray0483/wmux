@@ -1641,6 +1641,7 @@ export default function App() {
           {workspaces.map((ws) => (
             <div
               key={ws.id}
+              data-workspace-id={ws.id}
               style={{
                 position: 'absolute',
                 inset: 0,

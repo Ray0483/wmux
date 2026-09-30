@@ -1180,6 +1180,39 @@
   padding-left: 2px;
 }
 
+.orch-panel__group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.orch-panel__group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  padding-left: 2px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(var(--ui-overlay-rgb), 0.45);
+}
+
+.orch-panel__group-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.orch-panel__group-count {
+  flex-shrink: 0;
+}
+
+.orch-panel__group > .orch-panel__agent {
+  margin-left: 8px;
+}
+
 .orch-panel__agent {
   display: flex;
   align-items: flex-start;
