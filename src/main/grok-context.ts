@@ -45,23 +45,48 @@ import {
 } from './claude-context';
 
 const START_MARKER = '<!-- wmux:start';
-/** Every command wmux registers runs wmux-hook.js; the ownership test for the hook file. */
-const HOOK_MARKER = 'wmux-hook';
 
 /** Grok's turn endings that Claude Code has no equivalent for. */
 const GROK_ONLY_EVENTS = ['StopCancelled', 'StopFailure'] as const;
 
-/** `$GROK_HOME`, default ~/.grok — the root of both the rules and hooks dirs. */
-export function getGrokHome(): string {
-  return process.env.GROK_HOME?.trim() || path.join(os.homedir(), '.grok');
+function defaultGrokHome(): string {
+  return path.join(os.homedir(), '.grok');
 }
 
+/**
+ * `$GROK_HOME`, default ~/.grok — the root of both the rules and hooks dirs.
+ *
+ * The override is read only from wmux's OWN environment (one exported per-shell
+ * after launch is unknowable here — a miss, never a write to the wrong place),
+ * and only when it is ABSOLUTE. A relative value means "relative to wherever
+ * grok is started", which is a different directory for every pane and not the
+ * one wmux happens to be running in; resolving it against wmux's cwd would
+ * write hooks into a folder nobody named.
+ */
+export function getGrokHome(): string {
+  const override = process.env.GROK_HOME?.trim();
+  return override && path.isAbsolute(override) ? path.normalize(override) : defaultGrokHome();
+}
+
+/**
+ * Every home wmux may have written into: the current one, and the default. They
+ * differ only while GROK_HOME is set, and removal sweeps both — an uninstall
+ * that only looks where it would write TODAY leaves behind the file it wrote
+ * before the variable was set, which is an inverse that cannot undo (#132).
+ */
+function grokHomes(): string[] {
+  return [...new Set([getGrokHome(), defaultGrokHome()])];
+}
+
+const rulesPathIn = (home: string) => path.join(home, 'rules', 'wmux.md');
+const hooksPathIn = (home: string) => path.join(home, 'hooks', 'wmux.json');
+
 export function getGrokRulesPath(): string {
-  return path.join(getGrokHome(), 'rules', 'wmux.md');
+  return rulesPathIn(getGrokHome());
 }
 
 export function getGrokHooksPath(): string {
-  return path.join(getGrokHome(), 'hooks', 'wmux.json');
+  return hooksPathIn(getGrokHome());
 }
 
 function readOrEmpty(filePath: string): string {
@@ -124,7 +149,7 @@ export function buildGrokHooks(hookScript: string): { hooks: Record<string, unkn
  * file of the user's alone. No-op when Grok has never run here.
  */
 function writeOwnedFile(filePath: string, content: string, isOurs: (s: string) => boolean): void {
-  if (!fs.existsSync(getGrokHome())) return;
+  if (!isDirectory(getGrokHome())) return;
   if (fs.existsSync(filePath)) {
     const current = fs.readFileSync(filePath, 'utf-8');
     if (!isOurs(current)) {
@@ -145,8 +170,63 @@ function removeOwnedFile(filePath: string, isOurs: (s: string) => boolean): void
   console.log(`[wmux] Removed ${filePath}`);
 }
 
+function isDirectory(p: string): boolean {
+  try { return fs.statSync(p).isDirectory(); } catch { return false; }
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** `node "<anything>wmux-hook.js" <arg>` — the only command shape wmux registers. */
+const WMUX_HOOK_COMMAND_RE = /^node "[^"]*wmux-hook\.js" \S/;
+
+function isWmuxHandler(handler: unknown): boolean {
+  return isRecord(handler)
+    && handler.type === 'command'
+    && typeof handler.command === 'string'
+    && WMUX_HOOK_COMMAND_RE.test(handler.command);
+}
+
+/** Every handler under one event, or null when it is not a list of matcher groups. */
+function handlersOf(groups: unknown): unknown[] | null {
+  if (!Array.isArray(groups)) return null;
+  const out: unknown[] = [];
+  for (const group of groups) {
+    if (!isRecord(group) || !Array.isArray(group.hooks)) return null;
+    out.push(...group.hooks);
+  }
+  return out;
+}
+
+/**
+ * Pure: is this hooks file ENTIRELY wmux's?
+ *
+ * JSON has no comment to carry a marker, and "contains the string wmux-hook" is
+ * not ownership: `wmux.json` is the obvious name for a file a user writes by
+ * hand to wire Grok into wmux, and the moment they add one hook of their own to
+ * it a substring test has wmux overwrite that hook on the next launch and delete
+ * it when the toggle goes off. So the test is structural — nothing but a `hooks`
+ * object, and every handler in it a wmux-hook.js command. One foreign handler,
+ * one extra top-level key, or a file that does not parse, and it is the user's.
+ * It matches the command SHAPE rather than this install's path, so a file
+ * written before the install moved is still recognised and refreshed.
+ */
+export function isWmuxHooksFile(content: string): boolean {
+  let parsed: unknown;
+  try { parsed = JSON.parse(content); } catch { return false; }
+  if (!isRecord(parsed) || !isRecord(parsed.hooks)) return false;
+  if (Object.keys(parsed).some(k => k !== 'hooks')) return false;
+  let count = 0;
+  for (const groups of Object.values(parsed.hooks)) {
+    const handlers = handlersOf(groups);
+    if (!handlers?.every(isWmuxHandler)) return false;
+    count += handlers.length;
+  }
+  return count > 0;
+}
+
 const isOurRules = (s: string) => s.includes(START_MARKER);
-const isOurHooks = (s: string) => s.includes(HOOK_MARKER);
 
 /**
  * Called AFTER ensureClaudeContext, so the CLAUDE.md check sees this launch's
@@ -167,7 +247,7 @@ export function ensureGrokContext(): void {
 
 export function removeGrokContext(): void {
   try {
-    removeOwnedFile(getGrokRulesPath(), isOurRules);
+    for (const home of grokHomes()) removeOwnedFile(rulesPathIn(home), isOurRules);
   } catch (err) {
     console.warn('[wmux] Failed to remove Grok context:', err);
   }
@@ -176,7 +256,7 @@ export function removeGrokContext(): void {
 export function ensureGrokHooks(): void {
   try {
     const content = JSON.stringify(buildGrokHooks(getHookScriptPath()), null, 2) + '\n';
-    writeOwnedFile(getGrokHooksPath(), content, isOurHooks);
+    writeOwnedFile(getGrokHooksPath(), content, isWmuxHooksFile);
   } catch (err) {
     console.warn('[wmux] Failed to update Grok hooks:', err);
   }
@@ -184,7 +264,7 @@ export function ensureGrokHooks(): void {
 
 export function removeGrokHooks(): void {
   try {
-    removeOwnedFile(getGrokHooksPath(), isOurHooks);
+    for (const home of grokHomes()) removeOwnedFile(hooksPathIn(home), isWmuxHooksFile);
   } catch (err) {
     console.warn('[wmux] Failed to remove Grok hooks:', err);
   }

@@ -7,12 +7,14 @@ import {
   claudeAgentsCompatOff,
   ensureGrokContext,
   ensureGrokHooks,
+  getGrokHome,
   getGrokHooksPath,
   getGrokRulesPath,
+  isWmuxHooksFile,
   removeGrokContext,
   removeGrokHooks,
 } from '../../src/main/grok-context';
-import { applyWmuxHooks } from '../../src/main/claude-context';
+import { applyWmuxHooks, wmuxEventHookCommand } from '../../src/main/claude-context';
 
 /**
  * Grok Build reads Claude Code's files by default, so what this suite pins is
@@ -79,6 +81,99 @@ describe('grok context', () => {
     ensureGrokHooks();
     removeGrokHooks();
     expect(fs.readFileSync(getGrokHooksPath(), 'utf-8')).toBe('{"hooks":{}}');
+  });
+
+  it('the shared command builder spells exactly what Claude Code has always been given', () => {
+    // Extracted from applyWmuxHooks so Grok's file carries the same bytes. A
+    // change here rewrites every ~/.claude/settings.json on the next launch.
+    expect(wmuxEventHookCommand('C:/wmux/resources/cli/wmux-hook.js', 'Stop'))
+      .toBe('node "C:/wmux/resources/cli/wmux-hook.js" --event Stop');
+    const { hooks } = applyWmuxHooks({}, 'C:/w/wmux-hook.js');
+    const flags = (event: string) => hooks[event].flatMap((g: any) => g.hooks.map((h: any) => h.async));
+    for (const event of ['PreToolUse', 'PostToolUse', 'UserPromptSubmit']) {
+      expect(flags(event).every((a: unknown) => a === true)).toBe(true);
+    }
+    for (const event of ['SessionStart', 'Stop', 'SessionEnd']) {
+      expect(flags(event).every((a: unknown) => a === undefined)).toBe(true);
+    }
+  });
+
+  it('owns a hooks file only when every handler in it is a wmux-hook command', () => {
+    const ours = JSON.stringify(buildGrokHooks('C:/Program Files/wmux/resources/cli/wmux-hook.js'));
+    expect(isWmuxHooksFile(ours)).toBe(true);
+    // Written by an install that has since moved: still ours, so it is refreshed.
+    expect(isWmuxHooksFile(JSON.stringify(buildGrokHooks('D:/old/wmux-hook.js')))).toBe(true);
+
+    const wmuxCmd = { type: 'command', command: 'node "C:/x/wmux-hook.js" --event Stop' };
+    const mixed = { hooks: { Stop: [{ hooks: [wmuxCmd, { type: 'command', command: 'bin/notify.sh' }] }] } };
+    expect(isWmuxHooksFile(JSON.stringify(mixed))).toBe(false);
+    expect(isWmuxHooksFile(JSON.stringify({ hooks: { Stop: [{ hooks: [wmuxCmd] }] }, note: 'mine' }))).toBe(false);
+    expect(isWmuxHooksFile(JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'http', url: 'https://x/wmux-hook.js' }] }] } }))).toBe(false);
+    expect(isWmuxHooksFile(JSON.stringify({ hooks: { Stop: 'node "wmux-hook.js" x' } }))).toBe(false);
+    expect(isWmuxHooksFile('{"hooks":{}}')).toBe(false);
+    expect(isWmuxHooksFile('// wmux-hook\n{')).toBe(false);
+    expect(isWmuxHooksFile('[]')).toBe(false);
+  });
+
+  it('never overwrites or deletes a hand-written wmux.json that also calls wmux-hook.js', () => {
+    // The obvious name for a file someone writes to wire Grok into wmux by
+    // hand. A substring test for "wmux-hook" called it wmux's and destroyed the
+    // user's own hook beside it, on the next launch and again on toggle-off.
+    fs.mkdirSync(path.dirname(getGrokHooksPath()), { recursive: true });
+    const theirs = JSON.stringify({
+      hooks: {
+        Stop: [{ hooks: [
+          { type: 'command', command: 'node "C:/wmux/resources/cli/wmux-hook.js" --event Stop' },
+          { type: 'command', command: 'bin/ring-the-bell.sh' },
+        ] }],
+      },
+    }, null, 2);
+    fs.writeFileSync(getGrokHooksPath(), theirs);
+    ensureGrokHooks();
+    expect(fs.readFileSync(getGrokHooksPath(), 'utf-8')).toBe(theirs);
+    removeGrokHooks();
+    expect(fs.readFileSync(getGrokHooksPath(), 'utf-8')).toBe(theirs);
+  });
+
+  it('rewrites nothing when the hooks file is already current', () => {
+    fs.mkdirSync(grokHome());
+    ensureGrokHooks();
+    const past = new Date(Date.now() - 60_000);
+    fs.utimesSync(getGrokHooksPath(), past, past);
+    ensureGrokHooks();
+    expect(fs.statSync(getGrokHooksPath()).mtimeMs).toBe(past.getTime());
+  });
+
+  it('writes nothing, and does not throw, when ~/.grok is a file', () => {
+    fs.writeFileSync(grokHome(), 'not a directory');
+    expect(() => { ensureGrokHooks(); ensureGrokContext(); }).not.toThrow();
+    expect(fs.readFileSync(grokHome(), 'utf-8')).toBe('not a directory');
+  });
+
+  it('ignores a relative GROK_HOME rather than resolving it against wmux\'s cwd', () => {
+    process.env.GROK_HOME = 'grok-here';
+    expect(getGrokHome()).toBe(grokHome());
+    fs.mkdirSync(grokHome());
+    ensureGrokHooks();
+    expect(fs.existsSync(path.join(grokHome(), 'hooks', 'wmux.json'))).toBe(true);
+    expect(fs.existsSync(path.resolve('grok-here'))).toBe(false);
+  });
+
+  it('removal also sweeps the default home, where wmux wrote before GROK_HOME was set', () => {
+    fs.mkdirSync(grokHome());
+    ensureGrokHooks();
+    ensureGrokContext();
+    const stale = [path.join(grokHome(), 'hooks', 'wmux.json'), path.join(grokHome(), 'rules', 'wmux.md')];
+    for (const f of stale) expect(fs.existsSync(f)).toBe(true);
+
+    const custom = path.join(tmp, 'elsewhere');
+    fs.mkdirSync(custom);
+    process.env.GROK_HOME = custom;
+    ensureGrokHooks();
+    removeGrokHooks();
+    removeGrokContext();
+    expect(fs.existsSync(path.join(custom, 'hooks', 'wmux.json'))).toBe(false);
+    for (const f of stale) expect(fs.existsSync(f)).toBe(false);
   });
 
   it('honours GROK_HOME', () => {

@@ -299,6 +299,11 @@ describe('Notification kinds (issue #253)', () => {
       .toBeNull();
   });
 
+  it('a Grok background task finishing does not block, even mid-turn', () => {
+    expect(hookToAgentReport('Notification', 'Background task completed: task-1', ctx({ runDepth: 1, notificationType: 'task_complete' })))
+      .toBeNull();
+  });
+
   it('permission_prompt and elicitation_dialog always block', () => {
     for (const notificationType of ['permission_prompt', 'elicitation_dialog']) {
       // Even where the depth heuristic alone would have called it a nudge:

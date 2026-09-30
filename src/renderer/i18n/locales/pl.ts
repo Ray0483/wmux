@@ -579,7 +579,7 @@ export const pl: Translation = {
   'surfaceTab.profileBadge': 'projekt',
   // Ustawienia — zgoda na integrację agentów (issue #132)
   'settings.integration.section': 'Integracja agentów',
-  'settings.integration.enable': 'Pozwól wmux konfigurować Claude Code, OpenCode i Kiro',
+  'settings.integration.enable': 'Pozwól wmux konfigurować Claude Code, OpenCode, Kiro, omp, pi i Grok',
   'settings.integration.hint':
     'wmux edytuje pliki w Twoim katalogu domowym, aby agenci piszący kod mogli sterować jego panelem przeglądarki, widokami Markdown i stanem panelu bocznego. Wyłączenie czegoś tutaj usuwa również to, co zostało zapisane.',
   'settings.integration.instructions': 'Instrukcje dla agentów',

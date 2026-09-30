@@ -264,6 +264,35 @@ function parsePayload(raw: string): HookPayloadFields {
   return out;
 }
 
+/**
+ * The event wmux is told about for the hook that fired, or null for none.
+ *
+ * Only Grok makes this anything but the identity. Two things differ from Claude
+ * Code, and both are about whose event it is:
+ *
+ * - `StopCancelled` (Ctrl+C, a declined permission, the turn limit) and
+ *   `StopFailure` (an API error) run INSTEAD of `Stop`, so to wmux they are the
+ *   turn ending — grok-context.ts registers them for exactly that.
+ *
+ * - A Grok subagent runs its OWN session, and that session fires the same hooks
+ *   on the parent's pane (they inherit WMUX_SURFACE_ID), marked with
+ *   `subagentType`. Claude Code keeps a subagent inside the parent's session and
+ *   gives its ending a name of its own, so none of this arises there. Read as
+ *   the pane's own, a child's `SessionEnd` releases the pane's record while the
+ *   parent is still mid-turn, and a child's `UserPromptSubmit` — its task brief,
+ *   not something the user typed — clears a "Needs you" nobody answered and
+ *   lands in the prompt log as a user prompt. Neither is reported. A child's
+ *   turn ending is `SubagentStop`, which may sustain a turn and never end one.
+ *   Its tool events and its Notifications still pass: a subagent working is the
+ *   pane working, and its permission prompt is a real question on screen.
+ */
+function reportedEvent(fired: string, subagent: boolean): string | null {
+  const turnEnd = fired === 'StopCancelled' || fired === 'StopFailure';
+  if (!subagent) return turnEnd ? 'Stop' : fired;
+  if (fired === 'SessionEnd' || fired === 'UserPromptSubmit') return null;
+  return turnEnd ? 'SubagentStop' : fired;
+}
+
 function sendHook(): void {
   if (sent) return;
   sent = true;
@@ -274,11 +303,10 @@ function sendHook(): void {
   process.stdin.pause();
 
   const { file, message, sessionId, toolName, prompt, notificationType, subagent } = parsePayload(stdinData);
-  // Grok's StopCancelled (Ctrl+C, a declined permission, the turn limit) and
-  // StopFailure (an API error) run INSTEAD of Stop, so to wmux they are the turn
-  // ending — see grok-context.ts, which registers them. Inside a subagent the
-  // same ending is that subagent's, which is what SubagentStop means.
-  if (event === 'StopCancelled' || event === 'StopFailure') event = subagent ? 'SubagentStop' : 'Stop';
+  const reported = reportedEvent(event, subagent);
+  // Nothing to say, so no connection either: the pipe is never opened.
+  if (reported === null) process.exit(0);
+  event = reported;
   if (!tool && toolName) tool = toolName;
 
   const params: Record<string, string | number> = { at: firedAt };

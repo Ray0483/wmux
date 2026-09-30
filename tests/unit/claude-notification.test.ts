@@ -13,6 +13,14 @@ describe('classifyClaudeNotification', () => {
     expect(classifyClaudeNotification('elicitation_dialog', '')).toBe('attention');
   });
 
+  it("reads Grok's task_complete as news, not a question", () => {
+    // Grok fires it when a background shell or monitor exits. Under the
+    // unknown-type default it parked the pane on "Needs you" with nothing to answer.
+    expect(classifyClaudeNotification('task_complete', 'Background task completed: task-1')).toBe('info');
+    // An API error does want the user; StopFailure ends that block with the turn.
+    expect(classifyClaudeNotification('agent_error', 'rate limited')).toBe('attention');
+  });
+
   it('treats an unrecognised type as a question, never as silence', () => {
     expect(classifyClaudeNotification('brand_new_prompt', '')).toBe('attention');
   });

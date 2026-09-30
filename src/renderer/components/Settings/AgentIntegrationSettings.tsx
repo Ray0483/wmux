@@ -35,13 +35,13 @@ const FEATURES: Array<{ key: Feature; labelKey: TranslationKey; labelFallback: s
     key: 'instructions',
     labelKey: 'settings.integration.instructions',
     labelFallback: 'Agent instructions',
-    pathHint: '~/.claude/CLAUDE.md · ~/.config/opencode/AGENTS.md · ~/.kiro/steering/wmux.md · ~/.omp/agent/AGENTS.md · ~/.pi/agent/AGENTS.md',
+    pathHint: '~/.claude/CLAUDE.md · ~/.config/opencode/AGENTS.md · ~/.kiro/steering/wmux.md · ~/.omp/agent/AGENTS.md · ~/.pi/agent/AGENTS.md · ~/.grok/rules/wmux.md',
   },
   {
     key: 'hooks',
     labelKey: 'settings.integration.hooks',
     labelFallback: 'Status hooks',
-    pathHint: '~/.claude/settings.json · ~/.pi/agent/extensions/wmux.js',
+    pathHint: '~/.claude/settings.json · ~/.pi/agent/extensions/wmux.js · ~/.grok/hooks/wmux.json',
   },
   {
     key: 'orchestrator',
@@ -101,7 +101,7 @@ export default function AgentIntegrationSettings() {
 
       <div className="settings-row">
         <label className="settings-label">
-          {t('settings.integration.enable', 'Let wmux configure Claude Code, OpenCode and Kiro')}
+          {t('settings.integration.enable', 'Let wmux configure Claude Code, OpenCode, Kiro, omp, pi and Grok')}
         </label>
         <input
           type="checkbox"

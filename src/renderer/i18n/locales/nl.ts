@@ -568,7 +568,7 @@ export const nl: Translation = {
   'surfaceTab.profileBadge': 'project',
   // Instellingen — toestemming voor agentintegratie (issue #132)
   'settings.integration.section': 'Agentintegratie',
-  'settings.integration.enable': 'wmux toestaan om Claude Code, OpenCode en Kiro te configureren',
+  'settings.integration.enable': 'wmux toestaan om Claude Code, OpenCode, Kiro, omp, pi en Grok te configureren',
   'settings.integration.hint':
     'wmux bewerkt bestanden in je thuismap zodat codeeragenten het browserpaneel, de markdown-weergaven en de zijbalkstatus kunnen aansturen. Iets hier uitschakelen verwijdert ook wat het heeft geschreven.',
   'settings.integration.instructions': 'Instructies voor agenten',

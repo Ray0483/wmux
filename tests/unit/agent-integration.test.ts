@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import fs from 'node:fs';
 import {
   applyWmuxHooks,
   buildChromeDevtoolsMcpServer,
@@ -237,5 +238,31 @@ describe('safe agent integration defaults', () => {
     }
     expect(INTEGRATION_CONSENT_DETAIL).toContain('~/.config/opencode/plugin/wmux.js');
     expect(INTEGRATION_CONSENT_DETAIL).toContain('pinned chrome-devtools-mcp');
+  });
+
+  it('discloses the Grok files in the dialog AND beside the toggles that write them (#259)', () => {
+    // The Settings path hint is the only place a user can see what a checkbox
+    // touches after the first-launch dialog is gone. Grok's two files were in
+    // the dialog and missing from the panel.
+    const panel = fs.readFileSync(
+      path.resolve(__dirname, '../../src/renderer/components/Settings/AgentIntegrationSettings.tsx'), 'utf-8',
+    );
+    for (const written of ['~/.grok/rules/wmux.md', '~/.grok/hooks/wmux.json']) {
+      expect(INTEGRATION_CONSENT_DETAIL).toContain(written);
+      expect(panel).toContain(written);
+    }
+  });
+
+  it('names every configured agent in the integration toggle, in every locale (#259)', () => {
+    const dir = path.resolve(__dirname, '../../src/renderer/i18n/locales');
+    const locales = fs.readdirSync(dir).filter((f) => f.endsWith('.ts'));
+    expect(locales.length).toBeGreaterThanOrEqual(18);
+    for (const file of locales) {
+      const label = fs.readFileSync(path.join(dir, file), 'utf-8')
+        .split('\n').find((l) => l.includes("'settings.integration.enable'")) ?? '';
+      for (const agent of ['Claude Code', 'OpenCode', 'Kiro', 'omp', 'pi', 'Grok']) {
+        expect(label, `${file} should name ${agent}`).toContain(agent);
+      }
+    }
   });
 });

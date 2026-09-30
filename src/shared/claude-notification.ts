@@ -45,12 +45,24 @@ export type ClaudeNotificationKind = 'attention' | 'idle' | 'info' | 'unknown';
  */
 export const CLAUDE_IDLE_MESSAGE = 'Claude is waiting for your input';
 
-/** `notification_type` values, as Claude Code documents them for hook matchers. */
+/**
+ * `notification_type` values, as Claude Code documents them for hook matchers —
+ * plus the one Grok Build adds that must NOT take the unknown-type default.
+ *
+ * Grok runs these same hooks and fires `task_complete` ("Background task
+ * completed: <id>") whenever a background shell or monitor finishes. That is
+ * news, not a question: left to the default below it parked the pane on "Needs
+ * you" and rang the bell every time a background command exited, with nothing
+ * on screen to answer. Grok's other own type, `agent_error`, is deliberately
+ * absent — a turn that died on an API error does want the user, and the
+ * `StopFailure` that follows ends the block with the turn.
+ */
 const KIND_BY_TYPE: Record<string, ClaudeNotificationKind> = {
   permission_prompt: 'attention',
   elicitation_dialog: 'attention',
   idle_prompt: 'idle',
   auth_success: 'info',
+  task_complete: 'info',
 };
 
 export function classifyClaudeNotification(
