@@ -23,6 +23,33 @@
   <img src="https://wmux.org/assets/wmux-screen.png" alt="wmux — split terminal panes with the agent session sidebar" width="900" />
 </p>
 
+## New in 2.15 - your agents, from your phone
+
+You start six agents and walk away from the desk. The only question that matters is **which one has stopped and is waiting on you** — and until now the answer was on a screen you had just left.
+
+wmux now serves a small web console for your phone. No app to install: it is a page wmux serves itself, so any phone with a browser works.
+
+- **A console sorted by who needs you** — *Needs you → Done → Working → Idle*. A blocked agent shows the choices it declared as buttons on its card: two taps to answer, no terminal needed.
+- **Attach** — the agent's live terminal, mirrored. Fit it to the screen, or switch to a readable size and pan. Your desktop pane is never resized.
+- **A composer that sends once** — and becomes **Insert** (text without Enter) while an agent is blocked, so a message can't accidentally answer a permission prompt.
+- **A key bar** — Esc, Tab, ⇧Tab, arrows, Enter, ^C, y/n. Anything that would interrupt an agent or answer a prompt takes a second tap.
+
+It is **off by default**: Settings → **Remote** → turn it on → **Pair a device** → scan the QR code. The console listens on this computer only (`127.0.0.1:9790`); to reach it from a phone, put it behind Tailscale or an SSH tunnel — Settings has both recipes ready to copy:
+
+```bash
+tailscale serve --bg --https=443 http://127.0.0.1:9790   # then paste the https://…ts.net URL into Public URL
+ssh -L 9790:127.0.0.1:9790 <host>                        # or a plain SSH tunnel
+```
+
+Typing into a terminal is running code, so it was built that way round:
+
+- **Every phone gets its own credential**, paired by a one-time QR code that expires in two minutes. Settings lists every device and live connection, each revocable.
+- **It can list agents, mirror a terminal, type, and press a choice the agent itself declared.** It cannot spawn, kill or close anything, and it never touches wmux's pipe token.
+- **An answer is tied to the prompt it was shown for.** A stale or replayed tap is refused rather than landing on the agent's *next* question.
+- **A plain-HTTP local-network bind exists, behind a warning** — devices paired that way are view-only unless you explicitly allow control.
+
+Not in it yet: push notifications with the page closed, an installable PWA, attachments, starting or stopping agents from the phone.
+
 ## New in 2.7 - the folder your agent is working in, beside the terminal it's working in
 
 `Ctrl+Shift+X` docks a file tree on the **right of the window**, rooted at the focused pane's live working directory. Not the workspace's, and not the active tab's — the pane's *terminal* cwd, so a pane showing a markdown or browser tab still belongs to the folder its shell is in.
@@ -473,6 +500,10 @@ wmux browser type e3 "hello"      # Type into input by ref
 wmux browser fill e3 "value"      # Set input value directly
 wmux browser screenshot            # Base64 PNG screenshot
 wmux browser eval "document.title" # Run JavaScript
+
+# Remote Console — the phone web console (enable and pair it in Settings → Remote)
+wmux remote status                 # running? bound where? how many devices paired / connected
+wmux remote status --json
 
 # Remote wmux management (SSH tunnel)
 # On the remote machine — expose its wmux pipe on localhost TCP and get its token:
