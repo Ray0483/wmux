@@ -138,9 +138,22 @@ parse_json() {
   node "$JSON_TOOL" parse-json "$json_str" "$path" 2>/dev/null
 }
 
-# Finished runs whose agents have not been reaped yet, one directory per line.
+# Completed, unreaped runs the CALLER may reap from a hook, one
+# "<claim><TAB><directory>" line each. <claim> is "-" when the run's recorded
+# coordinator surface is $WMUX_SURFACE_ID, otherwise the coordinator pane id the
+# caller still has to match (see caller_pane_id). Prints nothing outside wmux.
 # Only reads state.json files (one node process for the whole scan); makes no
 # wmux call, so the Stop hook stays free on a machine with nothing to reap.
 find_unreaped_finished_orchs() {
-  node "$JSON_TOOL" find-unreaped-finished "$ORCH_BASE" 2>/dev/null
+  node "$JSON_TOOL" find-unreaped-finished "$ORCH_BASE" "${WMUX_SURFACE_ID:-}" 2>/dev/null
+}
+
+# The pane holding the caller's surface, or nothing when it cannot be told
+# (not inside wmux, wmux unreachable, surface not in the caller's workspace).
+caller_pane_id() {
+  [ -n "${WMUX_SURFACE_ID:-}" ] || return 0
+  command -v wmux >/dev/null 2>&1 || return 0
+  wmux list-panes 2>/dev/null </dev/null \
+    | node "$JSON_TOOL" pane-of-surface "$WMUX_SURFACE_ID" 2>/dev/null \
+    | tr -d '\r\n'
 }

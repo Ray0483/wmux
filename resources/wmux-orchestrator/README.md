@@ -146,9 +146,9 @@ wmux-orchestrator/
     detect-wmux.sh                  # Check if wmux is running (pipe test)
     on-tool-use.sh                  # Hook: increment tool use counter
     on-agent-stop.sh                # Hook: wave transition logic
-    on-stop.sh                      # Hook: warn if orchestration is active, reap finished runs
+    on-stop.sh                      # Hook: warn if orchestration is active, reap this pane's own completed runs
     on-session-start.sh             # Hook: crash recovery check
-    cleanup.sh                      # Remove orchestration temp files
+    cleanup.sh                      # Reap a run's agents (failed/aborted runs included), remove its temp files
   package.json
 ```
 

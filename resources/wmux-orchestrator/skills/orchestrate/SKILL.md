@@ -491,8 +491,10 @@ over many rapid updates.)
    bash "$PLUGIN_ROOT/scripts/reap-wave.sh" "[orch-dir]" <wave-index>
    ```
    It kills each agent, closes its tab (a pane goes with its last tab) and stamps `reapedAt` in
-   `state.json`. It is idempotent, so running it twice is harmless. Never close the coordinator's
-   own pane by hand; the script already refuses to.
+   `state.json`. It is idempotent, so running it twice is harmless — and worth doing if it printed
+   `could not close surface …`: an agent whose tab did not close is left unstamped so the next run
+   retries it. Never close the coordinator's own pane by hand; the script already refuses to, and
+   it never closes the surface it is run from either.
    ⚠ `agent kill` tree-kills the agent's shell on Windows, so dev servers and watchers still in that
    process tree die with it. Only processes that left the tree survive (`start`, `Start-Process`,
    daemons that re-parent) — if agents launched those, sweep the project's ports for orphaned
@@ -504,8 +506,11 @@ over many rapid updates.)
    d. Continue monitoring loop
 5. If all waves are done, mark the run `complete` (`update_state "[orch-dir]" ".status" complete`)
    and proceed to Phase 8. The Stop hook (`on-stop.sh`) also reaps every agent of a run once it is
-   marked `complete`, `aborted` or `failed`, so the last wave is closed even if this step is lost;
-   Phase 9 still reaps explicitly.
+   marked `complete`, so the last wave is closed even if this step is lost; Phase 9 still reaps
+   explicitly. The hook only ever reaps a run **this pane coordinates** (it fires in every Claude
+   Code session, workers and other coordinators included), and it leaves `failed` and `aborted`
+   runs alone: their panes are what you read to find out what went wrong, and only
+   `cleanup.sh` takes them down.
 
 **Nudging a running worker:** `wmux send` / `send-key` target the **caller's own surface** by
 default — without `--surface` the text lands in YOUR session as fake input, not the worker's. To
@@ -552,4 +557,6 @@ agents started that left their shell's process tree survives `agent kill` and ca
 for the next run.
 
 To abort a botched run and clear the cockpit: `update_state "[orch-dir]" ".status" aborted` — the
-sidebar only tracks the most recent *running* orchestration.
+sidebar only tracks the most recent *running* orchestration. Aborting does not close anything: the
+agents' panes stay up so you can read them. When you are done with them,
+`bash "$PLUGIN_ROOT/scripts/cleanup.sh" "[orch-dir]"` reaps the run and removes its directory.

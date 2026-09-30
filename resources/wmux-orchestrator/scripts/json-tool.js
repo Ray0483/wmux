@@ -9,7 +9,8 @@
 //   node json-tool.js query <file> <query-name> [args...]
 //   node json-tool.js update-agent <file> <agentId> <field=value>...
 //   node json-tool.js dashboard <file>
-//   node json-tool.js find-unreaped-finished <baseDir>
+//   node json-tool.js find-unreaped-finished <baseDir> [callerSurfaceId]
+//   node json-tool.js pane-of-surface <surfaceId>     (`wmux list-panes` JSON on stdin)
 //   node json-tool.js parse-json <jsonString> <path>
 //   node json-tool.js find-spawned <label> <paneId>   (`wmux agent list` JSON on stdin)
 
@@ -177,190 +178,161 @@ function cmdInc(file, dotPath) {
   writeJSON(file, data);
 }
 
+const out = text => process.stdout.write(text + '\n');
+
+/** Every agent of every wave, in order. Tolerates a state with no waves. */
+function allAgents(data) {
+  return (data.waves || []).flatMap(wave => wave.agents || []);
+}
+
+/** The wave at argv index `raw`, or undefined. */
+function waveAt(data, raw) {
+  return data.waves ? data.waves[parseInt(raw, 10)] : undefined;
+}
+
+/** That wave's agents[], or undefined when the wave or the list is missing. */
+function agentsAt(data, raw) {
+  const wave = waveAt(data, raw);
+  return wave ? wave.agents : undefined;
+}
+
+// One function per query, so adding one does not grow a single switch. Each
+// prints exactly what its `case` used to.
+const QUERIES = {
+  'agents-by-status': (data, args) => {
+    for (const agent of allAgents(data)) {
+      if (agent.status === args[0]) out(agent.id);
+    }
+  },
+
+  'wave-of-agent': (data, args) => {
+    const found = findAgent(data, args[0]);
+    if (found) out(String(found.waveIndex));
+  },
+
+  'count-agents-by-status': (data, args) => {
+    out(String(allAgents(data).filter(agent => agent.status === args[0]).length));
+  },
+
+  'wave-complete': (data, args) => {
+    const wave = waveAt(data, args[0]);
+    if (!wave) { out('true'); return; }
+    const allDone = (wave.agents || []).every(a => a.status === 'exited' || a.status === 'failed');
+    out(allDone ? 'true' : 'false');
+  },
+
+  // Prints nothing if no pending wave is found.
+  'next-pending-wave': (data) => {
+    const i = (data.waves || []).findIndex(wave => wave.status === 'pending');
+    if (i !== -1) out(String(i));
+  },
+
+  'all-waves-done': (data) => {
+    const waves = data.waves || [];
+    const done = waves.every(w => w.status !== 'pending' && w.status !== 'running');
+    out(done ? 'true' : 'false');
+  },
+
+  'wave-agents': (data, args) => {
+    const wave = waveAt(data, args[0]);
+    out(wave ? JSON.stringify(wave.agents || []) : '[]');
+  },
+
+  'wave-count': (data) => {
+    out(String((data.waves || []).length));
+  },
+
+  'wave-agent-ids': (data, args) => {
+    for (const agent of agentsAt(data, args[0]) || []) out(agent.id);
+  },
+
+  'agent-label': (data, args) => {
+    const found = findAgent(data, args[0]);
+    if (found) out(String(found.agent.label || ''));
+  },
+
+  'wave-status': (data, args) => {
+    const wave = waveAt(data, args[0]);
+    if (wave) out(String(wave.status || 'unknown'));
+  },
+
+  // Each agent as a compact JSON line (for while-read loops).
+  'wave-agents-each': (data, args) => {
+    for (const agent of agentsAt(data, args[0]) || []) out(JSON.stringify(agent));
+  },
+
+  // Each agent as a compact JSON line plus its 0-based "_cell" (agents that
+  // share a group share a cell). A non-object entry has no fields to carry
+  // it, so it prints as {"_cell":n} to keep the line count equal to agents[].
+  'wave-cells-each': (data, args) => {
+    const agents = agentsAt(data, args[0]);
+    if (!Array.isArray(agents)) return;
+    const cells = cellsForAgents(agents);
+    agents.forEach((agent, i) => {
+      const fields = agent && typeof agent === 'object' && !Array.isArray(agent) ? agent : {};
+      out(JSON.stringify({ ...fields, _cell: cells[i] }));
+    });
+  },
+
+  'wave-cell-count': (data, args) => {
+    const cells = cellsForAgents(agentsAt(data, args[0]));
+    out(String(cells.length ? Math.max(...cells) + 1 : 0));
+  },
+
+  // One tab-separated line per agent that still has a surface to close:
+  // id, wmuxAgentId, surfaceId, paneId ('-' stands for an empty field, so
+  // `read` with a tab IFS cannot collapse it).
+  'reap-candidates': (data, args) => {
+    const cell = v => (v === undefined || v === null || v === '' ? '-' : String(v));
+    for (const a of reapCandidates(data, args[0], args[1] || '')) {
+      out([a.id, cell(a.wmuxAgentId), a.surfaceId, cell(a.paneId)].join('\t'));
+    }
+  },
+};
+
 function cmdQuery(file, queryName, ...args) {
   const data = readJSON(file);
-
-  switch (queryName) {
-    case 'agents-by-status': {
-      const status = args[0];
-      if (!data.waves) break;
-      for (const wave of data.waves) {
-        if (!wave.agents) continue;
-        for (const agent of wave.agents) {
-          if (agent.status === status) {
-            process.stdout.write(agent.id + '\n');
-          }
-        }
-      }
-      break;
-    }
-
-    case 'wave-of-agent': {
-      const agentId = args[0];
-      const found = findAgent(data, agentId);
-      if (found) {
-        process.stdout.write(String(found.waveIndex) + '\n');
-      }
-      break;
-    }
-
-    case 'count-agents-by-status': {
-      const status = args[0];
-      let count = 0;
-      if (data.waves) {
-        for (const wave of data.waves) {
-          if (!wave.agents) continue;
-          for (const agent of wave.agents) {
-            if (agent.status === status) count++;
-          }
-        }
-      }
-      process.stdout.write(String(count) + '\n');
-      break;
-    }
-
-    case 'wave-complete': {
-      const waveIdx = parseInt(args[0], 10);
-      if (!data.waves || !data.waves[waveIdx]) {
-        process.stdout.write('true\n');
-        break;
-      }
-      const agents = data.waves[waveIdx].agents || [];
-      const allDone = agents.every(a => a.status === 'exited' || a.status === 'failed');
-      process.stdout.write(allDone ? 'true' : 'false');
-      process.stdout.write('\n');
-      break;
-    }
-
-    case 'next-pending-wave': {
-      if (data.waves) {
-        for (let i = 0; i < data.waves.length; i++) {
-          if (data.waves[i].status === 'pending') {
-            process.stdout.write(String(i) + '\n');
-            return;
-          }
-        }
-      }
-      // Print nothing if no pending wave found
-      break;
-    }
-
-    case 'all-waves-done': {
-      if (!data.waves || data.waves.length === 0) {
-        process.stdout.write('true\n');
-        break;
-      }
-      const done = data.waves.every(w => w.status !== 'pending' && w.status !== 'running');
-      process.stdout.write(done ? 'true' : 'false');
-      process.stdout.write('\n');
-      break;
-    }
-
-    case 'wave-agents': {
-      const waveIdx = parseInt(args[0], 10);
-      if (!data.waves || !data.waves[waveIdx]) {
-        process.stdout.write('[]\n');
-        break;
-      }
-      process.stdout.write(JSON.stringify(data.waves[waveIdx].agents || []) + '\n');
-      break;
-    }
-
-    case 'wave-count': {
-      process.stdout.write(String((data.waves || []).length) + '\n');
-      break;
-    }
-
-    case 'wave-agent-ids': {
-      const waveIdx = parseInt(args[0], 10);
-      if (data.waves && data.waves[waveIdx] && data.waves[waveIdx].agents) {
-        for (const agent of data.waves[waveIdx].agents) {
-          process.stdout.write(agent.id + '\n');
-        }
-      }
-      break;
-    }
-
-    case 'agent-label': {
-      const agentId = args[0];
-      const found = findAgent(data, agentId);
-      if (found) {
-        process.stdout.write(String(found.agent.label || '') + '\n');
-      }
-      break;
-    }
-
-    case 'wave-status': {
-      const waveIdx = parseInt(args[0], 10);
-      if (data.waves && data.waves[waveIdx]) {
-        process.stdout.write(String(data.waves[waveIdx].status || 'unknown') + '\n');
-      }
-      break;
-    }
-
-    case 'wave-agents-each': {
-      // Output each agent as a compact JSON line (for while-read loops)
-      const waveIdx = parseInt(args[0], 10);
-      if (data.waves && data.waves[waveIdx] && data.waves[waveIdx].agents) {
-        for (const agent of data.waves[waveIdx].agents) {
-          process.stdout.write(JSON.stringify(agent) + '\n');
-        }
-      }
-      break;
-    }
-
-    case 'wave-cells-each': {
-      // Each agent as a compact JSON line plus its 0-based "_cell" (agents that
-      // share a group share a cell). A non-object entry has no fields to carry
-      // it, so it prints as {"_cell":n} to keep the line count equal to agents[].
-      const waveIdx = parseInt(args[0], 10);
-      const agents = data.waves && data.waves[waveIdx] && data.waves[waveIdx].agents;
-      if (!Array.isArray(agents)) break;
-      const cells = cellsForAgents(agents);
-      agents.forEach((agent, i) => {
-        const fields = agent && typeof agent === 'object' && !Array.isArray(agent) ? agent : {};
-        process.stdout.write(JSON.stringify({ ...fields, _cell: cells[i] }) + '\n');
-      });
-      break;
-    }
-
-    case 'wave-cell-count': {
-      const waveIdx = parseInt(args[0], 10);
-      const agents = data.waves && data.waves[waveIdx] && data.waves[waveIdx].agents;
-      const cells = cellsForAgents(agents);
-      process.stdout.write(String(cells.length ? Math.max(...cells) + 1 : 0) + '\n');
-      break;
-    }
-
-    case 'reap-candidates': {
-      // One tab-separated line per agent that still has a surface to close:
-      // id, wmuxAgentId, surfaceId, paneId ('-' stands for an empty field, so
-      // `read` with a tab IFS cannot collapse it). The caller's own surface
-      // goes last: killing its own PTY may end the script running this.
-      const sel = args[0];
-      const callerSurface = args[1] || '';
-      const waves = data.waves || [];
-      const indexes = sel === 'all' ? waves.map((_, i) => i) : [parseInt(sel, 10)];
-      const rows = [];
-      for (const wi of indexes) {
-        for (const agent of (waves[wi] && waves[wi].agents) || []) {
-          if (!agent.surfaceId || agent.reapedAt) continue;
-          rows.push(agent);
-        }
-      }
-      const own = a => (callerSurface && a.surfaceId === callerSurface ? 1 : 0);
-      rows.sort((a, b) => own(a) - own(b));
-      const cell = v => (v === undefined || v === null || v === '' ? '-' : String(v));
-      for (const a of rows) {
-        process.stdout.write([a.id, cell(a.wmuxAgentId), a.surfaceId, cell(a.paneId)].join('\t') + '\n');
-      }
-      break;
-    }
-
-    default:
-      process.stderr.write(`json-tool: unknown query "${queryName}"\n`);
-      process.exit(1);
+  const run = Object.hasOwn(QUERIES, queryName) ? QUERIES[queryName] : null;
+  if (!run) {
+    process.stderr.write(`json-tool: unknown query "${queryName}"\n`);
+    process.exit(1);
   }
+  run(data, args);
+}
+
+/**
+ * Why a surface must never be closed by a reap, or '' when it may be.
+ *
+ * The caller's own surface is SKIPPED, not closed last: `close-surface` on it
+ * ends the shell running the reap, and with it whoever asked (a coordinator
+ * whose own surface ended up in agents[], a worker running cleanup). The
+ * recorded coordinator surface is protected the same way whoever the caller
+ * is — that is the only protection a run laid out by the `layout grid`
+ * fallback has, since it never learns a coordinatorPaneId.
+ */
+function protectedSurfaceReason(data, surfaceId, callerSurface) {
+  if (callerSurface && surfaceId === callerSurface) return "the caller's own surface";
+  if (data.coordinatorSurfaceId && surfaceId === data.coordinatorSurfaceId) return "the coordinator's surface";
+  return '';
+}
+
+/** Agents of the selected wave(s) that still have a closable surface. */
+function reapCandidates(data, sel, callerSurface) {
+  const waves = data.waves || [];
+  const indexes = sel === 'all' ? waves.map((_, i) => i) : [parseInt(sel, 10)];
+  const rows = [];
+  for (const wi of indexes) {
+    for (const agent of (waves[wi] && waves[wi].agents) || []) {
+      if (!agent.surfaceId || agent.reapedAt) continue;
+      const why = protectedSurfaceReason(data, agent.surfaceId, callerSurface);
+      if (why) {
+        process.stderr.write(`reap-wave: WARNING agent ${agent.id} is on ${why} (${agent.surfaceId}), not closing it\n`);
+        continue;
+      }
+      rows.push(agent);
+    }
+  }
+  return rows;
 }
 
 function cmdUpdateAgent(file, agentId, ...assignments) {
@@ -454,19 +426,51 @@ function cmdParseJson(jsonStr, dotPath) {
   }
 }
 
+/** `dir` without any trailing `/` or `\`. */
+function trimTrailingSeparators(dir) {
+  let end = dir.length;
+  while (end > 0 && (dir[end - 1] === '/' || dir[end - 1] === '\\')) end--;
+  return dir.slice(0, end);
+}
+
+/** The CLI's `{agents:[...]}` reply or a bare array, as an array. */
+function agentListOf(list) {
+  if (Array.isArray(list)) return list;
+  return list && Array.isArray(list.agents) ? list.agents : [];
+}
+
 /**
- * A finished run is one a Stop hook may reap: terminal status, written by a
- * plugin version that records coordinatorPaneId, and not reaped yet.
+ * How the Stop hook in `callerSurface` may prove a run is its own, or null
+ * when it must leave the run alone:
+ *   '-'        the run's recorded coordinator surface IS the caller;
+ *   <paneId>   only a coordinator pane was recorded, so the hook still has to
+ *              check that the caller sits in that pane (one `wmux list-panes`).
+ *
+ * Only `complete` runs qualify. A `failed` or `aborted` run keeps its panes:
+ * they are what the user inspects to find out what went wrong, and only an
+ * explicit cleanup.sh removes them. A run with no recorded coordinator is
+ * nobody's to reap from a hook, and neither is any run when the hook has no
+ * surface of its own to compare (it is not running inside wmux).
+ */
+function stopHookClaim(state, callerSurface) {
+  if (!state || state.status !== 'complete' || state.reapedAt || !callerSurface) return null;
+  if (state.coordinatorSurfaceId) return state.coordinatorSurfaceId === callerSurface ? '-' : null;
+  return typeof state.coordinatorPaneId === 'string' && state.coordinatorPaneId ? state.coordinatorPaneId : null;
+}
+
+/**
+ * Runs the Stop hook in `callerSurface` may reap, one `<claim>\t<dir>` line
+ * each (see stopHookClaim). The hook fires in every Claude Code session on the
+ * machine — another coordinator's, in another workspace or window, and every
+ * worker's — so "finished" alone is not enough: the run has to be the caller's.
  * One node process scans every run dir, so the hook pays for one, not N.
  */
-function cmdFindUnreapedFinished(baseDir) {
-  let names;
+function cmdFindUnreapedFinished(baseDir, callerSurface) {  let names;
   try {
     names = fs.readdirSync(baseDir);
   } catch {
     return;
   }
-  const finished = new Set(['complete', 'aborted', 'failed']);
   for (const name of names.sort()) {
     if (!name.startsWith('wmux-orch-')) continue;
     let state;
@@ -475,10 +479,26 @@ function cmdFindUnreapedFinished(baseDir) {
     } catch {
       continue;
     }
-    if (!state || !finished.has(state.status)) continue;
-    if (!state.coordinatorPaneId || state.reapedAt) continue;
-    process.stdout.write(baseDir.replace(/[\\/]+$/, '') + '/' + name + '\n');
+    const claim = stopHookClaim(state, callerSurface || '');
+    if (!claim) continue;
+    out(claim + '\t' + trimTrailingSeparators(baseDir) + '/' + name);
   }
+}
+
+/**
+ * The pane holding `surfaceId`, out of `wmux list-panes` JSON on stdin
+ * (`{panes:[{paneId, surfaces:[{id}]}]}`). Prints nothing when it is not there.
+ */
+function cmdPaneOfSurface(surfaceId) {
+  let reply;
+  try {
+    reply = JSON.parse(fs.readFileSync(0, 'utf8'));
+  } catch {
+    return;
+  }
+  const panes = reply && Array.isArray(reply.panes) ? reply.panes : [];
+  const pane = panes.find(p => p && Array.isArray(p.surfaces) && p.surfaces.some(s => s && s.id === surfaceId));
+  if (pane && pane.paneId) process.stdout.write(String(pane.paneId) + '\n');
 }
 
 /**
@@ -487,7 +507,7 @@ function cmdFindUnreapedFinished(baseDir) {
  * are several. Accepts the CLI's `{agents:[...]}` reply or a bare array.
  */
 function findSpawned(list, label, paneId) {
-  const agents = Array.isArray(list) ? list : list && Array.isArray(list.agents) ? list.agents : [];
+  const agents = agentListOf(list);
   let best = null;
   for (const a of agents) {
     if (!a || typeof a !== 'object') continue;
@@ -516,7 +536,7 @@ const cmd = args[0];
 
 if (!cmd) {
   process.stderr.write('Usage: node json-tool.js <command> [args...]\n');
-  process.stderr.write('Commands: get, set, inc, query, update-agent, dashboard, find-unreaped-finished, parse-json, find-spawned\n');
+  process.stderr.write('Commands: get, set, inc, query, update-agent, dashboard, find-unreaped-finished, pane-of-surface, parse-json, find-spawned\n');
   process.exit(1);
 }
 
@@ -552,8 +572,13 @@ switch (cmd) {
     break;
 
   case 'find-unreaped-finished':
-    if (args.length < 2) { process.stderr.write('Usage: node json-tool.js find-unreaped-finished <baseDir>\n'); process.exit(1); }
-    cmdFindUnreapedFinished(args[1]);
+    if (args.length < 2) { process.stderr.write('Usage: node json-tool.js find-unreaped-finished <baseDir> [callerSurfaceId]\n'); process.exit(1); }
+    cmdFindUnreapedFinished(args[1], args[2]);
+    break;
+
+  case 'pane-of-surface':
+    if (args.length < 2) { process.stderr.write('Usage: node json-tool.js pane-of-surface <surfaceId> < list-panes.json\n'); process.exit(1); }
+    cmdPaneOfSurface(args[1]);
     break;
 
   case 'parse-json':

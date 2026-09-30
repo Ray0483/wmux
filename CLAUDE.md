@@ -546,6 +546,7 @@ The pipe server in `index.ts` handles V2 JSON-RPC methods. Most delegate to the 
 - `system.identify`, `system.capabilities`, `system.tree`
 - `workspace.create`, `workspace.close`, `workspace.select`, `workspace.rename`, `workspace.list`, `workspace.current`
 - `pane.split`, `pane.close`, `pane.focus`, `pane.zoom`, `pane.list`
+- `layout.grid`, `layout.agents` — both bridged by `v2-bridge.ts`. `layout.agents` (#255) splits ONLY the anchor's pane into `[anchor | worker grid]` (`buildAgentLayout` in `split-utils.ts`, anchor and size resolved by `store/agent-layout-target.ts`), where `layout.grid` rebuilds the whole workspace. It is the one bridge spec with a `validate`: a bad `count` (1-16) or a non-finite `coordinatorRatio` is -32602 from main before any window is looked up, because a renderer that received `count: null` would have to guess. The CLI side (`layoutAgentsParams`) goes through `parseFlagArgs` like `layout grid`
 - `surface.create`, `surface.close`, `surface.focus`, `surface.rename`, `surface.list`
 - `surface.send_text`, `surface.send_key`, `surface.read_text`, `surface.trigger_flash`
 - `surface.list_prompts` — the prompt log (#207). Diverges from `surface.read_text` on the multi-window lookup, deliberately: `read_text` can tell "this window does not own that terminal" from "the screen is blank" and so takes the first window that answers without an error, but a prompt log cannot — an unowned surface and a surface with nothing recorded both answer `[]`. So the targeted form takes the first NON-EMPTY answer, and the untargeted form MERGES across windows rather than reading the first reply, since "every tracked surface" is a fact about the app and each window keeps its own store
@@ -586,7 +587,11 @@ resources/wmux-orchestrator/
   scripts/json-tool.js          Node.js JSON helper (replaces jq)
   scripts/orchestration-state.sh  State file management library
   scripts/spawn-agents.sh       Creates panes (`layout agents`) + launches Claude Code agents
-  scripts/reap-wave.sh          Kills a wave's agents and closes their tabs; also run by the Stop hook
+  scripts/reap-wave.sh          Kills a wave's agents and closes their tabs; also run by the Stop hook,
+                                which reaps only a `complete` run whose recorded coordinator is the
+                                hook's OWN pane (it fires in every session, workers included). Never
+                                closes the caller's or the coordinator's surface; a failed close is
+                                left unstamped so it is retried. failed/aborted runs: cleanup.sh only
   scripts/on-agent-stop.sh      Wave transition driver (core orchestration)
   scripts/check-status.sh       Markdown dashboard generator
   scripts/*.sh                  Other utilities (cleanup, collect-results, etc.)

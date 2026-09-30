@@ -104,6 +104,17 @@ if [ -n "$ANCHOR_PANE" ] && [ "$ANCHOR_PANE" != "null" ]; then
   fi
 fi
 
+# The coordinator's SURFACE is recorded on both paths, `layout grid` included:
+# this script runs in the coordinator's own shell, so $WMUX_SURFACE_ID is it.
+# It is what lets the Stop hook tell its own run from somebody else's, and what
+# keeps a reap from ever closing the coordinator when no pane id was learned.
+if [ -n "${WMUX_SURFACE_ID:-}" ]; then
+  CURRENT_COORD_SURFACE=$(read_state "$ORCH_DIR" '.coordinatorSurfaceId')
+  if [ -z "$CURRENT_COORD_SURFACE" ] || [ "$CURRENT_COORD_SURFACE" = "null" ]; then
+    update_state "$ORCH_DIR" .coordinatorSurfaceId "$WMUX_SURFACE_ID"
+  fi
+fi
+
 spawn_timed_out() {
   printf '%s' "$1" | grep -Eq 'timed out after .* may still have completed'
 }

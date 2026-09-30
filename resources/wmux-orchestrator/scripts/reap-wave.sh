@@ -5,8 +5,13 @@
 # own, so without this their panes and processes stay alive.
 #
 # Idempotent: an agent that already has `reapedAt` is skipped, so a second run
-# calls no wmux command beyond `ping`. With `all` the run gets a top-level
-# `reapedAt` too, which is what the Stop hook keys on.
+# calls no wmux command beyond `ping`. `reapedAt` means "its surface is closed":
+# an agent whose close FAILED is not stamped and is tried again next time. With
+# `all` the run gets a top-level `reapedAt` too, once nothing is left to retry,
+# which is what the Stop hook keys on.
+#
+# Never closed, whoever runs this: the caller's own surface ($WMUX_SURFACE_ID),
+# the run's recorded coordinator surface, and anything in the coordinator's pane.
 
 ORCH_DIR="$1"
 WAVE_SEL="$2"
@@ -36,6 +41,10 @@ fi
 COORD_PANE=$(read_state "$ORCH_DIR" .coordinatorPaneId)
 [ "$COORD_PANE" = "null" ] && COORD_PANE=""
 
+LEFT_OPEN=0
+
+# `reap-candidates` already leaves out the caller's own surface and the run's
+# recorded coordinator surface (it says so on stderr): neither is ever closed.
 # </dev/null on every wmux call: inside this while-read loop a command that
 # reads stdin would swallow the remaining agent lines.
 while IFS=$'\t' read -r AGENT_ID WMUX_AGENT_ID SURFACE_ID PANE_ID; do
@@ -48,18 +57,30 @@ while IFS=$'\t' read -r AGENT_ID WMUX_AGENT_ID SURFACE_ID PANE_ID; do
     continue
   fi
 
-  # Exit codes are ignored: an unknown agent id is "Agent not found" and an
-  # unknown surface already answers ok, both meaning "already gone".
+  # The kill's exit code is ignored: an unknown agent id is "Agent not found",
+  # which means "already gone".
   if [ -n "$WMUX_AGENT_ID" ]; then
     wmux agent kill "$WMUX_AGENT_ID" >/dev/null 2>&1 </dev/null
   fi
-  wmux close-surface "$SURFACE_ID" >/dev/null 2>&1 </dev/null
-  echo "reaped $AGENT_ID (surface $SURFACE_ID)"
 
-  update_agent "$ORCH_DIR" "$AGENT_ID" "reapedAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  # The close's is NOT. `close-surface` answers ok for a surface that is already
+  # gone, so a failure is a real one (pipe error, timeout, no window) and the
+  # pane may still be there. Stamping reapedAt anyway would make every later
+  # run skip it, and the leaked pane would never be retried.
+  if wmux close-surface "$SURFACE_ID" >/dev/null 2>&1 </dev/null; then
+    echo "reaped $AGENT_ID (surface $SURFACE_ID)"
+    update_agent "$ORCH_DIR" "$AGENT_ID" "reapedAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  else
+    echo "reap-wave: WARNING could not close surface $SURFACE_ID of agent $AGENT_ID, leaving it for the next reap" >&2
+    LEFT_OPEN=$((LEFT_OPEN + 1))
+  fi
 done < <(node "$JSON_TOOL" query "$ORCH_DIR/state.json" reap-candidates "$WAVE_SEL" "${WMUX_SURFACE_ID:-}")
 
-if [ "$WAVE_SEL" = "all" ]; then
+# The run-level stamp is what the Stop hook keys on, so it only goes on once
+# nothing is left to retry. Agents skipped as protected (the coordinator's pane
+# or surface, the caller's own surface) do not hold it back: no later run of
+# this script would close them either.
+if [ "$WAVE_SEL" = "all" ] && [ "$LEFT_OPEN" -eq 0 ]; then
   update_state "$ORCH_DIR" .reapedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 fi
 exit 0
