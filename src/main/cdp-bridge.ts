@@ -105,6 +105,55 @@ export function resolveRef(refMap: Map<string, RefEntry>, ref: string): RefEntry
   return key ? refMap.get(key) ?? null : null;
 }
 
+/** How long a capture may go without a frame before we nudge the compositor,
+ *  how often we nudge after that, and when we stop and say why. The deadline
+ *  sits under the CLI's 10 s transport deadline so the caller gets THIS
+ *  message rather than a bare "sent no reply". */
+export const FRAME_KICK_DELAY_MS = 150;
+export const FRAME_KICK_INTERVAL_MS = 500;
+export const SCREENSHOT_DEADLINE_MS = 8000;
+
+/**
+ * Settle a `Page.captureScreenshot` on a page that is not painting (#262).
+ *
+ * The command does not read the last frame — it waits for the NEXT one. When
+ * the wmux window is unfocused and covered, Chromium's native occlusion stops
+ * BeginFrames for the guest entirely (requestAnimationFrame stops too, which is
+ * why a page-side rAF nudge cannot help), so an idle page never produces that
+ * frame and the call hangs until the CLI gives up. Measured with a bare
+ * Electron 43 harness, window covered by another one: the plain call timed out
+ * intermittently, and `webContents.invalidate()` issued after the request
+ * settled it every time in ~25 ms. Invalidating is a no-op for a page that is
+ * already painting, so the nudge costs nothing in the common case — it only
+ * runs once the capture has outlived FRAME_KICK_DELAY_MS anyway.
+ */
+export async function withFrameKick<T>(
+  wc: Pick<Electron.WebContents, 'invalidate' | 'isDestroyed'>,
+  capture: Promise<T>,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const started = Date.now();
+  const stalled = new Promise<never>((_, reject) => {
+    const kick = (): void => {
+      if (Date.now() - started >= SCREENSHOT_DEADLINE_MS) {
+        reject(new Error(
+          `screenshot timed out after ${SCREENSHOT_DEADLINE_MS}ms — the browser pane produced no frame. ` +
+          'Is the wmux window minimized?',
+        ));
+        return;
+      }
+      try { if (!wc.isDestroyed()) wc.invalidate(); } catch { /* the capture will report it */ }
+      timer = setTimeout(kick, FRAME_KICK_INTERVAL_MS);
+    };
+    timer = setTimeout(kick, FRAME_KICK_DELAY_MS);
+  });
+  try {
+    return await Promise.race([capture, stalled]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 // One attached browser webContents. Each agent/caller gets its own target so
 // concurrent browser sessions don't share a ref map or clobber each other's
 // page (issue #62).
@@ -431,7 +480,9 @@ export class CDPBridge {
       const contentSize = metrics.cssContentSize ?? metrics.contentSize;
       params.clip = { x: 0, y: 0, width: contentSize.width, height: contentSize.height, scale: 1 };
     }
-    const { data } = await this.sendCommand(target, 'Page.captureScreenshot', params);
+    const wc = this.liveWebContents(target);
+    const capture = this.sendCommand(target, 'Page.captureScreenshot', params);
+    const { data } = await (wc ? withFrameKick(wc, capture) : capture);
     return data;
   }
 
