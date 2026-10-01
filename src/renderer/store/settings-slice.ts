@@ -515,6 +515,8 @@ export interface WorkspacePrefs {
    * still on disk.
    */
   restoreClaudeSessions: boolean;
+  /** Opt-in capture and restoration of each tab's exact Codex conversation. */
+  restoreCodexSessions: boolean;
   /**
    * How many terminal panes a new workspace opens with, and how they sit
    * (issue #212).
@@ -565,6 +567,7 @@ export const DEFAULT_WORKSPACE_PREFS: WorkspacePrefs = {
   confirmAppClose: false,
   defaultLayoutId: null,
   restoreClaudeSessions: false,
+  restoreCodexSessions: false,
   detectAgentScreens: true,
   newWorkspacePanes: 3,
   newWorkspaceLayout: 'grid',

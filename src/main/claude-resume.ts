@@ -67,7 +67,7 @@ type SurfaceLike = Record<string, unknown> & { id?: unknown; type?: unknown; cla
  * different per-surface decision. Writing that walk twice is what produced the
  * first, broken version of this file.
  */
-function mapSurfaces<T>(tree: T, fn: (surface: SurfaceLike) => SurfaceLike): T {
+export function mapSurfaces<T>(tree: T, fn: (surface: SurfaceLike) => SurfaceLike): T {
   const node = tree as unknown as { type?: string; surfaces?: SurfaceLike[]; children?: unknown[] };
   if (!node || typeof node !== 'object') return tree;
 

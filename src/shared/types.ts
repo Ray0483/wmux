@@ -69,6 +69,8 @@ export interface SurfaceRef {
    * `claude --resume <id>` prepended to its startup commands.
    */
   claudeSessionId?: string;
+  /** Exact Codex conversation to resume, independently of Claude. */
+  codexSessionId?: string;
   /** Initial URL for a browser surface created from a quick-launch profile (issue #32). */
   url?: string;
   /**

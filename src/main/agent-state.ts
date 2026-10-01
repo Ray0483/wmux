@@ -30,6 +30,7 @@
 import { BrowserWindow } from 'electron';
 import { IPC_CHANNELS, SurfaceId } from '../shared/types';
 import { isValidClaudeSessionId } from './claude-resume';
+import { isValidCodexSessionId } from './codex-resume';
 import { resolveWireChoiceId } from '../shared/remote-console-protocol';
 
 export type AgentRunState = 'blocked' | 'working' | 'idle' | 'unknown';
@@ -98,6 +99,9 @@ export interface AgentStateRecord {
   answeredAt: number | null;
   /** Resumable session handle (a file/id), not a PID — survives a restart. */
   sessionId: string | null;
+  sessionProvider?: 'claude' | 'codex';
+  /** Session capture alone says nothing about the agent's activity. */
+  sessionOnly?: boolean;
   metadata: AgentMetadata;
   /** Highest `seq` accepted so far — replays and retries are dropped. */
   lastSeq: number;
@@ -149,6 +153,19 @@ export const DEFAULT_METADATA_TTL_MS = 60_000;
 export const WORKING_TRUST_MS = 15 * 60_000;
 
 const records = new Map<SurfaceId, AgentStateRecord>();
+// Distinguish a restored session still starting from one deliberately ended.
+const releasedSessions = new Set<SurfaceId>();
+export function wasAgentReleased(surfaceId: SurfaceId): boolean { return releasedSessions.has(surfaceId); }
+const sessionListeners = new Set<() => void>();
+export function onAgentSessionChanged(listener: () => void): () => void {
+  sessionListeners.add(listener);
+  return () => { sessionListeners.delete(listener); };
+}
+function notifySessionChanged(): void {
+  for (const listener of sessionListeners) {
+    try { listener(); } catch { /* observers must not fail a session report */ }
+  }
+}
 
 /** Guards against a hostile or buggy reporter growing the map without bound. */
 const MAX_TRACKED_SURFACES = 256;
@@ -254,7 +271,7 @@ export function resolveState(record: AgentStateRecord, now: number): AgentRunSta
     return now - record.updatedAt > WORKING_TRUST_MS ? 'unknown' : 'working';
   }
 
-  return 'idle';
+  return record.sessionOnly ? 'unknown' : 'idle';
 }
 
 /** Metadata is dropped once stale so a crashed process can't keep lying. */
@@ -415,6 +432,7 @@ export function reportAgent(surfaceId: SurfaceId, params: ReportAgentParams): Ag
 
   // Order matters: applyBlocked may clear the answers of a prompt that has just
   // ended, and applyChoices then installs the ones declared for the new prompt.
+  record.sessionOnly = false;
   applyBlocked(record, params);
   applyChoices(record, params);
   applyRunDepth(record, params);
@@ -425,18 +443,28 @@ export function reportAgent(surfaceId: SurfaceId, params: ReportAgentParams): Ag
 /** `pane.report_agent_session` — tie the pane to a resumable session handle. */
 export function reportAgentSession(
   surfaceId: SurfaceId,
-  params: { seq?: number; sessionId: string | null },
+  params: { seq?: number; sessionId: string | null; provider?: unknown },
 ): AgentStateRecord | null {
   // Validated at the door, not at the point of use (issue #186). This value
   // arrives over the named pipe — a public interface — and since #186 it can
   // end up on a restored pane's command line. Anything that is not a bare
   // session handle is stored as null rather than kept for a later caller to
   // sanitise, so there is exactly one place this can be got wrong.
-  const sessionId = isValidClaudeSessionId(params.sessionId) ? params.sessionId : null;
+  if (params.provider !== undefined && params.provider !== 'claude' && params.provider !== 'codex') return null;
+  const valid = params.provider === 'codex' ? isValidCodexSessionId : isValidClaudeSessionId;
+  const sessionId = valid(params.sessionId) ? params.sessionId : null;
+  const sessionOnly = params.provider === 'codex' && !records.has(surfaceId);
   const record = getOrCreate(surfaceId);
   if (!acceptSeq(record, params.seq)) return null;
+  if (sessionOnly) record.sessionOnly = true;
+  const provider = params.provider === 'codex' ? 'codex' : 'claude';
+  const changed = record.sessionId !== sessionId || record.sessionProvider !== provider;
   record.sessionId = sessionId;
-  return commit(record);
+  record.sessionProvider = provider;
+  releasedSessions.delete(surfaceId);
+  const result = commit(record);
+  if (changed) notifySessionChanged();
+  return result;
 }
 
 /** `pane.report_metadata` — model / context% / tokens, with a TTL. */
@@ -729,7 +757,10 @@ export function clearAgentState(surfaceId: SurfaceId): void {
  * no claim at all, so it must fall back to the heuristic, not be pinned idle.
  */
 function forget(surfaceId: SurfaceId): void {
+  const hadSession = !!records.get(surfaceId)?.sessionId;
+  releasedSessions.add(surfaceId);
   records.delete(surfaceId);
+  if (hadSession) notifySessionChanged();
   send({
     surfaceId,
     state: 'unknown',
@@ -753,6 +784,7 @@ export interface AgentStateSnapshot {
   /** When an answer was last relayed, so the UI can say "sent" instead of re-offering. */
   answeredAt: number | null;
   sessionId: string | null;
+  sessionProvider?: 'claude' | 'codex';
   runDepth: number;
   metadata: AgentMetadata;
   updatedAt: number;
@@ -770,6 +802,7 @@ function snapshot(record: AgentStateRecord, now = Date.now()): AgentStateSnapsho
     choices: resolveState(record, now) === 'blocked' ? record.choices : [],
     answeredAt: record.answeredAt,
     sessionId: record.sessionId,
+    sessionProvider: record.sessionProvider,
     runDepth: record.runDepth,
     metadata: liveMetadata(record, now),
     updatedAt: record.updatedAt,
@@ -869,4 +902,5 @@ function notifyBroadcastListeners(): void {
 /** Test seam — drops all tracked state. */
 export function resetAgentState(): void {
   records.clear();
+  releasedSessions.clear();
 }

@@ -75,6 +75,8 @@ interface UseTerminalOptions {
    * this surface gets in this run — see `claude-resume-command.ts`.
    */
   claudeSessionId?: string;
+  /** Exact Codex conversation to resume, independently of Claude. */
+  codexSessionId?: string;
 }
 
 interface UseTerminalResult {
@@ -723,7 +725,7 @@ export async function fetchTheme(name: string): Promise<ThemeConfig> {
   }
 }
 
-export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = true, colorScheme, startupCommands, claudeSessionId }: UseTerminalOptions = {}): UseTerminalResult {
+export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = true, colorScheme, startupCommands, claudeSessionId, codexSessionId }: UseTerminalOptions = {}): UseTerminalResult {
   const t = useT();
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const xtermRef = useRef<Terminal | null>(null);
@@ -755,6 +757,8 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
   startupCommandsRef.current = startupCommands;
   const claudeSessionIdRef = useRef<string | undefined>(claudeSessionId);
   claudeSessionIdRef.current = claudeSessionId;
+  const codexSessionIdRef = useRef<string | undefined>(codexSessionId);
+  codexSessionIdRef.current = codexSessionId;
 
   // Subscribe to relevant settings so changes apply live.
   const prefs = useStore((s) => s.terminalPrefs);
@@ -1558,6 +1562,8 @@ export function useTerminal({ surfaceId, shell, cwd, visible = true, focused = t
             surfaceId,
             claudeSessionId: claudeSessionIdRef.current,
             enabled: useStore.getState().workspacePrefs.restoreClaudeSessions,
+            codexSessionId: codexSessionIdRef.current,
+            codexEnabled: useStore.getState().workspacePrefs.restoreCodexSessions,
           });
           window.wmux.pty.create({ shell: effectiveShell, cwd: effectiveCwd, env: {}, surfaceId, startupCommands: spawnCommands, cols: initialCols, rows: initialRows })
             .then((created: { id: string; shell: string; shellFallbackFrom?: string }) => {

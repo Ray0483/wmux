@@ -52,9 +52,19 @@ export function withClaudeResume(opts: {
   surfaceId: string | undefined;
   claudeSessionId: string | undefined;
   enabled: boolean;
+  codexSessionId?: string;
+  codexEnabled?: boolean;
 }): string[] | undefined {
   const { base, surfaceId, claudeSessionId, enabled } = opts;
-  if (!enabled || !surfaceId || !claudeSessionId) return base;
+  if (!surfaceId) return base;
+  if (opts.codexSessionId) {
+    // Mixed provider state is ambiguous: never type a second agent into a TUI.
+    if (claudeSessionId || !opts.codexEnabled || !/^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$/.test(opts.codexSessionId)) return base;
+    if (resumedSurfaces.has(surfaceId)) return base;
+    resumedSurfaces.add(surfaceId);
+    return [...(base ?? []), `codex resume ${opts.codexSessionId}`];
+  }
+  if (!enabled || !claudeSessionId) return base;
   // Re-validated here even though the main process validates on the way in:
   // this value round-tripped through session.json, which is a file on disk the
   // user can edit, and it is about to become a command line.
