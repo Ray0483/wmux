@@ -11,6 +11,7 @@ import { attachErrorSink, installPtyCrashGuard } from './pty-crash-guard';
 import { powerShellShimDir } from './powershell-shim';
 import { getCliBinPath } from './cli-paths';
 import { codexShimDirs } from './codex-launcher';
+import { loadSettings } from './settings-store';
 import { getNodeRuntime } from './node-runtime';
 import { system32, opensshPath } from './system32';
 import { bashAlias, gitBashCandidates, isWslBashLauncher, isGitBashLauncher, GIT_BASH_LOGIN_ARGS } from './git-bash';
@@ -165,6 +166,33 @@ export function resolveExistingShellPath(shell: string): string | undefined {
   const resolved = resolveExistingShellPathUncached(shell);
   shellPathCache.set(shell, resolved);
   return resolved;
+}
+
+/**
+ * The Codex restore shim dirs for one pane, or none (#261). Only when the user
+ * turned the feature on: with it off, `codex` must be exactly the binary the
+ * shell would run anyway, and a pane must not pay a `where codex.exe` on the
+ * synchronous create path (#176) for nothing. The pref is read off
+ * settings.json, which the renderer persists synchronously, so a new pane sees
+ * a toggle at once. The launcher stays under this PTY's process tree so the
+ * orphan cleanup also covers Codex and its app-server after an app crash.
+ */
+function codexShimDirsForPane(
+  shellType: string,
+  nodeRuntime: { path: string; electron: boolean },
+  cliBinDir: string,
+  cliPath: string,
+  env: Record<string, string>,
+): string[] {
+  if (nodeRuntime.electron || process.platform !== 'win32' || !['powershell', 'cmd'].includes(shellType)) return [];
+  const prefs = loadSettings()['wmux-workspace-prefs'] as { restoreCodexSessions?: boolean } | undefined;
+  if (prefs?.restoreCodexSessions !== true) return [];
+  return codexShimDirs({
+    shellType, executable: resolveExistingShellPath('codex.exe'), cliBinDir,
+    psVerified: powerShellShimDir() !== null, env,
+    runtime: nodeRuntime.path,
+    launcher: path.join(path.dirname(cliPath), 'wmux-codex.js'),
+  });
 }
 
 function resolveExistingShellPathUncached(shell: string): string | undefined {
@@ -629,15 +657,7 @@ export class PtyManager {
     // not matter to any other shell: bash and cmd.exe ignore .ps1 files.
     const cliBinDir = getCliBinPath();
     const shimDirs = [powerShellShimDir(), cliBinDir].filter((d): d is string => d !== null);
-    // Keep the helper under this PTY's process tree so the existing orphan
-    // cleanup also covers Codex and its app-server after an app crash.
-    const codexExe = !nodeRuntime.electron && process.platform === 'win32' && ['powershell', 'cmd'].includes(shellType)
-      ? resolveExistingShellPath('codex.exe') : undefined;
-    shimDirs.unshift(...codexShimDirs({
-      shellType, executable: codexExe, cliBinDir, psVerified: powerShellShimDir() !== null, env,
-      runtime: nodeRuntime.path,
-      launcher: path.join(path.dirname(cliPath), 'wmux-codex.js'),
-    }));
+    shimDirs.unshift(...codexShimDirsForPane(shellType, nodeRuntime, cliBinDir, cliPath, env));
     const pathKey = Object.keys(env).find((k) => k.toLowerCase() === 'path') ?? 'PATH';
     const prefix = shimDirs.join(path.delimiter);
     env[pathKey] = env[pathKey] ? `${prefix}${path.delimiter}${env[pathKey]}` : prefix;

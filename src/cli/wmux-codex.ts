@@ -3,7 +3,7 @@
 import { execFile, spawn } from 'child_process';
 import net from 'net';
 import path from 'path';
-import { createCodexRelay } from './codex-relay';
+import type { CodexRelay, CodexRelayOptions } from './codex-relay';
 
 const NON_INTERACTIVE = new Set([
   'agents', 'exec', 'e', 'review', 'login', 'logout', 'mcp', 'plugin', 'app-server',
@@ -17,33 +17,51 @@ const VALUE_OPTIONS = new Set([
   '-a', '--ask-for-approval', '--local-provider', '--remote', '--remote-auth-token-env',
 ]);
 const SERVER_OPTIONS = new Set(['-c', '--config', '--enable', '--disable', '--code-mode-host']);
+/** Options that keep an invocation native. The second half: a remote TUI cannot
+ *  apply local profile/worktree/provider bootstrapping, so these run unwrapped
+ *  instead of silently changing their meaning. */
+const NATIVE_ONLY_OPTIONS = new Set([
+  '-h', '--help', '-V', '--version', '--remote', '--remote-auth-token-env',
+  '-p', '--profile', '--worktree', '--oss', '--local-provider',
+]);
 
-export function codexLaunchPlan(args: string[], cwd: string): { interactive: boolean; serverArgs: string[]; cwd: string } {
-  let interactive = true;
+interface LaunchPlan { interactive: boolean; serverArgs: string[]; cwd: string }
+
+/** Apply one value-taking option. Returns how many argv entries it consumed, or
+ *  0 when its value is missing (which ends the scan as non-interactive). */
+function applyValueOption(plan: LaunchPlan, key: string, arg: string, next: string | undefined): number {
+  const inline = arg.includes('=');
+  const value = inline ? arg.slice(arg.indexOf('=') + 1) : next;
+  if (value === undefined) return 0;
+  if (SERVER_OPTIONS.has(key)) plan.serverArgs.push(key, value);
+  if (key === '-C' || key === '--cd') plan.cwd = path.resolve(plan.cwd, value);
+  return inline ? 1 : 2;
+}
+
+export function codexLaunchPlan(args: string[], cwd: string): LaunchPlan {
+  const plan: LaunchPlan = { interactive: true, serverArgs: ['app-server', '--stdio'], cwd };
   let positional = false;
-  const serverArgs = ['app-server', '--stdio'];
-  for (let i = 0; i < args.length; i++) {
+  let i = 0;
+  while (i < args.length && args[i] !== '--') {
     const arg = args[i];
-    if (arg === '--') break;
     const key = arg.split('=')[0];
-    if (['-h', '--help', '-V', '--version', '--remote', '--remote-auth-token-env'].includes(key)) interactive = false;
-    // A remote TUI cannot apply local profile/worktree/provider bootstrapping.
-    // Keep these invocations native instead of silently changing their meaning.
-    if (['-p', '--profile', '--worktree', '--oss', '--local-provider'].includes(key)) interactive = false;
-    if (key === '--strict-config') serverArgs.push(arg);
+    if (NATIVE_ONLY_OPTIONS.has(key)) plan.interactive = false;
+    if (key === '--strict-config') plan.serverArgs.push(arg);
     if (VALUE_OPTIONS.has(key)) {
-      const value = arg.includes('=') ? arg.slice(arg.indexOf('=') + 1) : args[++i];
-      if (value === undefined) { interactive = false; break; }
-      if (SERVER_OPTIONS.has(key)) serverArgs.push(key, value);
-      if (key === '-C' || key === '--cd') cwd = path.resolve(cwd, value);
+      const consumed = applyValueOption(plan, key, arg, args[i + 1]);
+      if (consumed === 0) { plan.interactive = false; break; }
+      i += consumed;
       continue;
     }
+    // Only the FIRST positional is the subcommand; a prompt like `codex exec` as
+    // text after it is not.
     if (!arg.startsWith('-') && !positional) {
       positional = true;
-      if (NON_INTERACTIVE.has(arg)) interactive = false;
+      plan.interactive &&= !NON_INTERACTIVE.has(arg);
     }
+    i++;
   }
-  return { interactive, serverArgs, cwd };
+  return plan;
 }
 
 /** Authenticated local pipe only; never send environment variables or transcripts. */
@@ -87,10 +105,32 @@ function supportsRemote(executable: string, env: NodeJS.ProcessEnv): Promise<boo
 
 function runCli(executable: string, args: string[], env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolve, reject) => {
+    // Codex shares this console, so Ctrl+C / Ctrl+Break reach both processes.
+    // Codex decides what they mean; the wrapper must not die first and hand the
+    // prompt back while Codex is still writing to the same console.
+    const ignore = (): void => {};
+    process.on('SIGINT', ignore);
+    process.on('SIGBREAK', ignore);
+    const done = (): void => { process.off('SIGINT', ignore); process.off('SIGBREAK', ignore); };
     const child = spawn(executable, args, { env, stdio: 'inherit' });
-    child.once('error', reject);
-    child.once('exit', code => resolve(code ?? 1));
+    child.once('error', error => { done(); reject(error); });
+    child.once('exit', code => { done(); resolve(code ?? 1); });
   });
+}
+
+/**
+ * The relay, or null when it cannot start. Loaded lazily: it pulls in `ws`,
+ * which ships beside this file in `cli/node_modules`, and a packaging miss
+ * there must cost the restore feature — never every `codex` in every pane.
+ */
+async function startRelay(options: CodexRelayOptions): Promise<CodexRelay | null> {
+  try {
+    const { createCodexRelay } = require('./codex-relay') as typeof import('./codex-relay');
+    return await createCodexRelay(options);
+  } catch (error) {
+    console.error(`[wmux] Codex session restore is unavailable (${(error as Error).message}). Starting Codex normally.`);
+    return null;
+  }
 }
 
 export async function runWmuxCodex(args = process.argv.slice(2)): Promise<number> {
@@ -111,7 +151,7 @@ export async function runWmuxCodex(args = process.argv.slice(2)): Promise<number
   }
   // Serialize reports so a delayed response cannot stamp an older thread last.
   let reports = Promise.resolve();
-  const relay = await createCodexRelay({
+  const relay = await startRelay({
     executable, args: plan.serverArgs, cwd: plan.cwd, env,
     onSession: sessionId => {
       reports = reports.then(async () => {
@@ -120,6 +160,7 @@ export async function runWmuxCodex(args = process.argv.slice(2)): Promise<number
       });
     },
   });
+  if (!relay) return runCli(executable, args, env);
   let exitCode: number;
   try {
     exitCode = await runCli(executable, [

@@ -140,7 +140,10 @@ function withIdentity<T extends { surfaceId: string; sessionId?: string | null; 
   agentSource: string | null;
 } {
   const identity = agentIdentity.identify(snapshot.surfaceId);
-  const reported = snapshot.sessionId ? snapshot.sessionProvider : undefined;
+  // Only Codex overrides: identity already names a Claude pane, and taking
+  // every Claude session report as the source would change `agentSource` for
+  // panes this feature has nothing to do with.
+  const reported = snapshot.sessionId && snapshot.sessionProvider === 'codex' ? 'codex' : undefined;
   return { ...snapshot, agent: reported ?? identity?.kind ?? null, agentSource: reported ? 'session' : identity?.source ?? null };
 }
 

@@ -151,3 +151,41 @@ describe.skipIf(process.platform !== 'win32')('PowerShell launcher arguments', (
     ]);
   });
 });
+
+describe.runIf(process.platform === 'win32')('codexShimDirs — which shell gets which shim', () => {
+  const dirs: string[] = [];
+  afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+
+  async function layout() {
+    const { mkdirSync } = await import('fs');
+    const root = mkdtempSync(path.join(tmpdir(), 'wmux-codex-shim-'));
+    dirs.push(root);
+    for (const d of ['cli-bin', 'codex-bin', 'codex-bin-ps']) mkdirSync(path.join(root, d));
+    writeFileSync(path.join(root, 'codex-bin', 'codex.cmd'), '@echo off\r\n');
+    writeFileSync(path.join(root, 'codex-bin-ps', 'codex.ps1'), '#\n');
+    const launcher = path.join(root, 'wmux-codex.js');
+    writeFileSync(launcher, '');
+    return { root, launcher, cliBinDir: path.join(root, 'cli-bin') };
+  }
+
+  it('never hands PowerShell the .cmd shim when the .ps1 is unverified (#154)', async () => {
+    const { codexShimDirs } = await import('../../src/main/codex-launcher');
+    const { launcher, cliBinDir } = await layout();
+    const env: Record<string, string> = {};
+    const got = codexShimDirs({ shellType: 'powershell', executable: 'C:\codex.exe', cliBinDir, psVerified: false, env, runtime: 'node', launcher });
+    expect(got).toEqual([]);
+    expect(env.WMUX_CODEX_EXE).toBeUndefined();
+  });
+
+  it('gives PowerShell the .ps1 ahead of the .cmd when verified, and cmd only the .cmd', async () => {
+    const { codexShimDirs } = await import('../../src/main/codex-launcher');
+    const { root, launcher, cliBinDir } = await layout();
+    const ps: Record<string, string> = {};
+    expect(codexShimDirs({ shellType: 'powershell', executable: 'C:\codex.exe', cliBinDir, psVerified: true, env: ps, runtime: 'node', launcher }))
+      .toEqual([path.join(root, 'codex-bin-ps'), path.join(root, 'codex-bin')]);
+    expect(ps.WMUX_CODEX_EXE).toBe('C:\codex.exe');
+    const cmd: Record<string, string> = {};
+    expect(codexShimDirs({ shellType: 'cmd', executable: 'C:\codex.exe', cliBinDir, psVerified: false, env: cmd, runtime: 'node', launcher }))
+      .toEqual([path.join(root, 'codex-bin')]);
+  });
+});

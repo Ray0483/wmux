@@ -10,7 +10,6 @@ exports.runWmuxCodex = runWmuxCodex;
 const child_process_1 = require("child_process");
 const net_1 = __importDefault(require("net"));
 const path_1 = __importDefault(require("path"));
-const codex_relay_1 = require("./codex-relay");
 const NON_INTERACTIVE = new Set([
     'agents', 'exec', 'e', 'review', 'login', 'logout', 'mcp', 'plugin', 'app-server',
     'remote-control', 'app', 'completion', 'update', 'doctor', 'sandbox', 'debug',
@@ -23,42 +22,55 @@ const VALUE_OPTIONS = new Set([
     '-a', '--ask-for-approval', '--local-provider', '--remote', '--remote-auth-token-env',
 ]);
 const SERVER_OPTIONS = new Set(['-c', '--config', '--enable', '--disable', '--code-mode-host']);
+/** Options that keep an invocation native. The second half: a remote TUI cannot
+ *  apply local profile/worktree/provider bootstrapping, so these run unwrapped
+ *  instead of silently changing their meaning. */
+const NATIVE_ONLY_OPTIONS = new Set([
+    '-h', '--help', '-V', '--version', '--remote', '--remote-auth-token-env',
+    '-p', '--profile', '--worktree', '--oss', '--local-provider',
+]);
+/** Apply one value-taking option. Returns how many argv entries it consumed, or
+ *  0 when its value is missing (which ends the scan as non-interactive). */
+function applyValueOption(plan, key, arg, next) {
+    const inline = arg.includes('=');
+    const value = inline ? arg.slice(arg.indexOf('=') + 1) : next;
+    if (value === undefined)
+        return 0;
+    if (SERVER_OPTIONS.has(key))
+        plan.serverArgs.push(key, value);
+    if (key === '-C' || key === '--cd')
+        plan.cwd = path_1.default.resolve(plan.cwd, value);
+    return inline ? 1 : 2;
+}
 function codexLaunchPlan(args, cwd) {
-    let interactive = true;
+    const plan = { interactive: true, serverArgs: ['app-server', '--stdio'], cwd };
     let positional = false;
-    const serverArgs = ['app-server', '--stdio'];
-    for (let i = 0; i < args.length; i++) {
+    let i = 0;
+    while (i < args.length && args[i] !== '--') {
         const arg = args[i];
-        if (arg === '--')
-            break;
         const key = arg.split('=')[0];
-        if (['-h', '--help', '-V', '--version', '--remote', '--remote-auth-token-env'].includes(key))
-            interactive = false;
-        // A remote TUI cannot apply local profile/worktree/provider bootstrapping.
-        // Keep these invocations native instead of silently changing their meaning.
-        if (['-p', '--profile', '--worktree', '--oss', '--local-provider'].includes(key))
-            interactive = false;
+        if (NATIVE_ONLY_OPTIONS.has(key))
+            plan.interactive = false;
         if (key === '--strict-config')
-            serverArgs.push(arg);
+            plan.serverArgs.push(arg);
         if (VALUE_OPTIONS.has(key)) {
-            const value = arg.includes('=') ? arg.slice(arg.indexOf('=') + 1) : args[++i];
-            if (value === undefined) {
-                interactive = false;
+            const consumed = applyValueOption(plan, key, arg, args[i + 1]);
+            if (consumed === 0) {
+                plan.interactive = false;
                 break;
             }
-            if (SERVER_OPTIONS.has(key))
-                serverArgs.push(key, value);
-            if (key === '-C' || key === '--cd')
-                cwd = path_1.default.resolve(cwd, value);
+            i += consumed;
             continue;
         }
+        // Only the FIRST positional is the subcommand; a prompt like `codex exec` as
+        // text after it is not.
         if (!arg.startsWith('-') && !positional) {
             positional = true;
-            if (NON_INTERACTIVE.has(arg))
-                interactive = false;
+            plan.interactive &&= !NON_INTERACTIVE.has(arg);
         }
+        i++;
     }
-    return { interactive, serverArgs, cwd };
+    return plan;
 }
 /** Authenticated local pipe only; never send environment variables or transcripts. */
 function wmuxRequest(method, params) {
@@ -114,10 +126,32 @@ function supportsRemote(executable, env) {
 }
 function runCli(executable, args, env) {
     return new Promise((resolve, reject) => {
+        // Codex shares this console, so Ctrl+C / Ctrl+Break reach both processes.
+        // Codex decides what they mean; the wrapper must not die first and hand the
+        // prompt back while Codex is still writing to the same console.
+        const ignore = () => { };
+        process.on('SIGINT', ignore);
+        process.on('SIGBREAK', ignore);
+        const done = () => { process.off('SIGINT', ignore); process.off('SIGBREAK', ignore); };
         const child = (0, child_process_1.spawn)(executable, args, { env, stdio: 'inherit' });
-        child.once('error', reject);
-        child.once('exit', code => resolve(code ?? 1));
+        child.once('error', error => { done(); reject(error); });
+        child.once('exit', code => { done(); resolve(code ?? 1); });
     });
+}
+/**
+ * The relay, or null when it cannot start. Loaded lazily: it pulls in `ws`,
+ * which ships beside this file in `cli/node_modules`, and a packaging miss
+ * there must cost the restore feature — never every `codex` in every pane.
+ */
+async function startRelay(options) {
+    try {
+        const { createCodexRelay } = require('./codex-relay');
+        return await createCodexRelay(options);
+    }
+    catch (error) {
+        console.error(`[wmux] Codex session restore is unavailable (${error.message}). Starting Codex normally.`);
+        return null;
+    }
 }
 async function runWmuxCodex(args = process.argv.slice(2)) {
     const executable = process.env.WMUX_CODEX_EXE;
@@ -142,7 +176,7 @@ async function runWmuxCodex(args = process.argv.slice(2)) {
     }
     // Serialize reports so a delayed response cannot stamp an older thread last.
     let reports = Promise.resolve();
-    const relay = await (0, codex_relay_1.createCodexRelay)({
+    const relay = await startRelay({
         executable, args: plan.serverArgs, cwd: plan.cwd, env,
         onSession: sessionId => {
             reports = reports.then(async () => {
@@ -153,6 +187,8 @@ async function runWmuxCodex(args = process.argv.slice(2)) {
             });
         },
     });
+    if (!relay)
+        return runCli(executable, args, env);
     let exitCode;
     try {
         exitCode = await runCli(executable, [

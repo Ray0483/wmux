@@ -130,6 +130,41 @@ describe('electron-builder packaging', () => {
     expect(missing).toEqual([]);
   });
 
+  /**
+   * The same failure one level out (#261): a shipped CLI file that imports an
+   * npm PACKAGE resolves it from `cli/node_modules`, never from the asar, so
+   * the package has to be copied there by hand. Builtins and type-only imports
+   * need nothing.
+   */
+  function packageImports(entry: string): string[] {
+    const { builtinModules } = require('module') as typeof import('module');
+    const builtins = new Set(builtinModules);
+    const lines = fs.readFileSync(path.join(repoRoot, 'src/cli', `${entry}.ts`), 'utf8').split('\n');
+    // Real import statements only — wmux.ts carries plenty of help text that
+    // contains the word "from" followed by a quote.
+    const specs = lines
+      .filter((l) => /^import (?!type )/.test(l) || /\brequire\('/.test(l))
+      .map((l) => /(?:from |require\()['"]([^'"./][^'"]*)['"]/.exec(l)?.[1])
+      .filter((s): s is string => !!s);
+    return specs
+      .map((s) => (s.startsWith('@') ? s.split('/').slice(0, 2).join('/') : s.split('/')[0]))
+      .filter((pkg) => !builtins.has(pkg) && !pkg.startsWith('node:'));
+  }
+
+  it('packages every npm package the shipped CLI files import', () => {
+    const missing = extraResources
+      .filter((e) => e.from.startsWith('dist/cli/'))
+      .map((e) => path.basename(e.from, '.js'))
+      .flatMap((entry) => packageImports(entry).map((pkg) => ({ entry, pkg })))
+      .filter(({ pkg }) => !extraResources.some((e) => e.from === `node_modules/${pkg}` && e.to === `cli/node_modules/${pkg}`))
+      .map(({ entry, pkg }) => `${pkg} (imported by ${entry}.ts)`);
+    expect(missing).toEqual([]);
+  });
+
+  it('finds the package imports it is meant to be checking', () => {
+    expect(packageImports('codex-relay')).toContain('ws');
+  });
+
   it('finds the sibling imports it is meant to be checking', () => {
     // Guards the guard: if the CLI stops sharing modules this goes vacuous, and
     // the next one added would slip through unnoticed.
